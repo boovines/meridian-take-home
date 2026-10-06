@@ -1,0 +1,22 @@
+name: Scaffold checks
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  scaffold:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check repository hygiene
+        run: |
+          git diff --check
+          test -f README.md
+          test -f app/README.md
+          test -f docs/architecture.md
+          test -f docs/verification.md
+      # Replace these scaffold checks with build, test, and lint once the app is initialized.
