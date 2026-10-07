@@ -87,7 +87,7 @@ Keep shared modules small and named for their responsibility. Split growing feat
 
 ## Implementation plans and generated projects
 
-After freeze, open the engineer workspace, create a plan, request advisory method suggestions, approve each choice, and approve the plan. Generate agent starts a durable Temporal job; the app shows phase and cancellation while retaining existing versions. OpenAI writes coordinated Node 24 modules from the frozen spec and chosen methods. Complete source is retained even if its syntax check fails. Vercel Sandbox checks syntax with denied network egress; this is not a business evaluation. Inspect files and before/after source, download a ZIP, or create an explicit plan revision. Runtime services execute approved steps and locked evaluations; bounded repair is implemented and Gmail capture is available through the API; run controls remain in progress.
+After freeze, open the engineer workspace, create a plan, request advisory method suggestions, approve each choice, and approve the plan. Generate agent starts a durable Temporal job; the app shows phase and cancellation while retaining existing versions. OpenAI writes coordinated Node 24 modules from the frozen spec and chosen methods. Complete source is retained even if its syntax check fails. Vercel Sandbox checks syntax with denied network egress; this is not a business evaluation. Inspect files and before/after source, download a ZIP, or create an explicit plan revision. Runtime services execute approved steps and locked evaluations; bounded repair is implemented and Gmail capture and manual run controls are available under Agent → Run workflow.
 
 The worker reconciles queued jobs every five seconds using stable Temporal workflow IDs. Project bytes checkpoint generation across activity retries; SQL guards fence cancelled/expired publication. Each generation has at most two activity attempts, a 40-minute Temporal deadline and a 45-minute application expiry. Model generation is bounded to 15 minutes per activity; sandbox validation to one minute. The model defaults to `gpt-5.4-mini`, configurable with `OPENAI_ENGINEERING_MODEL`.
 
@@ -99,7 +99,7 @@ For Vercel Sandbox development, link the dedicated project with Vercel CLI and o
 
 ## Runtime verification
 
-The [runtime guide](../docs/workflow-runtime.md) explains routing, human waits, limits, history and live recovery verification. Runtime APIs are implemented; dedicated run controls are still pending; Gmail capture is available through the API. Generated code only executes inside Vercel Sandbox. The worker owns all scheduling, and SQL records progress without a second scheduler.
+The [runtime guide](../docs/workflow-runtime.md) explains routing, human waits, limits, history and live recovery verification. Manual run controls and Gmail capture are available under Agent → Run workflow. Generated code only executes inside Vercel Sandbox. The worker owns all scheduling, and SQL records progress without a second scheduler.
 
 ## Evaluation verification
 

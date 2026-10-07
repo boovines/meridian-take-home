@@ -40,10 +40,10 @@ Boundaries may move to keep each PR coherent. PR #1 conventions are incorporated
 - [x] Generated downloadable source from reusable skeleton and frozen requirements; real background progress/cancellation.
 - [x] Locked independent expectations; revised suites preserve history; full-suite grading with errors/blockers distinguished.
 - [x] Repair actual code, keep every attempt, reject regressions, preserve baseline, stop at three attempts or required human decisions.
-- [ ] Temporal durability and Sandbox isolation verified with live adapters.
+- [x] Temporal durability and Sandbox isolation verified with live adapters.
 - [ ] Gmail/Composio ingestion captures immutable messages/documents; verify all provided shipment ground truth, excluding mismatched-invoice scoring.
-- [ ] Fresh human response per visit; new documents/new run; exclusive ambiguity errors; correct per-occurrence joins; bounded loops/time.
-- [ ] Retry uses same code and inputs in a fresh linked run; preview-only report.
+- [x] Fresh human response per visit; new documents/new run; exclusive ambiguity errors; correct per-occurrence joins; bounded loops/time.
+- [x] Retry uses same code and inputs in a fresh linked run; preview-only report.
 - [ ] Full browser demonstration from incomplete canvas through two AI reviews, freeze, generation, failure, repair, and final result.
 - [ ] README/run instructions, design tradeoffs, PDF/Word handoff and recorded demo artifact.
 
@@ -84,3 +84,5 @@ Boundaries may move to keep each PR coherent. PR #1 conventions are incorporated
 - Repair UI: Attempt ledger, Candidate cards and Baseline sidebar were generated and visually inspected in Chrome. Baseline sidebar selected; temporary picker and other variants removed. Gmail/PDF integration and the full assignment demonstration remain outstanding.
 
 - Gmail capture checkpoint: read-only Composio access returned the 14 supplied emails. A live capture retained one message and seven attachments; OpenAI read the selected commercial-invoice PDF and returned its invoice identifier and drug descriptions. This verifies provider/document access, not final shipment accuracy. All eleven supplied ground-truth figures were visually read into ignored local evaluation input; customer data and credentials are not committed. The next feature supplies manual run/human/report controls and complete-dataset verification.
+
+- Manual run UI: three live layouts inspected (Input sidebar, Guided sequence, Run desk). Input sidebar selected because current results and human prompts remain beside code/input selection at laptop height; picker and alternate layouts removed. Seven browser journeys and 68 service/domain tests passed. The new browser journey uses sanitized HTTP fixtures; a separate live synthetic run confirmed UI approval delivery and Temporal/Sandbox completion. Full real-inbox accuracy and the complete demonstration remain pending.

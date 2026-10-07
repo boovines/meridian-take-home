@@ -333,11 +333,11 @@ export class RunService {
         );
     });
   }
-  async state(workflowId: string, runId?: string) {
+  async state(workflowId: string, runId?: string, kind?: "manual") {
     await workflow(this.db, workflowId);
     const runs = (
       await this.db.query(
-        `SELECT * FROM workflow_runs WHERE workflow_id=$1 ${runId ? "AND id=$2" : ""} ORDER BY created_at DESC,id DESC LIMIT 20`,
+        `SELECT * FROM workflow_runs WHERE workflow_id=$1 ${runId ? "AND id=$2" : ""} ${kind === "manual" ? "AND kind='manual'" : ""} ORDER BY created_at DESC,id DESC LIMIT 20`,
         runId ? [workflowId, runId] : [workflowId],
       )
     ).rows.map(runRecord);

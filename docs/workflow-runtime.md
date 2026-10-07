@@ -1,6 +1,6 @@
 # Workflow execution
 
-The trusted runtime runs the frozen graph against one immutable input bundle and code version. Its API creates a durable operation, exposes ordered step history, accepts a human response, and permits cancellation. Run controls in the engineer UI are the next integration work. Gmail capture and document reading are implemented through the API; execution is currently exercised through services/API and the live smoke command.
+The trusted runtime runs the frozen graph against one immutable input bundle and code version. Its API creates a durable operation, exposes ordered step history, accepts a human response, and permits cancellation. Open Agent → Run workflow in the engineer workspace. Select an implementation and saved input packet, or capture related Gmail emails. Start run begins execution; the input controls remain disabled while another workflow operation is active.
 
 Temporal owns scheduling, parallel joins, active-time timers, and human waits. Postgres stores application progress and history. Each visit has a scheduling key and per-node visit number; a retry within that visit uses a fresh fencing token. Completed outputs are reused on duplicate delivery. An obsolete invocation cannot overwrite a completed, cancelled, or superseded attempt.
 
@@ -17,3 +17,13 @@ From `app/`, run `npm test` and `npm run worker:check`. These are in CI and do n
 With configured Supabase, Temporal, and Vercel Sandbox, apply migrations and start the worker. `npm run runtime:smoke -- --live --leave-waiting` creates a clearly synthetic three-step workflow using deterministic fixture source, executes it in Sandbox, and reports the waiting run ID. Stop the worker, run `npm run runtime:smoke -- --live --resume <run-id>`, then restart the worker. The response is persisted while offline and delivered from the outbox; the command verifies completion. This smoke check does not call the generator, retrieve Gmail, or send email.
 
 Live verification on October 7: run `8f8debcc-95ce-4baa-a2f6-ec0b73de3111` completed all three steps after worker restart, with one persisted approval. The run is synthetic and is not shipment-accuracy evidence.
+
+## Inspect and respond
+
+The input sidebar keeps code/input selection next to the selected run. Recent runs shows manually started runs; evaluation case traces remain in Evaluation. A run displays its code version, input label, status, visit history and applied limits. The step-history disclosure exposes per-visit inputs, outputs, errors and human responses.
+
+A Human step presents the frozen question with text entry or Approve/Reject controls. Submission records the response for that visit, then the worker resumes. A subsequent visit asks again. Ordinary inspection remains available while an operation is active; cancellation uses the shared operation control.
+
+Completed outcomes show the full JSON result. When the outcome contains a report with a subject and body, the screen also renders a plain-text Report preview, recipient if supplied, and “Not sent.” Numeric totals are displayed with their supplied labels. There is no sending control. Retry same inputs creates a new linked run with the same implementation and input packet; earlier approvals are not reused.
+
+Verification: the required browser journey uses sanitized HTTP fixtures for Gmail selection/capture, approval, report rendering, narrow layout and fresh-approval retry. This checks UI behavior, not live orchestration. Separately, a real synthetic run on October 7 was started from this screen, paused for an approval, and completed all three steps after the response was submitted through the UI.

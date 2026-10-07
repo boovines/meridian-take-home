@@ -4,11 +4,17 @@ import { RunService } from "@/server/runtime/run-service";
 import { startRunInput } from "@/domain/runtime";
 import { dispatchExecution } from "@/server/runtime/dispatch";
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   return respond(async () =>
-    new RunService(await getDatabase()).state(parseId((await params).id)),
+    new RunService(await getDatabase()).state(
+      parseId((await params).id),
+      undefined,
+      new URL(request.url).searchParams.get("kind") === "manual"
+        ? "manual"
+        : undefined,
+    ),
   );
 }
 export async function POST(

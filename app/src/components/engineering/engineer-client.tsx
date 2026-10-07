@@ -6,6 +6,7 @@ import { api, errorMessage } from "@/lib/api";
 import type { EngineeringState } from "./types";
 import { ImplementationPanel } from "./implementation-panel";
 import { EvaluationPanel } from "../evaluations/evaluation-panel";
+import { RunPanel } from "../runtime/run-panel";
 import { AgentPanel } from "./agent-panel";
 import "./engineer.css";
 export function EngineerClient({ id }: { id: string }) {
@@ -15,7 +16,8 @@ export function EngineerClient({ id }: { id: string }) {
     [action, setAction] = useState(""),
     [tab, setTab] = useState("Implementation"),
     [selectedPlan, setSelectedPlan] = useState(""),
-    [selectedCode, setSelectedCode] = useState("");
+    [selectedCode, setSelectedCode] = useState(""),
+    [agentView, setAgentView] = useState("Code");
   const load = useCallback(
     async () =>
       setState(await api<EngineeringState>(`/api/workflows/${id}/engineering`)),
@@ -113,13 +115,15 @@ export function EngineerClient({ id }: { id: string }) {
                 · {activeJob.phase.replaceAll("_", " ")}
               </strong>
               <p>
-                {activeJob.phase === "queued"
-                  ? "Waiting for the worker. You can leave this page and return."
-                  : activeJob.phase === "generating"
-                    ? "Writing the step implementations. Your existing versions remain available."
-                    : activeJob.phase === "validating"
-                      ? "Checking generated JavaScript in an isolated sandbox."
-                      : "Saving progress. You can continue inspecting the workspace."}
+                {activeJob.status === "waiting_for_human"
+                  ? "This run is paused for a human response in Agent → Run workflow."
+                  : activeJob.phase === "queued"
+                    ? "Waiting for the worker. You can leave this page and return."
+                    : activeJob.phase === "generating"
+                      ? "Writing the step implementations. Your existing versions remain available."
+                      : activeJob.phase === "validating"
+                        ? "Checking generated JavaScript in an isolated sandbox."
+                        : "Saving progress. You can continue inspecting the workspace."}
               </p>
             </div>
             <button
@@ -163,17 +167,38 @@ export function EngineerClient({ id }: { id: string }) {
             onGenerated={() => setTab("Agent")}
           />
         ) : tab === "Agent" ? (
-          <AgentPanel
-            key={selectedCode}
-            initialVersionId={selectedCode}
-            workflowId={id}
-            versions={state.versions}
-            jobs={state.jobs}
-            nodeTitles={Object.fromEntries(
-              state.spec.board.nodes.map((n) => [n.id, n.title]),
+          <>
+            <nav className="button-row agent-tools" aria-label="Agent tools">
+              {["Code", "Run workflow"].map((view) => (
+                <button
+                  key={view}
+                  aria-pressed={agentView === view}
+                  onClick={() => setAgentView(view)}
+                >
+                  {view}
+                </button>
+              ))}
+            </nav>
+            {agentView === "Run workflow" ? (
+              <RunPanel
+                state={state}
+                operationActive={!!activeJob}
+                onOperationStarted={load}
+              />
+            ) : (
+              <AgentPanel
+                key={selectedCode}
+                initialVersionId={selectedCode}
+                workflowId={id}
+                versions={state.versions}
+                jobs={state.jobs}
+                nodeTitles={Object.fromEntries(
+                  state.spec.board.nodes.map((n) => [n.id, n.title]),
+                )}
+                generating={activeJob?.kind === "generation"}
+              />
             )}
-            generating={activeJob?.kind === "generation"}
-          />
+          </>
         ) : (
           <EvaluationPanel
             state={state}
@@ -181,6 +206,7 @@ export function EngineerClient({ id }: { id: string }) {
             onOperationStarted={load}
             onInspectCode={(id) => {
               setSelectedCode(id);
+              setAgentView("Code");
               setTab("Agent");
             }}
           />
