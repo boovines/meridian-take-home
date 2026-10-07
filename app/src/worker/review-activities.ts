@@ -27,6 +27,7 @@ export async function performReview(id: string) {
       message: "Review could not complete.",
       type: "ReviewFailure",
       nonRetryable: error instanceof DomainError,
+      details: error instanceof DomainError ? [{ code: error.code }] : undefined,
     });
   } finally {
     clearInterval(pulse);
