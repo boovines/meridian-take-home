@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import type { EvaluationCase, CaseResult } from "@/domain/evaluation";
 import { RunTrace } from "../runtime/run-trace";
+import { AuditTrail } from "../runtime/audit-trail";
 import { api, errorMessage } from "@/lib/api";
 export function CaseDetail({
   test,
@@ -150,6 +151,13 @@ export function CaseDetail({
             </pre>
           </details>
         )}
+      {result && test.kind === "step" && (
+        <AuditTrail
+          key={result.id}
+          workflowId={workflowId}
+          caseResultId={result.id}
+        />
+      )}
     </div>
   );
 }

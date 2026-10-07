@@ -10,6 +10,8 @@ import { RepairService } from "./service";
 import { changedStepSources, type PreviousSourceEvidence } from "./evidence";
 import { completeRepairSources } from "./patch";
 import { RepairDocumentReader, type ReadRepairDocument } from "./documents";
+import { RepairAuditReader, type ReadRepairAudit } from "./audit";
+import { ExecutionAuditService } from "../runtime/audit-service";
 export type RepairContext = Awaited<
   ReturnType<RepairService["generationContext"]>
 >;
@@ -21,6 +23,7 @@ export interface RepairGenerator {
     signal: AbortSignal,
     previousSources: PreviousSourceEvidence[],
     readDocument: ReadRepairDocument,
+    readAudit: ReadRepairAudit,
   ): Promise<z.infer<typeof repairSources>>;
 }
 export class RepairGenerationService {
@@ -81,12 +84,36 @@ export class RepairGenerationService {
       signal.throwIfAborted();
       const documents = new RepairDocumentReader(
         claimed.job.workflow_id,
-        new Set(context.input_inventory.flatMap((bundle) => bundle.documents.map((d) => String(d.artifact_id)))),
+        new Set(
+          context.input_inventory.flatMap((bundle) =>
+            bundle.documents.map((d) => String(d.artifact_id)),
+          ),
+        ),
         this.artifacts,
         signal,
       );
+      const audits = new RepairAuditReader(
+        claimed.job.workflow_id,
+        new Set(
+          [
+            ...context.audit_events,
+            ...context.previous_attempts.flatMap(
+              (a) => a.candidate_audit_events,
+            ),
+          ].map((e) => String(e.id)),
+        ),
+        new ExecutionAuditService(this.db, this.artifacts),
+        signal,
+      );
       const generated = repairSources.parse(
-        await adapter.generate(context, baseline, signal, previousSources, documents.read),
+        await adapter.generate(
+          context,
+          baseline,
+          signal,
+          previousSources,
+          documents.read,
+          audits.read,
+        ),
       );
       signal.throwIfAborted();
       diagnosis = generated.diagnosis;
@@ -105,7 +132,12 @@ export class RepairGenerationService {
           "repair-project.json",
           "application/json",
           Buffer.from(JSON.stringify(project)),
-          { repair_attempt_id: attemptId, diagnosis, inspected_documents: documents.inspected },
+          {
+            repair_attempt_id: attemptId,
+            diagnosis,
+            inspected_documents: documents.inspected,
+            inspected_audits: audits.inspected,
+          },
         )
       ).id;
     }

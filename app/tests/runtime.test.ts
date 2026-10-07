@@ -14,6 +14,8 @@ import { HumanService } from "../src/server/runtime/human-service";
 import { runtimeFixture } from "./fixtures/runtime";
 import { RuntimeEngine } from "../src/domain/runtime-engine";
 import type { ScheduleStep, HumanRequest } from "../src/domain/runtime";
+import { ExecutionAuditService } from "../src/server/runtime/audit-service";
+import { DomainError } from "../src/domain/errors";
 let db: Database,
   artifacts: ArtifactService,
   directory: string,
@@ -29,7 +31,7 @@ beforeAll(async () => {
   await migrate(db);
   directory = await mkdtemp(path.join(os.tmpdir(), "meridian-runtime-"));
   artifacts = new ArtifactService(db, new LocalObjectStore(directory));
-  steps = new StepService(db, new VersionService(db, artifacts));
+  steps = new StepService(db, new VersionService(db, artifacts), artifacts);
 });
 afterAll(async () => {
   await db?.close();
@@ -322,4 +324,123 @@ it("enforces the active-operation slot and request identity, and a loop requires
     second.request_id,
   )) as HumanRequest;
   expect(pending.response).toBeNull();
+});
+
+it("persists a model response before postprocessing fails, preserving owner and immutable evidence", async () => {
+  const f = await runtimeFixture(
+    db,
+    artifacts,
+    ["trigger", "information", "outcome"],
+    {
+      name: "Delivery scheduling",
+      desired_outcome: "Schedule a delivery",
+      instructions: {},
+      methods: { information: "agent" },
+    },
+  );
+  let count = 0;
+  const result = await steps.execute(
+    schedule(f, 1),
+    {
+      model: { provider: "fixture", name: "delivery-parser" },
+      invoke: async () => {
+        if (count++ === 0)
+          return {
+            kind: "reason",
+            instructions: "Read delivery date",
+            data: { note: "Friday" },
+            document_ids: [],
+          };
+        throw new DomainError(422, "STEP_CRASH", "Consumer failed");
+      },
+      reason: async () => ({ date: "2026-10-09" }),
+    },
+    signal(),
+  );
+  expect(result.kind).toBe("error");
+  const audits = new ExecutionAuditService(db, artifacts);
+  const events = await audits.list(f.w.id, {
+    step_execution_id: result.step_id,
+  });
+  expect(events.map((e) => e.kind)).toEqual([
+    "initial_output",
+    "model_request",
+    "model_response",
+    "failure",
+  ]);
+  expect((await audits.read(f.w.id, events[2].id)).payload).toEqual({
+    date: "2026-10-09",
+  });
+  expect(events[1].summary.model).toBe("delivery-parser");
+  await expect(audits.read(randomUUID(), events[2].id)).rejects.toMatchObject({
+    code: "NOT_FOUND",
+  });
+  await expect(
+    db.query("UPDATE execution_audit_events SET kind='failure' WHERE id=$1", [
+      events[2].id,
+    ]),
+  ).rejects.toMatchObject({ code: "23514" });
+  await expect(
+    audits.recorder(
+      f.w.id,
+      { step_execution_id: result.step_id },
+      events[0].attempt_token,
+    )("failure", { late: true }),
+  ).rejects.toMatchObject({ code: "AUDIT_UNAVAILABLE" });
+  expect(
+    await audits.list(f.w.id, { step_execution_id: result.step_id }),
+  ).toHaveLength(4);
+});
+
+it("retains a requested interaction after cancellation and rejects its late model response", async () => {
+  const f = await runtimeFixture(
+    db,
+    artifacts,
+    ["trigger", "information", "outcome"],
+    {
+      name: "Delivery scheduling",
+      desired_outcome: "Schedule a delivery",
+      instructions: {},
+      methods: { information: "agent" },
+    },
+  );
+  let began!: () => void, release!: (v: Record<string, string>) => void;
+  const started = new Promise<void>((r) => {
+      began = r;
+    }),
+    pending = new Promise<Record<string, string>>((r) => {
+      release = r;
+    });
+  const work = steps.execute(
+    schedule(f, 1),
+    {
+      invoke: async () => ({
+        kind: "reason",
+        instructions: "Read date",
+        data: {},
+        document_ids: [],
+      }),
+      reason: async () => {
+        began();
+        return pending;
+      },
+    },
+    signal(),
+  );
+  await started;
+  const step = (await f.runs.state(f.w.id)).steps[0];
+  const audits = new ExecutionAuditService(db, artifacts);
+  expect(
+    (await audits.list(f.w.id, { step_execution_id: String(step.id) })).map(
+      (e) => e.kind,
+    ),
+  ).toEqual(["initial_output", "model_request"]);
+  await new JobService(db).requestCancel(f.w.id, f.job.id);
+  release({ date: "2026-10-09" });
+  await expect(work).rejects.toMatchObject({ code: "STALE_STEP_RESULT" });
+  expect(
+    (await audits.list(f.w.id, { step_execution_id: String(step.id) })).map(
+      (e) => e.kind,
+    ),
+  ).toEqual(["initial_output", "model_request"]);
 });

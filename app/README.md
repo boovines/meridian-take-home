@@ -81,7 +81,7 @@ The first command bundles workflows without credentials and runs in CI. The last
 | `src/server/evaluations` | Verified suites, trusted grading, case execution and result history |
 | `src/server/repairs` | Bounded sessions, candidate ancestry, diagnostic evidence projection, locked-case document access, focused source patches, generation checkpoints and acceptance decisions |
 | `src/server/inputs` | Capture existing Gmail messages and attachment evidence into immutable input bundles |
-| `src/server/runtime` | Run/visit history, run-scoped document access, isolated step contracts and human responses |
+| `src/server/runtime` | Run/visit history, immutable interaction audit, run-scoped document access, isolated step contracts and human responses |
 | `src/server/artifacts` | Immutable file records, integrity checks and local/private Supabase storage |
 | `src/server/integrations` | Composio Gmail, OpenAI, Temporal and Vercel Sandbox adapters |
 | `src/server/database.ts`, `src/server/http.ts` | Database and HTTP infrastructure |

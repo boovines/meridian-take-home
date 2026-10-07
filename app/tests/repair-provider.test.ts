@@ -26,7 +26,7 @@ it.each(["application/pdf", "text/plain"])("feeds %s evidence back to the model,
   state.model = model;
   const bytes = Buffer.from(media === "application/pdf" ? "%PDF-1.7\nfixture" : "Verified source text");
   const read = vi.fn(async () => ({ artifact_id: id, name: "source", media_type: media, bytes }));
-  const result = await repairProjectSources({} as RepairContext, {} as Project, AbortSignal.timeout(10000), [], read);
+  const result = await repairProjectSources({} as RepairContext, {} as Project, AbortSignal.timeout(10000), [], read, async()=>({}));
   expect(result).toEqual(answer);
   expect(read).toHaveBeenCalledTimes(3);
   expect(read).toHaveBeenCalledWith(id);
@@ -35,4 +35,22 @@ it.each(["application/pdf", "text/plain"])("feeds %s evidence back to the model,
   const evidence = model.doGenerateCalls[1].prompt.find(message => message.role === "tool");
   expect(JSON.stringify(evidence)).toContain(id);
   expect(JSON.stringify(evidence)).toContain(media === "application/pdf" ? "application/pdf" : "Verified source text");
+});
+
+it('passes an exact audit subtree to repair without exposing unrelated artifacts', async()=>{
+  const id=randomUUID();
+  const answer={diagnosis:{summary:'Inspect consumer after model response',affected_node_ids:[],changes:[]},project:{status:'needs_attention',explanation:'Evidence needs review',steps:[]}};
+  let count=0;
+  const model=new MockLanguageModelV4({doGenerate:async()=>({
+    content:++count===1?[{type:'tool-call',toolCallId:'audit',toolName:'inspectExecutionAudit',input:JSON.stringify({event_id:id,path:['records','0']})}]:[{type:'text',text:JSON.stringify(answer)}],
+    finishReason:{unified:count===1?'tool-calls':'stop',raw:undefined},
+    usage:{inputTokens:{total:1,noCache:1,cacheRead:undefined,cacheWrite:undefined},outputTokens:{total:1,text:1,reasoning:undefined}},warnings:[],
+  })});
+  state.model=model;
+  const readAudit=vi.fn(async()=>({event_id:id,kind:'model_response',value:{date:'2026-10-09'},truncated:false}));
+  const readDocument=vi.fn();
+  expect(await repairProjectSources({} as RepairContext,{} as Project,AbortSignal.timeout(10000),[],readDocument,readAudit)).toEqual(answer);
+  expect(readAudit).toHaveBeenCalledWith(id,['records','0']);
+  expect(readDocument).not.toHaveBeenCalled();
+  expect(JSON.stringify(model.doGenerateCalls[1].prompt.find(m=>m.role==='tool'))).toContain('2026-10-09');
 });

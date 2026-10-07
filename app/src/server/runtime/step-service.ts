@@ -25,6 +25,7 @@ import {
 } from "./invoke-step";
 import { documentsForRun } from "./documents";
 import { ArtifactService } from "../artifacts/service";
+import { ExecutionAuditService } from "./audit-service";
 export class StepService {
   constructor(
     private db: Database,
@@ -254,6 +255,11 @@ export class StepService {
         adapters,
         signal,
         (ids) => documentsForRun(this.db, run.id, ids, this.artifacts),
+        new ExecutionAuditService(this.db, this.artifacts).recorder(
+          run.workflow_id,
+          { step_execution_id: stepId },
+          token,
+        ),
       );
       const routes = selectRoutes(
         node,

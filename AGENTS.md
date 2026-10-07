@@ -5,6 +5,7 @@
 - Run checks appropriate to the change and report actual results. Do not claim scaffold CI verifies app behavior.
 - When initializing the app, add real lint, typecheck, and build commands to CI. Add focused business-rule, persistence, and browser tests as their features land, following `docs/verification.md`.
 - Keep expected evaluation answers independently reviewed and fixed during repair. Do not change expected answers just to make failing implementation pass.
+- Prioritize execution trace/audit evidence when improving repair: localize where behavior diverges before adding more examples. Improve the reusable harness, not shipment-specific platform logic. Cases already exposed to repair are regression tests, not held-out validation; any claimed holdout must use fresh independently verified cases.
 - Use fixtures for required CI; keep live Gmail/LLM verification separate. Never commit credentials or unsanitized customer data.
 
 ## File placement

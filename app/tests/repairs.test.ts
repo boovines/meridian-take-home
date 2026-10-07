@@ -478,9 +478,9 @@ it.each(["regressing", "still-failing"])(
     const evaluation = await repairs.createEvaluation(first.id);
     const ready = (await evals.prepare(job.id, evaluation.id))!;
     const versions = new VersionService(db, artifacts);
-    const execution = new EvaluationExecutionService(db, versions);
+    const execution = new EvaluationExecutionService(db, versions, artifacts);
     const runs = new RunService(db),
-      steps = new StepService(db, versions);
+      steps = new StepService(db, versions, artifacts);
     const actual = {
       shipment: scenario === "regressing" ? "WRONG" : "SYNTHETIC-001",
       failed_goods: scenario === "regressing" ? 1 : 2,
@@ -539,7 +539,7 @@ it.each(["regressing", "still-failing"])(
       second.id,
       {
         ...generator,
-        generate: async (context, baseline, _signal, sources) => {
+        generate: async (context, baseline, _signal, sources, _readDocument, readAudit) => {
           observed = true;
           expect(baseline).toEqual(retained);
           expect(sources).toEqual([
@@ -556,6 +556,10 @@ it.each(["regressing", "still-failing"])(
             },
           ]);
           const prior = context.previous_attempts[0];
+          const audit = prior.candidate_audit_events.find(event => event.node_id === changedNode && event.step_execution_id && event.kind === 'initial_output');
+          expect(audit).toBeDefined();
+          expect(await readAudit(String(audit!.id), ['output'])).toMatchObject({value: actual, truncated: false});
+          await expect(readAudit(randomUUID(), [])).rejects.toMatchObject({code: 'AUDIT_ACCESS_DENIED'});
           expect(prior.candidate_traces).toEqual(
             expect.arrayContaining([
               expect.objectContaining({

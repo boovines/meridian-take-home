@@ -1,9 +1,18 @@
 import { DomainError } from "../../domain/errors";
+import { createHash } from "node:crypto";
+import type { RecordAudit } from "../../domain/execution-audit";
 import type { Method } from "../../domain/engineering";
 import { stepResult, type Project } from "../../domain/project";
 import type { Json, RuntimeError } from "../../domain/runtime";
 import type { ReasoningDocument } from "./documents";
 export interface StepAdapters {
+  model?: {
+    provider: string;
+    name: string;
+    system?: string;
+    reasoning_effort?: string;
+    max_output_tokens?: number;
+  };
   invoke(
     project: Project,
     nodeId: string,
@@ -25,62 +34,101 @@ export async function invokeApprovedStep(
   adapters: StepAdapters,
   signal: AbortSignal,
   readDocuments?: (ids: string[]) => Promise<ReasoningDocument[]>,
+  audit?: RecordAudit,
 ) {
-  signal.throwIfAborted();
-  if (method === "human" && !Object.hasOwn(context, "human_response"))
-    throw new DomainError(
-      422,
-      "HUMAN_RESPONSE_REQUIRED",
-      "This step requires a fresh human response or verified scripted response.",
-    );
-  let result = stepResult.parse(
-    await adapters.invoke(project, nodeId, context, signal),
-  );
-  if (result.kind === "reason") {
-    if (method !== "agent")
-      throw new DomainError(
-        422,
-        "METHOD_VIOLATION",
-        "Only an approved Agent step can request model reasoning.",
-      );
-    if (result.document_ids.length && !readDocuments)
-      throw new DomainError(
-        422,
-        "DOCUMENT_ACCESS_DENIED",
-        "No captured document reader is available.",
-      );
-    const documents = readDocuments
-      ? await readDocuments(result.document_ids)
-      : [];
+  try {
     signal.throwIfAborted();
-    const tool_result = await adapters.reason(
-      result.instructions,
-      result.data,
-      signal,
-      documents,
-    );
-    result = stepResult.parse(
-      await adapters.invoke(
+    if (method === "human" && !Object.hasOwn(context, "human_response"))
+      throw new DomainError(
+        422,
+        "HUMAN_RESPONSE_REQUIRED",
+        "This step requires a fresh human response or verified scripted response.",
+      );
+    const initial = await adapters.invoke(project, nodeId, context, signal);
+    signal.throwIfAborted();
+    await audit?.("initial_output", initial);
+    let result = stepResult.parse(initial);
+    if (result.kind === "reason") {
+      if (method !== "agent")
+        throw new DomainError(
+          422,
+          "METHOD_VIOLATION",
+          "Only an approved Agent step can request model reasoning.",
+        );
+      if (result.document_ids.length && !readDocuments)
+        throw new DomainError(
+          422,
+          "DOCUMENT_ACCESS_DENIED",
+          "No captured document reader is available.",
+        );
+      const documents = readDocuments
+        ? await readDocuments(result.document_ids)
+        : [];
+      signal.throwIfAborted();
+      await audit?.(
+        "model_request",
+        {
+          instructions: result.instructions,
+          data: result.data,
+          model: adapters.model ?? { provider: "unknown", name: "unknown" },
+          documents: documents.map((d) => ({
+            artifact_id: d.artifact_id,
+            name: d.name,
+            media_type: d.media_type,
+            byte_size: d.bytes.length,
+            sha256: createHash("sha256").update(d.bytes).digest("hex"),
+          })),
+        },
+        {
+          model: adapters.model?.name ?? "unknown",
+          document_ids: result.document_ids,
+        },
+      );
+      signal.throwIfAborted();
+      const tool_result = await adapters.reason(
+        result.instructions,
+        result.data,
+        signal,
+        documents,
+      );
+      signal.throwIfAborted();
+      await audit?.("model_response", tool_result);
+      const processed = await adapters.invoke(
         project,
         nodeId,
         { ...context, tool_result },
         signal,
-      ),
-    );
+      );
+      signal.throwIfAborted();
+      await audit?.("final_output", processed);
+      result = stepResult.parse(processed);
+    }
+    if (result.kind !== "complete")
+      throw new DomainError(
+        422,
+        "METHOD_VIOLATION",
+        "The step must complete after its single approved interaction.",
+      );
+    if (Buffer.byteLength(JSON.stringify(result)) > 128_000)
+      throw new DomainError(
+        422,
+        "STEP_OUTPUT_TOO_LARGE",
+        "Keep step output under 128 KB; use document artifacts for large payloads.",
+      );
+    return result;
+  } catch (error) {
+    if (
+      !signal.aborted &&
+      !(error instanceof DomainError && error.code === "AUDIT_UNAVAILABLE")
+    ) {
+      const failure = invocationFailure(error);
+      await audit?.("failure", {
+        code: failure.code,
+        category: failure.category,
+      });
+    }
+    throw error;
   }
-  if (result.kind !== "complete")
-    throw new DomainError(
-      422,
-      "METHOD_VIOLATION",
-      "The step must complete after its single approved interaction.",
-    );
-  if (Buffer.byteLength(JSON.stringify(result)) > 128_000)
-    throw new DomainError(
-      422,
-      "STEP_OUTPUT_TOO_LARGE",
-      "Keep step output under 128 KB; use document artifacts for large payloads.",
-    );
-  return result;
 }
 export function invocationFailure(error: unknown): RuntimeError {
   const known = error instanceof DomainError,
@@ -106,10 +154,7 @@ export function invocationFailure(error: unknown): RuntimeError {
     )?.[1];
   const category =
     known &&
-    [
-      "HUMAN_RESPONSE_REQUIRED",
-      "INVALID_DOCUMENT",
-    ].includes(error.code)
+    ["HUMAN_RESPONSE_REQUIRED", "INVALID_DOCUMENT"].includes(error.code)
       ? "input"
       : routeCode ||
           (known && implementationCodes.includes(error.code)) ||
@@ -121,6 +166,7 @@ export function invocationFailure(error: unknown): RuntimeError {
               "MODEL_UNAVAILABLE",
               "MODEL_PROJECT_SPEND_LIMIT",
               "MODEL_QUOTA_EXCEEDED",
+              "AUDIT_UNAVAILABLE",
             ].includes(error.code)
           ? "infrastructure"
           : "unknown";
