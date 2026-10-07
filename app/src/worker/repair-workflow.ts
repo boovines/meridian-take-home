@@ -48,6 +48,10 @@ export async function repairImplementation(jobId: string) {
           scope.cancel();
         }
       })();
+      // Cancellation can reject the monitor while an activity is still stopping.
+      // Observe it immediately; awaiting the original promise in finally still
+      // propagates its error through the workflow's normal cleanup handler.
+      void monitor.catch(() => {});
       try {
         for (let number = 1; number <= context.attempt_limit; number++) {
           const attemptId = await io.beginRepairAttempt(jobId, number);

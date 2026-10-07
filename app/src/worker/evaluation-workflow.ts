@@ -48,6 +48,10 @@ export async function evaluateSuite(jobId: string, evaluationId?: string) {
           scope.cancel();
         }
       })();
+      // Cancellation can reject the monitor while an activity is still stopping.
+      // Observe it immediately; awaiting the original promise in finally still
+      // propagates its error through the workflow's normal cleanup handler.
+      void monitor.catch(() => {});
       try {
         const build = await heavy.checkEvaluationBuild(context.evaluation_id);
         if (!build.ok) {

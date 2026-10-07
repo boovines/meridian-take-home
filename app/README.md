@@ -33,6 +33,8 @@ npm run test:browser
 
 `npm test` uses an in-memory PGlite database by default. To exercise PostgreSQL locally, point `TEST_DATABASE_URL` at an isolated localhost database. The tests reject remote database hosts. Browser tests start a production server on port 3101 with a separate local database in `../.runtime/browser-tests`; they never use `.env.local`'s Supabase connection. Live service checks are separate from these fixture tests.
 
+Worker cancellation tests also start a temporary local Temporal server through the official testing SDK. The SDK downloads and caches its development-server binary on first use; tests tear it down afterward and never connect to the configured cloud namespace. This regression runs in the same `npm test` command in GitHub Actions.
+
 CI runs lint, typecheck, production build, Temporal workflow bundling, service/domain tests against PostgreSQL 17, and browser journeys through authoring, review, generation, evaluation, human responses and report preview. It needs no Gmail or model credentials.
 
 ## Implementation boundaries

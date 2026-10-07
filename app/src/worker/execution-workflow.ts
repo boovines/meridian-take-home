@@ -121,6 +121,10 @@ async function executeCaptured(jobId: string, runId?: string) {
           await condition(() => finished || changed !== revision, remaining);
         }
       })();
+      // Cancellation can reject the monitor while an activity is still stopping.
+      // Observe it immediately; awaiting the original promise in finally still
+      // propagates its error through the workflow's normal cleanup handler.
+      void monitor.catch(() => {});
       try {
         const result = await engine!.run();
         await finish(result);

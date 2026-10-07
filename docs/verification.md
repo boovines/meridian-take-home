@@ -2,7 +2,9 @@
 
 ## Current checks
 
-The `scaffold` CI job checks required repository files and whitespace errors in the PR diff. There is no application or test runner yet; a green scaffold check is not evidence of product correctness.
+The `scaffold` CI job checks required repository files and whitespace errors. The required `app` job runs lint, typecheck, a production build, Temporal bundling, service/domain tests against PostgreSQL, and seven browser journeys using sanitized fixtures. Live provider checks remain separate.
+
+The required suite also exercises actual Temporal worker cancellation using the [official testing SDK](https://docs.temporal.io/develop/typescript/best-practices/testing-suite) and a temporary local server. It cancels execution, evaluation and repair while an activity is still acknowledging cancellation, then verifies cleanup and the absence of failed workflow tasks. Database fixtures and workflow bundling alone cannot establish this behavior.
 
 ## Add checks with implementation
 
@@ -30,7 +32,7 @@ Record exact commands and meaningful manual walkthrough results in each PR. Revi
 
 ## Detailed acceptance checks
 
-This is the planned verification strategy for the consolidated design, not a report of passing application tests. The app, migrations, workers, and integrations are not yet implemented.
+These are the acceptance scenarios for the consolidated design. See [implementation status](implementation-status.md) for measured test counts and live outcomes; this checklist does not itself establish that every scenario passed.
 
 ## Database and mutation checks
 
@@ -50,7 +52,7 @@ This is the planned verification strategy for the consolidated design, not a rep
 | Freeze races an edit, or request is repeated | Exactly one consistent immutable snapshot; no partial lock or silent lost edit. |
 | Plan or suite is revised | Existing code, results, and expectations still resolve to their original versions. |
 | Case edit races another edit or suite lock | Reject stale edits; serialize through the suite, clear prior verification, and never lock an unverified revision. Empty suites cannot lock. |
-| Artifact/version is inspected | Project/evaluator hashes come from their immutable artifact; no divergent copied hash. |
+| Artifact/version is inspected | Project hashes come from their immutable artifact; no divergent copied hash. The fixed host grader is separate from generated source. |
 
 ## Evaluation and repair checks
 
@@ -87,4 +89,4 @@ Create and reopen a named workflow; supply its outcome; map a loop and paired pa
 
 ## Checks performed on documentation
 
-Documentation checks on October 7, 2026: `git diff --check` passed; a local file-link check across 12 Markdown files found all 45 relative file links present. This checks file targets, not remote links or heading fragments. Mermaid diagrams are authored as source; rendered layout and executable schema behavior have not been verified. No application test, database migration, live Gmail run, or generated-code evaluation has been performed as part of this documentation update.
+The initial documentation-only checkpoint checked whitespace and local link targets before implementation. Current CI exercises executable migrations and application behavior; live evidence and known accuracy limits are recorded in [implementation status](implementation-status.md). Source diagrams describe the implemented boundaries and are not a load-test result.
