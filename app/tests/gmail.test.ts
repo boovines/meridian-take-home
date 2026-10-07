@@ -16,6 +16,7 @@ import {
   boundedBytes,
 } from "../src/server/integrations/composio-gmail";
 import { documentsForRun } from "../src/server/runtime/documents";
+import { invocationFailure } from "../src/server/runtime/invoke-step";
 import type { GmailReader } from "../src/domain/gmail";
 import { runtimeFixture } from "./fixtures/runtime";
 let db: Database, artifacts: ArtifactService, directory: string;
@@ -248,9 +249,14 @@ it("scopes document reasoning to the run's captured inputs, preserving unsupport
   await expect(
     documentsForRun(db, run.id, [pdf.id, pdf.id], artifacts),
   ).rejects.toMatchObject({ code: "DOCUMENT_ACCESS_DENIED" });
-  await expect(
-    documentsForRun(db, run.id, [sheet.id], artifacts),
-  ).rejects.toMatchObject({ code: "UNSUPPORTED_DOCUMENT" });
+  const unsupported = await documentsForRun(db, run.id, [sheet.id], artifacts)
+    .catch((error) => error);
+  expect(invocationFailure(unsupported)).toMatchObject({
+    code: "UNSUPPORTED_DOCUMENT",
+    category: "implementation",
+  });
+  // A repaired selector can use the supported evidence without changing inputs.
+  expect(await documentsForRun(db, run.id, [pdf.id], artifacts)).toHaveLength(1);
 });
 it("supplies captured bytes to the approved Agent broker and returns only its JSON result to generated code", async () => {
   const { invokeApprovedStep } = await import(

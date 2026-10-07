@@ -14,6 +14,8 @@ import {
 import { RepairService } from "../src/server/repairs/service";
 import { RepairGenerationService } from "../src/server/repairs/generation-service";
 import { JobService } from "../src/server/engineering/job-service";
+import { VersionService } from "../src/server/engineering/version-service";
+import { repairPrompt } from "../src/server/repairs/evidence";
 import { caseInput } from "../src/domain/evaluation";
 import type { Json } from "../src/domain/runtime";
 import { runtimeFixture } from "./fixtures/runtime";
@@ -157,6 +159,39 @@ it("rejects regression by assertion identity, keeps rejected code, and repairs f
     failed_goods: 1,
   });
   expect(second.attempt.baseline_evaluation_id).toBe(initial.evaluation.id);
+  const context = await repairs.generationContext(second.attempt.id);
+  expect(context.evaluation.id).toBe(initial.evaluation.id);
+  expect(context.previous_attempts[0].candidate_results[0]).toMatchObject({
+    outcome: "failed",
+    check_results: expect.arrayContaining([
+      expect.objectContaining({ key: "shipment", passed: false, actual: "WRONG" }),
+    ]),
+  });
+  const { project } = await new VersionService(db, artifacts).load(f.w.id, f.version.id);
+  const largeContext = {
+    ...context,
+    traces: Array.from({ length: 40 }, (_, index) => ({
+      case_id: context.cases[0].id,
+      occurrence_id: String(index),
+      total_occurrences: 40,
+      output_data: { messages: "captured packet ".repeat(20000) },
+    })),
+  };
+  const prompt = repairPrompt(largeContext, project);
+  expect(Buffer.byteLength(prompt)).toBeLessThanOrEqual(200000);
+  const evidence = JSON.parse(prompt);
+  expect(evidence.locked_cases).toEqual(JSON.parse(JSON.stringify(context.cases)));
+  expect(evidence.previous_attempts).toEqual(JSON.parse(JSON.stringify(context.previous_attempts)));
+  expect(evidence.step_traces[0].output_data.truncated).toBe(true);
+  expect(evidence.trace_coverage).toMatchObject({ included: 40, total: 40 });
+  expect(largeContext.traces[0].output_data.messages.length).toBe(320000);
+  expect(() => repairPrompt({
+    ...context,
+    cases: context.cases.map((c) => ({
+      ...c,
+      assertions: c.assertions.map((a) => ({ ...a, expected: "fixed expectation ".repeat(20000) })),
+    })),
+  }, project)).toThrow(/Required repair context exceeds/);
   const parent = (
     await db.query(
       "SELECT parent_version_id FROM implementation_versions WHERE id=$1",

@@ -94,6 +94,9 @@ export function invocationFailure(error: unknown): RuntimeError {
     "AGENT_CONTEXT_TOO_LARGE",
     "DOCUMENT_ACCESS_DENIED",
     "DOCUMENT_CONTEXT_TOO_LARGE",
+    // The generated module selects document_ids; an unsupported selection can
+    // be repaired without mutating the captured evidence or adding capabilities.
+    "UNSUPPORTED_DOCUMENT",
     "MODEL_OUTPUT_LIMIT",
     "MODEL_OUTPUT_INVALID",
   ];
@@ -105,7 +108,6 @@ export function invocationFailure(error: unknown): RuntimeError {
     known &&
     [
       "HUMAN_RESPONSE_REQUIRED",
-      "UNSUPPORTED_DOCUMENT",
       "INVALID_DOCUMENT",
     ].includes(error.code)
       ? "input"
