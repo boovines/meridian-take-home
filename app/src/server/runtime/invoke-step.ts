@@ -94,6 +94,8 @@ export function invocationFailure(error: unknown): RuntimeError {
     "AGENT_CONTEXT_TOO_LARGE",
     "DOCUMENT_ACCESS_DENIED",
     "DOCUMENT_CONTEXT_TOO_LARGE",
+    "MODEL_OUTPUT_LIMIT",
+    "MODEL_OUTPUT_INVALID",
   ];
   const routeCode =
     /^(INVALID_ROUTES|AMBIGUOUS_ROUTE|NO_MATCHING_ROUTE|INVALID_OUTCOME):/.exec(

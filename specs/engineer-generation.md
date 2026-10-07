@@ -4,7 +4,7 @@
 
 After freezing a whiteboard, open **Engineer workspace** from the handoff banner. The workspace is available at `/workflows/:id/engineer`; its header links back to the unchanged customer whiteboard. The demo does not distinguish roles or permissions within the app. Deployment access must be protected separately.
 
-The three workspace tabs are Implementation, Agent, and Evaluation. The current feature implements the first two; Evaluation explains that correctness still needs a verified suite. It does not display a fabricated passing result.
+The three workspace tabs are Implementation, Agent, and Evaluation. This specification covers plans and generated source; [trusted evaluations](trusted-evaluations.md), [bounded repair](bounded-repair.md), and [workflow execution](workflow-runtime.md) describe the subsequent execution surfaces.
 
 ## Implementation
 
@@ -24,6 +24,8 @@ AI writes a coordinated set of step implementations. Mandatory human gates come 
 
 Cancelled or expired work cannot publish new source after cancellation or expiry. Cancellation shows Stopping until acknowledged. Source saved before cancellation remains inspectable, with validation unfinished. A transient validation failure may retry using saved source, without regenerating it. Invalid source or an implementation requirement that needs an engineer decision ends the operation with an error. The operation has a finite time limit; starting again is explicit.
 
+If the model reaches its response limit or returns an invalid response, generation ends with a specific explanation and does not publish partial source. Retrying is explicit; the frozen requirements and previous complete versions remain intact.
+
 ## Agent and history
 
 Agent offers a code-version selector, a file list, read-only source, and Download project. A ZIP contains the exact selected version. Compare with parent shows prior and selected source; file labels identify additions, removals, modifications, and unchanged files. It is a before/after comparison, not an inline text editor.
@@ -34,6 +36,6 @@ Operation history preserves generation outcomes and errors. The source view labe
 
 ## Current limits
 
-The latest 20 plans, code versions, and operations are listed. General repository connection, IDE edit import, and an in-browser editor are outside demo scope. Evaluation, repair, complete workflow execution, and runtime human responses are planned but are not delivered by this feature. Hosted artifact access requires private shared storage; local development artifacts remain on the machine that created them.
+The latest 20 plans, code versions, and operations are listed. General repository connection, IDE edit import, and an in-browser editor are outside demo scope. Hosted artifact access requires private shared storage; local development artifacts remain on the machine that created them.
 
 Method suggestions run while the request is open; generation runs durably in the background. The UI prevents starting competing operations but does not require a new AI recommendation before an engineer approves a revised plan. Model suggestions and source generation can fail; neither failure modifies the frozen customer process.
