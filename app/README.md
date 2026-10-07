@@ -85,6 +85,7 @@ The first command bundles workflows without credentials and runs in CI. The last
 | `scripts` | Explicit operator commands and live smoke checks |
 | `scripts/demo` | Example process requirements, draft seeding and operator-supplied suite import |
 | `../.runtime` | Ignored runtime databases, certificates, captured inputs and generated artifacts |
+| `../work` | Ignored temporary verification renders and handoff-building tools; not application code |
 
 Keep shared modules small and named for their responsibility. Split growing feature modules when another responsibility appears; do not add empty architectural folders or a catch-all utilities file.
 

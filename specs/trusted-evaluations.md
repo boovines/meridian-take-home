@@ -4,7 +4,7 @@ The engineer checks generated behavior against independently verified expectatio
 
 ## Authoring and verification
 
-The Test cases view lets the engineer create a named suite, add cases, inspect inputs, edit or remove draft cases, verify each case, and lock the suite. Every case has a name and at least one exact comparison. A comparison selects an output path using a JSON array of keys and declares an expected JSON value. An empty path compares the entire output. Object key order does not matter; array order does. A missing field is different from an explicit null.
+The Test cases view lets the engineer create a named suite, add cases, inspect inputs, edit or remove draft cases, verify each case, and lock the suite. Every case has a name and at least one exact comparison. A comparison selects an output path using a JSON array of keys and declares an expected JSON value. Array positions use string keys such as "0". An empty path compares the entire output. Object key order does not matter; array order does. A missing field is different from an explicit null. Comparison labels can identify the independently inspected source page. Engineers can check source evidence as well as final totals when that evidence is included in the final output; the system does not create or verify these expectations automatically.
 
 A full-workflow case selects a previously captured input and runs the frozen process from its entry point. A one-step case selects a frozen block and supplies its input, previous step outputs, and any required human response. It checks the output of that implementation in isolation, including valid routing. This does not establish full-workflow correctness.
 
@@ -34,7 +34,7 @@ The Agent tab reports the most recent evaluation of its selected code version an
 
 ## Constraints and pending work
 
-The current UI starts evaluations explicitly. Automatically evaluating a selected locked suite after initial generation remains planned. Autonomous repair and Gmail input capture are separate pending features. There is no OCR benchmark library, arbitrary test-code editor, selected-case acceptance run, or import of IDE changes. Step checks currently compare JSON outputs, rather than accepting arbitrary engineer-authored test scripts.
+The current UI starts evaluations explicitly; generation does not start them automatically. Autonomous repair and Gmail input capture are implemented as separate features. There is no OCR benchmark library, arbitrary test-code editor, selected-case acceptance run, or import of IDE changes. Step checks currently compare JSON outputs, rather than accepting arbitrary engineer-authored test scripts. They do not accept a captured document bundle; document extraction checks require a full-workflow case. Exact comparisons do not normalize formatting or match unordered collections automatically.
 
 The local test executor is visibly labeled as a fixture. It verifies UI/persistence/grading behavior with known outputs and does not execute generated source. Live execution uses isolated environments. Shipment accuracy must be verified separately against supplied real inputs and ground truth.
 
