@@ -21,6 +21,7 @@
 
 # Local/generated data
 .runtime/
+/work/
 **/*.tsbuildinfo
 **/test-results/
 **/playwright-report/

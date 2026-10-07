@@ -11,6 +11,7 @@
 - Keep HTTP handlers in `app/src/app/api` thin. Put transactional feature logic in `app/src/server/<feature>` and pure contracts/rules in `app/src/domain`. UI components belong in their feature folder under `app/src/components`.
 - Share workflow row locking and graph reads through `server/workflows/store.ts`; keep provider clients in `server/integrations`. Temporal workflow code stays in `src/worker` and must not import database or network implementations at runtime.
 - Put migrations in `app/migrations`, behavioral tests in `app/tests`, browser journeys in `app/tests/browser`, and sanitized fixtures in `app/tests/fixtures`. Keep generated projects and scratch/runtime state outside source under ignored `.runtime/`.
+- Use ignored `work/` for temporary verification renders and handoff-building tools. Reusable operator commands belong in `app/scripts`; promote them deliberately instead of importing scratch files into the application.
 - Split a growing module by a concrete feature or responsibility; avoid catch-all utilities and folders with no implemented purpose. Update the app README map when a new boundary is introduced.
 
 ## Skills
