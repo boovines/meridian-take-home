@@ -14,7 +14,11 @@ export const repairSources = z
         changes: z.array(z.string().min(1).max(1000)).max(30),
       })
       .strict(),
-    project: generatedSources,
+    project: generatedSources.extend({
+      steps: generatedSources.shape.steps.describe(
+        "Replacement implementations for affected nodes only. Omitted nodes are copied unchanged from the retained baseline. Include every changed node in diagnosis.affected_node_ids.",
+      ),
+    }),
   })
   .strict();
 export interface RepairSession {

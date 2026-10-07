@@ -18,7 +18,7 @@ export async function repairFixture(db: Database, jobId: string) {
           generate: async (c) => ({
             diagnosis: {
               summary: "Fixture candidate; no live model repair.",
-              affected_node_ids: [],
+              affected_node_ids: c.steps.map(s => s.node_id),
               changes: ["Preserve the known pass-through fixture."],
             },
             project: fixtureSources(c.spec.board, c.steps),
