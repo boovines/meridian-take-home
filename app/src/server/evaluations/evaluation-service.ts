@@ -187,18 +187,23 @@ export class EvaluationService {
     );
     return run;
   }
-  async prepare(jobId: string) {
+  async prepare(jobId: string, evaluationId?: string) {
     return this.db.transaction(async (tx) => {
       let job = await jobById(tx, jobId);
       await workflow(tx, job.workflow_id, true);
       job = await jobById(tx, jobId);
       const run = (
         await tx.query(
-          "SELECT * FROM evaluation_runs WHERE job_id=$1 AND run_key='initial'",
-          [jobId],
+          evaluationId
+            ? "SELECT * FROM evaluation_runs WHERE job_id=$1 AND id=$2"
+            : "SELECT * FROM evaluation_runs WHERE job_id=$1 AND run_key='initial'",
+          evaluationId ? [jobId, evaluationId] : [jobId],
         )
       ).rows[0] as unknown as EvaluationRun;
-      if (!run || job.kind !== "evaluation")
+      if (
+        !run ||
+        (job.kind !== "evaluation" && !(job.kind === "repair" && evaluationId))
+      )
         throw new DomainError(
           422,
           "INVALID_JOB",
@@ -366,84 +371,108 @@ export class EvaluationService {
       ).rows[0] as unknown as CaseResult;
     });
   }
-  async finish(jobId: string, error?: RuntimeError, cancelled = false) {
+  async finish(
+    jobId: string,
+    error?: RuntimeError,
+    cancelled = false,
+    evaluationId?: string,
+  ) {
     return this.db.transaction(async (tx) => {
-      let job = await jobById(tx, jobId);
-      await workflow(tx, job.workflow_id, true);
-      job = await jobById(tx, jobId);
-      const evaluation = (
-        await tx.query(
-          "SELECT * FROM evaluation_runs WHERE job_id=$1 AND run_key='initial'",
-          [jobId],
-        )
-      ).rows[0] as unknown as EvaluationRun;
-      if (!evaluation || terminal.includes(evaluation.status)) return;
-      const cancel = cancelled || job.status === "cancel_requested";
-      const pending = (await resultsByEvaluation(tx, evaluation.id)).some(
-        (r) => r.status !== "finished",
+      const old = await jobById(tx, jobId);
+      await workflow(tx, old.workflow_id, true);
+      return this.finishInTransaction(
+        tx,
+        await jobById(tx, jobId),
+        error,
+        cancelled,
+        evaluationId,
       );
-      const problem =
-        error ||
-        (!cancel && pending
-          ? {
-              code: "INCOMPLETE_EVALUATION",
-              message: "Some cases did not finish.",
-              category: "infrastructure" as const,
-            }
-          : undefined);
-      const status = cancel ? "cancelled" : problem ? "blocked" : "completed";
-      // A stopped parent cannot leave a child visit appearing active forever.
-      // These are history projections; Temporal still owns child cancellation.
+    });
+  }
+  // Caller holds the workflow row lock; parent repair cleanup uses the same transaction.
+  async finishInTransaction(
+    tx: Queryable,
+    job: WorkflowJob,
+    error?: RuntimeError,
+    cancelled = false,
+    evaluationId?: string,
+  ) {
+    const jobId = job.id;
+    const evaluation = (
       await tx.query(
-        "UPDATE human_requests h SET status='cancelled',cancelled_at=now() FROM workflow_runs r WHERE h.run_id=r.id AND r.job_id=$1 AND h.status='pending'",
-        [jobId],
-      );
-      await tx.query(
-        "UPDATE step_executions s SET status='cancelled',finished_at=now(),updated_at=now(),attempt_token=NULL FROM workflow_runs r WHERE s.run_id=r.id AND r.job_id=$1 AND s.status IN ('running','waiting_for_human')",
-        [jobId],
-      );
-      await tx.query(
-        "UPDATE workflow_runs SET status=$2,failure_category=$3,failure_code=$4,failure_message=$5,active_elapsed_ms=active_elapsed_ms+CASE WHEN active_since IS NULL THEN 0 ELSE greatest(0,extract(epoch FROM (now()-active_since))*1000)::bigint END,active_since=NULL,finished_at=now(),updated_at=now() WHERE job_id=$1 AND kind='evaluation' AND status IN ('queued','running','waiting_for_human')",
-        [
-          jobId,
-          cancel ? "cancelled" : "failed",
-          cancel ? null : problem?.category || "infrastructure",
-          cancel ? "CANCELLED" : problem?.code || "EVALUATION_ENDED",
-          cancel
-            ? "The evaluation was cancelled."
-            : problem?.message ||
-              "The parent evaluation ended before this execution finished.",
-        ],
-      );
+        evaluationId
+          ? "SELECT * FROM evaluation_runs WHERE job_id=$1 AND id=$2"
+          : "SELECT * FROM evaluation_runs WHERE job_id=$1 AND run_key='initial'",
+        evaluationId ? [jobId, evaluationId] : [jobId],
+      )
+    ).rows[0] as unknown as EvaluationRun;
+    if (!evaluation || terminal.includes(evaluation.status)) return;
+    const cancel = cancelled || job.status === "cancel_requested";
+    const pending = (await resultsByEvaluation(tx, evaluation.id)).some(
+      (r) => r.status !== "finished",
+    );
+    const problem =
+      error ||
+      (!cancel && pending
+        ? {
+            code: "INCOMPLETE_EVALUATION",
+            message: "Some cases did not finish.",
+            category: "infrastructure" as const,
+          }
+        : undefined);
+    const status = cancel ? "cancelled" : problem ? "blocked" : "completed";
+    // A stopped parent cannot leave a child visit appearing active forever.
+    // These are history projections; Temporal still owns child cancellation.
+    await tx.query(
+      "UPDATE human_requests h SET status='cancelled',cancelled_at=now() FROM workflow_runs r WHERE h.run_id=r.id AND r.evaluation_case_result_id IN (SELECT id FROM evaluation_case_results WHERE evaluation_run_id=$1) AND h.status='pending'",
+      [evaluation.id],
+    );
+    await tx.query(
+      "UPDATE step_executions s SET status='cancelled',finished_at=now(),updated_at=now(),attempt_token=NULL FROM workflow_runs r WHERE s.run_id=r.id AND r.evaluation_case_result_id IN (SELECT id FROM evaluation_case_results WHERE evaluation_run_id=$1) AND s.status IN ('running','waiting_for_human')",
+      [evaluation.id],
+    );
+    await tx.query(
+      "UPDATE workflow_runs SET status=$2,failure_category=$3,failure_code=$4,failure_message=$5,active_elapsed_ms=active_elapsed_ms+CASE WHEN active_since IS NULL THEN 0 ELSE greatest(0,extract(epoch FROM (now()-active_since))*1000)::bigint END,active_since=NULL,finished_at=now(),updated_at=now() WHERE evaluation_case_result_id IN (SELECT id FROM evaluation_case_results WHERE evaluation_run_id=$1) AND kind='evaluation' AND status IN ('queued','running','waiting_for_human')",
+      [
+        evaluation.id,
+        cancel ? "cancelled" : "failed",
+        cancel ? null : problem?.category || "infrastructure",
+        cancel ? "CANCELLED" : problem?.code || "EVALUATION_ENDED",
+        cancel
+          ? "The evaluation was cancelled."
+          : problem?.message ||
+            "The parent evaluation ended before this execution finished.",
+      ],
+    );
 
-      await tx.query(
-        "UPDATE evaluation_case_results SET status='finished',outcome='not_run',failure_category=$2,failure_code=$3,failure_message=$4,finished_at=now() WHERE evaluation_run_id=$1 AND status<>'finished'",
-        [
-          evaluation.id,
-          problem?.category || null,
-          cancel ? "CANCELLED" : problem?.code || "NOT_RUN",
-          cancel
-            ? "The evaluation was cancelled."
-            : problem?.message || "Case did not run.",
-        ],
-      );
-      const results = await resultsByEvaluation(tx, evaluation.id),
-        cases = await suiteCases(tx, evaluation.suite_version_id);
-      const resultVerdict =
-        status === "completed"
-          ? verdict(results, cases.length)
-          : "inconclusive";
-      await tx.query(
-        "UPDATE evaluation_runs SET status=$2,verdict=$3,failure_category=$4,failure_code=$5,failure_message=$6,finished_at=now(),updated_at=now() WHERE id=$1",
-        [
-          evaluation.id,
-          status,
-          resultVerdict,
-          problem?.category || null,
-          problem?.code || null,
-          problem?.message || null,
-        ],
-      );
+    await tx.query(
+      "UPDATE evaluation_case_results SET status='finished',outcome='not_run',failure_category=$2,failure_code=$3,failure_message=$4,finished_at=now() WHERE evaluation_run_id=$1 AND status<>'finished'",
+      [
+        evaluation.id,
+        problem?.category || null,
+        cancel ? "CANCELLED" : problem?.code || "NOT_RUN",
+        cancel
+          ? "The evaluation was cancelled."
+          : problem?.message || "Case did not run.",
+      ],
+    );
+    const results = await resultsByEvaluation(tx, evaluation.id),
+      cases = await suiteCases(tx, evaluation.suite_version_id);
+    const resultVerdict =
+      status === "completed" ? verdict(results, cases.length) : "inconclusive";
+    await tx.query(
+      "UPDATE evaluation_runs SET status=$2,verdict=$3,failure_category=$4,failure_code=$5,failure_message=$6,finished_at=now(),updated_at=now() WHERE id=$1",
+      [
+        evaluation.id,
+        status,
+        resultVerdict,
+        problem?.category || null,
+        problem?.code || null,
+        problem?.message || null,
+      ],
+    );
+    // Repair owns its exclusive job across multiple candidate evaluations.
+    if (job.kind === "evaluation")
       await tx.query(
         "UPDATE workflow_jobs SET status=$2,phase=$3,error_code=$4,error_message=$5,finished_at=now(),updated_at=now() WHERE id=$1",
         [
@@ -454,7 +483,6 @@ export class EvaluationService {
           problem?.message || null,
         ],
       );
-    });
   }
   async state(wid: string, id?: string) {
     await workflow(this.db, wid);

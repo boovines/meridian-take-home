@@ -10,12 +10,16 @@ import { frozenSpec } from "../../src/server/engineering/plan-service";
 import { RuntimeEngine } from "../../src/domain/runtime-engine";
 import type { Project } from "../../src/domain/project";
 import type { Json } from "../../src/domain/runtime";
-export async function evaluateFixture(db: Database, jobId: string) {
+export async function evaluateFixture(
+  db: Database,
+  jobId: string,
+  evaluationId?: string,
+) {
   const evals = new EvaluationService(db),
     execution = new EvaluationExecutionService(db),
     runs = new RunService(db),
     steps = new StepService(db);
-  const ready = await evals.prepare(jobId);
+  const ready = await evals.prepare(jobId, evaluationId);
   if (!ready) return;
   const spec = await frozenSpec(db, ready.evaluation.workflow_id);
   const adapters = {
@@ -59,5 +63,5 @@ export async function evaluateFixture(db: Database, jobId: string) {
     'UPDATE workflow_jobs SET progress=progress||\'{"engine":"fixture"}\'::jsonb WHERE id=$1',
     [jobId],
   );
-  await evals.finish(jobId);
+  await evals.finish(jobId, undefined, false, evaluationId);
 }

@@ -39,7 +39,7 @@ Boundaries may move to keep each PR coherent. PR #1 conventions are incorporated
 - [x] Engineer plan approvals and explicit revisions; immutable mandatory human methods.
 - [x] Generated downloadable source from reusable skeleton and frozen requirements; real background progress/cancellation.
 - [x] Locked independent expectations; revised suites preserve history; full-suite grading with errors/blockers distinguished.
-- [ ] Repair actual code, keep every attempt, reject regressions, preserve baseline, stop at three attempts or required human decisions.
+- [x] Repair actual code, keep every attempt, reject regressions, preserve baseline, stop at three attempts or required human decisions.
 - [ ] Temporal durability and Sandbox isolation verified with live adapters.
 - [ ] Gmail/Composio ingestion captures immutable messages/documents; verify all provided shipment ground truth, excluding mismatched-invoice scoring.
 - [ ] Fresh human response per visit; new documents/new run; exclusive ambiguity errors; correct per-occurrence joins; bounded loops/time.
@@ -78,3 +78,7 @@ Boundaries may move to keep each PR coherent. PR #1 conventions are incorporated
 - Evaluation milestone: migration 008, versioned/verified suites, isolated step cases and full workflow cases, scripted human visits, fixed-answer grading and retained history are implemented. An actual Temporal/Sandbox evaluation (`46b57172-cfd8-4b70-bacf-f8aca9731a55`) completed with one pass, one deliberate assertion failure and one missing-fixture execution error; its aggregate remained inconclusive. This synthetic check does not establish shipment accuracy.
 - Evaluation UI: three live variants inspected in Chrome. Inspector split selected because the case list and expected/actual evidence stay visible together. Picker and unused variants removed. Generation's source view now reports the latest evaluation separately from syntax validation.
 - Evaluation verification: 57 local service/domain tests, all six production-browser journeys, lint, typecheck, production build and workflow bundling pass. The new browser journey creates/verifies/locks a case, inspects a failed result and trace, corrects a new suite, observes a pass, and confirms the earlier failure remains unchanged. Required CI discovers these tests automatically.
+
+- PR #6 evaluations merged after PostgreSQL 17 and all six browser journeys passed. CI caught a canvas rendering issue: controlled node measurements were discarded on data refresh; preserving browser-only measurements fixed the Linux failure.
+- Repair milestone: migration 009, parent session/attempt history, fixed-scope candidate generation, full-suite regression decisions, cancellation and explicit restart are implemented. All 63 local service/domain tests pass. The live synthetic repair used OpenAI and Vercel Sandbox, changing failed-good counting from missing-field totals to one per failed good, and improved 2/3 passing cases to 3/3 while retaining the old evidence. See `docs/bounded-repair.md` for exact IDs and scope.
+- Repair UI: Attempt ledger, Candidate cards and Baseline sidebar were generated and visually inspected in Chrome. Baseline sidebar selected; temporary picker and other variants removed. Gmail/PDF integration and the full assignment demonstration remain outstanding.

@@ -18,6 +18,7 @@ export interface VersionDetail {
   evaluation: {
     id: string;
     status: string;
+    failure_code?: string | null;
     verdict: string | null;
     suite_number: number;
   } | null;

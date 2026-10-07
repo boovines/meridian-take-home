@@ -20,12 +20,18 @@ export async function runtimeFixture(
   db: Database,
   artifacts: ArtifactService,
   types: NodeType[] = ["trigger", "human_approval", "outcome"],
+  options?: {
+    name: string;
+    desired_outcome: string;
+    instructions: Partial<Record<NodeType, string>>;
+  },
 ) {
   const canvas = new CanvasService(db),
     plans = new PlanService(db);
   const w = await canvas.create({
-    name: "Synthetic runtime verification",
-    desired_outcome: "Review a packet and preview its report.",
+    name: options?.name || "Synthetic runtime verification",
+    desired_outcome:
+      options?.desired_outcome || "Review a packet and preview its report.",
   });
   const nodes = [];
   for (const type of types)
@@ -35,7 +41,7 @@ export async function runtimeFixture(
         nodeInput.parse({
           type,
           title: type,
-          instructions: `Complete ${type}.`,
+          instructions: options?.instructions[type] || `Complete ${type}.`,
         }),
       ),
     );

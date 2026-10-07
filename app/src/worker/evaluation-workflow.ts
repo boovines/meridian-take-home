@@ -30,10 +30,10 @@ const cleanup = proxyActivities<Pick<typeof activities, "endEvaluation">>({
   startToCloseTimeout: "15 seconds",
   retry: { initialInterval: "2 seconds", maximumInterval: "1 minute" },
 });
-export async function evaluateSuite(jobId: string) {
+export async function evaluateSuite(jobId: string, evaluationId?: string) {
   let expired = false;
   try {
-    const context = await io.prepareEvaluation(jobId);
+    const context = await io.prepareEvaluation(jobId, evaluationId);
     if (!context) return;
     const scope = new CancellationScope();
     let finished = false;
@@ -51,7 +51,7 @@ export async function evaluateSuite(jobId: string) {
       try {
         const build = await heavy.checkEvaluationBuild(context.evaluation_id);
         if (!build.ok) {
-          await cleanup.endEvaluation(jobId, build.error);
+          await cleanup.endEvaluation(jobId, build.error, false, evaluationId);
           return;
         }
         for (const id of context.result_ids) {
@@ -71,7 +71,7 @@ export async function evaluateSuite(jobId: string) {
             await io.failEvaluationCase(id);
           }
         }
-        await cleanup.endEvaluation(jobId);
+        await cleanup.endEvaluation(jobId, undefined, false, evaluationId);
       } finally {
         finished = true;
         await monitor;
@@ -85,7 +85,7 @@ export async function evaluateSuite(jobId: string) {
           ? {
               code: "EVALUATION_LIMIT",
               message:
-                "The suite reached its four-hour operation limit. Remaining cases were not accepted as passes.",
+                "The suite reached the operation time limit. Remaining cases were not accepted as passes.",
               category: "infrastructure",
             }
           : isCancellation(error)
@@ -97,8 +97,9 @@ export async function evaluateSuite(jobId: string) {
                 category: "infrastructure",
               },
         !expired && isCancellation(error),
+        evaluationId,
       ),
     );
-    if (!expired && !isCancellation(error)) throw error;
+    if (!evaluationId && !expired && !isCancellation(error)) throw error;
   }
 }

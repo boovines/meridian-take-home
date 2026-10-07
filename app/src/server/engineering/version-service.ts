@@ -50,7 +50,7 @@ export class VersionService {
     const evaluation =
       (
         await this.db.query(
-          "SELECT e.id,e.status,e.verdict,s.version_number AS suite_number FROM evaluation_runs e JOIN evaluation_suite_versions s ON s.id=e.suite_version_id WHERE e.workflow_id=$1 AND e.implementation_version_id=$2 ORDER BY e.created_at DESC,e.id DESC LIMIT 1",
+          "SELECT e.id,e.status,e.verdict,e.failure_code,s.version_number AS suite_number FROM evaluation_runs e JOIN evaluation_suite_versions s ON s.id=e.suite_version_id WHERE e.workflow_id=$1 AND e.implementation_version_id=$2 ORDER BY e.created_at DESC,e.id DESC LIMIT 1",
           [workflowId, versionId],
         )
       ).rows[0] || null;

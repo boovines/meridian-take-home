@@ -4,6 +4,7 @@ import type {
   assertionSchema,
   AssertionResult,
   CaseResult,
+  EvaluationCase,
 } from "./evaluation";
 function equal(a: Json, b: Json): boolean {
   if (a === b) return true;
@@ -79,8 +80,32 @@ export function verdict(
 export function regressionDecision(
   baseline: CaseResult[],
   candidate: CaseResult[],
-  expectedCount: number,
+  expected: Pick<EvaluationCase, "id" | "suite_version_id" | "assertions">[],
 ) {
+  const expectedCount = expected.length;
+  const coverage = (rows: CaseResult[]) =>
+    rows.length === expectedCount &&
+    new Set(rows.map((r) => r.case_id)).size === expectedCount &&
+    rows.every((r) =>
+      expected.some(
+        (c) => c.id === r.case_id && c.suite_version_id === r.suite_version_id,
+      ),
+    );
+  const exactChecks = candidate.every((r) => {
+    const c = expected.find((c) => c.id === r.case_id);
+    return (
+      c &&
+      r.check_results.length === c.assertions.length &&
+      new Set(r.check_results.map((a) => a.key)).size === c.assertions.length &&
+      r.check_results.every((a) => c.assertions.some((e) => e.key === a.key))
+    );
+  });
+  if (!coverage(baseline) || !coverage(candidate) || !exactChecks)
+    return {
+      accepted: false,
+      reason:
+        "The comparisons do not cover the same locked suite and all of its assertions.",
+    };
   if (verdict(candidate, expectedCount) === "inconclusive")
     return {
       accepted: false,

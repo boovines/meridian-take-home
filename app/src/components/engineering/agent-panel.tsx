@@ -5,18 +5,20 @@ import type { ImplementationVersion, WorkflowJob } from "@/domain/engineering";
 import type { VersionDetail } from "./types";
 export function AgentPanel({
   workflowId,
+  initialVersionId = "",
   versions,
   generating = false,
   jobs,
   nodeTitles,
 }: {
   workflowId: string;
+  initialVersionId?: string;
   versions: ImplementationVersion[];
   generating?: boolean;
   jobs: WorkflowJob[];
   nodeTitles: Record<string, string>;
 }) {
-  const [selected, setSelected] = useState(""),
+  const [selected, setSelected] = useState(initialVersionId),
     [detail, setDetail] = useState<VersionDetail | null>(null),
     [file, setFile] = useState("run-step.mjs"),
     [changes, setChanges] = useState(false),
@@ -60,10 +62,12 @@ export function AgentPanel({
   const buildLabel =
     job?.progress.engine === "fixture"
       ? "Fixture build result"
-      : job?.progress.syntax_status === "passed" ||
+      : detail?.evaluation?.status === "completed" ||
+          job?.progress.syntax_status === "passed" ||
           (job?.status === "succeeded" && job.progress.check === "node --check")
         ? "Syntax check passed"
-        : job?.progress.syntax_status === "failed"
+        : detail?.evaluation?.failure_code === "PROJECT_BUILD_FAILED" ||
+            job?.progress.syntax_status === "failed"
           ? "Syntax check failed"
           : "Build check incomplete";
   const fileLabel = (path: string) => {

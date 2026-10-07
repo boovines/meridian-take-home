@@ -1,0 +1,114 @@
+.repair-session-select {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 12px;
+  margin: 16px 0;
+  max-width: 460px;
+}
+.repair-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  background: var(--accent-soft);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 22px;
+}
+.repair-summary h3 {
+  margin: 8px 0;
+  font-size: 24px;
+}
+.repair-summary p {
+  max-width: 660px;
+  margin-bottom: 0;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.repair-summary button {
+  flex-shrink: 0;
+}
+.repair-summary .status-pill {
+  font-size: 11px;
+  vertical-align: middle;
+  margin-left: 8px;
+  text-transform: capitalize;
+}
+.repair-attempt {
+  padding: 20px 0;
+  border-top: 1px solid var(--line);
+}
+.repair-attempt-heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 20px;
+}
+.repair-attempt-heading p {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 6px 0;
+}
+.repair-attempt > p,
+.repair-attempt details {
+  font-size: 13px;
+  line-height: 1.7;
+}
+.repair-attempt summary {
+  cursor: pointer;
+  color: var(--muted);
+  margin-bottom: 12px;
+}
+.repair-attempt .button-row {
+  margin-top: 16px;
+}
+.repair-attempt .status-pill {
+  text-transform: capitalize;
+}
+.repair-guidance {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 12px 0;
+  line-height: 1.7;
+}
+@media (max-width: 600px) {
+  .repair-summary {
+    flex-direction: column;
+    align-items: start;
+    padding: 18px;
+  }
+  .repair-attempt .button-row {
+    align-items: start;
+    flex-direction: column;
+  }
+}
+
+.repair-sidebar {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 28px;
+  align-items: start;
+}
+.repair-sidebar .repair-summary {
+  display: block;
+  position: sticky;
+  top: 24px;
+}
+.repair-sidebar .repair-summary button {
+  margin-top: 22px;
+  width: 100%;
+  font-size: 12px;
+}
+.repair-timeline {
+  border-left: 2px solid var(--line);
+  padding-left: 24px;
+}
+@media (max-width: 900px) {
+  .repair-sidebar {
+    grid-template-columns: 1fr;
+  }
+  .repair-sidebar .repair-summary {
+    position: static;
+  }
+}

@@ -8,14 +8,18 @@ import { EvaluationWorkbench } from "./evaluation-workbench";
 import { CaseDetail } from "./case-detail";
 import { CaseEditor } from "./case-editor";
 import "./evaluations.css";
+import { RepairPanel } from "../repairs/repair-panel";
+import { repairBlocker } from "@/domain/repair";
 export function EvaluationPanel({
   state,
   operationActive,
   onOperationStarted,
+  onInspectCode,
 }: {
   state: EngineeringState;
   operationActive: boolean;
   onOperationStarted: () => Promise<void>;
+  onInspectCode: (id: string) => void;
 }) {
   const base = `/api/workflows/${state.workflow.id}`;
   const [suites, setSuites] = useState<SuiteState | null>(null),
@@ -26,7 +30,7 @@ export function EvaluationPanel({
     [runId, setRunId] = useState(""),
     [runDetail, setRunDetail] = useState<EvaluationState | null>(null),
     [runCases, setRunCases] = useState<SuiteState | null>(null),
-    [mode, setMode] = useState<"cases" | "results">("cases"),
+    [mode, setMode] = useState<"cases" | "results" | "repairs">("cases"),
     [selected, setSelected] = useState(""),
     [editing, setEditing] = useState<EvaluationCase | "new" | null>(null),
     [name, setName] = useState("Workflow checks"),
@@ -73,7 +77,11 @@ export function EvaluationPanel({
     return () => clearInterval(t);
   }, [load, operationActive]);
   const selectedRunId = runId || history?.runs[0]?.id;
-  const currentRun = history?.runs.find((r) => r.id === selectedRunId);
+  const currentRun =
+    history?.runs.find((r) => r.id === selectedRunId) ||
+    (runDetail && runDetail.runs[0]?.id === selectedRunId
+      ? runDetail.runs[0]
+      : undefined);
   useEffect(() => {
     if (!selectedRunId) return;
     let active = true;
@@ -141,7 +149,30 @@ export function EvaluationPanel({
       await onOperationStarted();
     });
   }
+  async function repair() {
+    if (!selectedRunId) return;
+    await act(async () => {
+      await api(`${base}/repairs`, "POST", {
+        request_key: crypto.randomUUID(),
+        baseline_evaluation_id: selectedRunId,
+      });
+      setMode("repairs");
+      await onOperationStarted();
+    });
+  }
   const readyRun = runDetail?.runs[0]?.id === selectedRunId ? runDetail : null;
+  const repairReason = readyRun
+    ? repairBlocker(readyRun.runs[0], readyRun.results) ||
+      (suites?.suites.some(
+        (s) =>
+          s.version_number >
+          (runCases?.suites.find(
+            (s) => s.id === readyRun.runs[0].suite_version_id,
+          )?.version_number || 0),
+      )
+        ? "Evaluate against the latest verified suite revision before repairing."
+        : null)
+    : "Loading evaluation evidence…";
   const cases =
     mode === "cases"
       ? suites?.cases || []
@@ -191,13 +222,16 @@ export function EvaluationPanel({
       <div className="engineer-section-heading">
         <div>
           <h2>
-            {mode === "results"
-              ? "Evaluation results"
-              : "Define trusted test cases"}
+            {mode === "repairs"
+              ? "Repair history"
+              : mode === "results"
+                ? "Evaluation results"
+                : "Define trusted test cases"}
           </h2>
           <p className="field-help">
-            Verify the cases, lock the suite, then compare a code version
-            against it.
+            {mode === "repairs"
+              ? "Inspect each candidate and the evidence for keeping or rejecting it."
+              : "Verify the cases, lock the suite, then compare a code version against it."}
           </p>
         </div>
       </div>
@@ -314,6 +348,13 @@ export function EvaluationPanel({
               >
                 Results & history · {history?.runs.length || 0}
               </button>
+              <button
+                aria-pressed={mode === "repairs"}
+                disabled={!!editing}
+                onClick={() => setMode("repairs")}
+              >
+                Repair history
+              </button>
             </div>
             {mode === "cases" && !editing && (
               <div className="button-row">
@@ -352,7 +393,19 @@ export function EvaluationPanel({
               </div>
             )}
           </div>
-          {editing ? (
+          {mode === "repairs" ? (
+            <RepairPanel
+              workflowId={state.workflow.id}
+              versions={state.versions}
+              operationActive={operationActive}
+              onInspectCode={onInspectCode}
+              onInspectEvaluation={(id) => {
+                setRunId(id);
+                setMode("results");
+                setSelected("");
+              }}
+            />
+          ) : editing ? (
             <CaseEditor
               key={editing === "new" ? "new" : editing.id}
               initial={editing === "new" ? undefined : editing}
@@ -392,6 +445,13 @@ export function EvaluationPanel({
                         setSelected("");
                       }}
                     >
+                      {currentRun &&
+                        !history?.runs.some((r) => r.id === currentRun.id) && (
+                          <option value={currentRun.id}>
+                            {new Date(currentRun.created_at).toLocaleString()} ·{" "}
+                            {currentRun.verdict || currentRun.status}
+                          </option>
+                        )}
                       {history?.runs.map((r) => (
                         <option key={r.id} value={r.id}>
                           {new Date(r.created_at).toLocaleString()} ·{" "}
@@ -413,6 +473,17 @@ export function EvaluationPanel({
                       >
                         Run these versions again
                       </button>
+                      <button
+                        className="primary"
+                        disabled={busy || operationActive || !!repairReason}
+                        title={
+                          repairReason ||
+                          "Start up to three repairs with full regression checks."
+                        }
+                        onClick={() => void repair()}
+                      >
+                        Repair and rerun
+                      </button>
                       <div>
                         <strong data-result={currentRun.verdict}>
                           {currentRun.verdict || currentRun.status}
@@ -429,6 +500,12 @@ export function EvaluationPanel({
                     </>
                   )}
                 </div>
+              )}
+              {mode === "results" && currentRun && (
+                <p className="repair-guidance">
+                  {repairReason ||
+                    "Repair runs up to three attempts. The frozen process, approved methods, and verified suite stay fixed."}
+                </p>
               )}
               {currentRun?.failure_message && mode === "results" && (
                 <p role="status" className="error-banner">

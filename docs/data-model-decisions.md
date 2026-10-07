@@ -280,3 +280,16 @@ Full-workflow results point to one ordinary runtime execution, constrained to th
 Suite verification and locking use the existing short workflow lock. Calls to the model or sandbox occur outside database transactions. Reads return the latest 20 suite/evaluation histories, at most 50 cases, and selected bounded detail. The input selector lists metadata for at most 50 captured bundles and loads full contents only for inspection. Pagination/retention beyond these demo bounds is future work; this is not an unlimited-scale claim.
 
 The SQL layer enforces ownership, membership, and sealed/terminal immutability. Controlled services enforce approval, complete coverage, trusted grading, and transitions. Direct anonymous REST access remains denied. The hosted app still requires access protection; workflow ownership is not a substitute for authentication.
+
+## Implementation checkpoint: bounded repair
+
+Migration 009 adds two tables with distinct lifecycles:
+
+| Table | Purpose and design justification | Integrity/access path |
+| --- | --- | --- |
+| `repair_sessions` | One engineer-initiated operation, pinned plan/suite/starting evidence and the retained baseline. Its baseline pointers make the current accepted state explicit rather than inferring it from the newest code version. | Unique job FK, same-workflow FKs, immutable scope and terminal rows; workflow/time index supports recent history. |
+| `repair_attempts` | Each of at most three candidate generations and decisions. A separate row preserves rejected candidates, the baseline they actually used, and their own evaluation. | Unique session/attempt number and one running attempt; unique candidate/evaluation references; SQL checks candidate parent/job/plan and evaluation suite/version. |
+
+Source bytes remain in immutable artifacts, code identity in `implementation_versions`, and trusted results in ordinary evaluation tables. Those records are referenced rather than copied into repair rows. Diagnosis is bounded attempt-owned JSON (summary, affected nodes, change descriptions), since it is displayed together and does not control acceptance. A token and invocation count fence delayed model responses without introducing a SQL scheduler. Finished rows cannot be rewritten; terminal immutability is enforced in PostgreSQL as well as service logic.
+
+The parent workflow lock serializes brief mutations and the active-job unique index prevents competing operations. Network work is outside those transactions. Each session is bounded to three attempt rows; each candidate still carries the evaluation suite's bounded case/trace costs. History reads return 20 session summaries and at most three selected attempts. These choices bound individual operations and support indexed access; they do not prove production capacity. Long-term artifact retention, paginated histories and workload measurement remain future scope.

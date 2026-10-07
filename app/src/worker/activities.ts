@@ -21,3 +21,5 @@ export {
   evaluateStepCase,
   failEvaluationCase,
 } from "./evaluation-activities";
+
+export { prepareRepair, beginRepairAttempt, generateRepairCandidate, createRepairEvaluation, decideRepairAttempt, endRepair } from "./repair-activities";
