@@ -1,0 +1,316 @@
+.engineer-workspace {
+  width: 100%;
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 24px 32px 80px;
+  overflow: auto;
+}
+.engineer-topline {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+.engineer-topline .field-help {
+  margin: 0;
+}
+.engineer-tabs {
+  display: flex;
+  gap: 24px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 20px;
+}
+.engineer-tabs button {
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  padding: 12px 4px;
+  color: var(--muted);
+}
+.engineer-tabs button[aria-current="page"] {
+  border-bottom-color: var(--accent);
+  color: var(--accent);
+}
+.engineer-section-heading,
+.plan-actions,
+.plan-footer,
+.source-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+}
+.engineer-section-heading {
+  margin-bottom: 14px;
+}
+.engineer-section-heading h2 {
+  font-size: 24px;
+  margin: 5px 0 6px;
+  letter-spacing: -0.6px;
+}
+.engineer-section-heading label {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  font-size: 12px;
+}
+.engineer-section-heading select {
+  min-width: 160px;
+}
+.engineer-empty {
+  padding: 56px 32px;
+  text-align: center;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.engineer-empty p {
+  max-width: 570px;
+  margin: 12px auto 24px;
+  line-height: 1.7;
+  color: var(--muted);
+}
+.plan-actions {
+  margin-bottom: 14px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.plan-footer {
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+.plan-footer .field-help {
+  max-width: 520px;
+}
+.plan-table {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--surface);
+}
+.plan-table-heading,
+.plan-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 30px;
+  padding: 17px 22px;
+}
+.plan-table-heading {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--muted);
+  background: var(--paper);
+}
+.plan-row {
+  border-top: 1px solid var(--line);
+  align-items: start;
+  padding-top: 14px;
+  padding-bottom: 14px;
+}
+.step-number {
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  margin-right: 12px;
+  font-size: 12px;
+}
+.plan-row details {
+  margin: 8px 0 0 30px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.plan-row summary {
+  cursor: pointer;
+}
+.recommendation {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+.plan-row .recommendation {
+  margin: 8px 0 0 30px;
+}
+.recommendation strong {
+  font-weight: 600;
+  color: var(--ink);
+}
+.method-controls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.method-controls select {
+  width: 100px;
+}
+.method-controls small {
+  flex-basis: 100%;
+  font-size: 11px;
+  color: var(--muted);
+}
+.approval-check {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.approval-check input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+.node-requirements {
+  line-height: 1.7;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.operation-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  background: var(--accent-soft);
+  border: 1px solid var(--line);
+  padding: 16px 20px;
+  border-radius: var(--radius);
+  margin-bottom: 24px;
+}
+.operation-banner p {
+  font-size: 12px;
+  margin: 7px 0 0;
+  line-height: 1.5;
+}
+.source-layout {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--surface);
+  margin-top: 20px;
+}
+.source-layout nav {
+  padding: 12px;
+  border-right: 1px solid var(--line);
+  max-height: 650px;
+  overflow: auto;
+}
+.source-layout nav button {
+  width: 100%;
+  justify-content: space-between;
+  text-align: left;
+  gap: 8px;
+  border: 0;
+  background: transparent;
+  font-size: 12px;
+}
+.source-layout nav span {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.source-layout nav small {
+  font-size: 10px;
+  color: var(--muted);
+}
+.source-content {
+  min-width: 0;
+}
+.source-heading {
+  padding: 16px;
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+}
+.source-heading strong {
+  overflow-wrap: anywhere;
+}
+.source-content pre {
+  font-size: 12px;
+  line-height: 1.7;
+  overflow: auto;
+  max-height: 580px;
+  margin: 0;
+  padding: 20px;
+  background: var(--paper);
+  tab-size: 2;
+}
+.source-content h3 {
+  font-size: 12px;
+  margin: 16px 20px;
+}
+.operation-history {
+  margin-top: 32px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.operation-history summary {
+  cursor: pointer;
+}
+.operation-history > div {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+.operation-history p {
+  flex-basis: 100%;
+  margin: 0;
+}
+@media (max-width: 900px) {
+  .engineer-workspace {
+    padding: 18px 18px 60px;
+  }
+  .plan-row,
+  .plan-table-heading {
+    grid-template-columns: minmax(0, 1fr) 230px;
+    gap: 15px;
+  }
+  .source-layout {
+    grid-template-columns: 200px minmax(0, 1fr);
+  }
+  .plan-footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+@media (max-width: 600px) {
+  .plan-table-heading {
+    display: none;
+  }
+  .plan-row {
+    grid-template-columns: 1fr;
+  }
+  .engineer-section-heading,
+  .engineer-topline {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .source-layout {
+    grid-template-columns: 1fr;
+  }
+  .source-layout nav {
+    max-height: 180px;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .source-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+.source-layout nav button[aria-pressed="true"] {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.build-diagnostic {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  max-height: 260px;
+  overflow: auto;
+}
