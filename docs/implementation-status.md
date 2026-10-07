@@ -41,11 +41,12 @@ Boundaries may move to keep each PR coherent. PR #1 conventions are incorporated
 - [x] Locked independent expectations; revised suites preserve history; full-suite grading with errors/blockers distinguished.
 - [x] Repair actual code, keep every attempt, reject regressions, preserve baseline, stop at three attempts or required human decisions.
 - [x] Temporal durability and Sandbox isolation verified with live adapters.
-- [ ] Gmail/Composio ingestion captures immutable messages/documents; verify all provided shipment ground truth, excluding mismatched-invoice scoring.
+- [x] Gmail/Composio ingestion captures all supplied messages/documents as immutable input bundles.
+- [ ] All supplied shipment totals match independent ground truth, excluding mismatched-invoice scoring.
 - [x] Fresh human response per visit; new documents/new run; exclusive ambiguity errors; correct per-occurrence joins; bounded loops/time.
 - [x] Retry uses same code and inputs in a fresh linked run; preview-only report.
-- [ ] Full browser demonstration from incomplete canvas through two AI reviews, freeze, generation, failure, repair, and final result.
-- [ ] README/run instructions, design tradeoffs, PDF/Word handoff and recorded demo artifact.
+- [x] Browser walkthrough from incomplete canvas through two AI reviews, freeze, generation, failed evaluation, attempted repair, and one matching real report. Full-dataset accuracy remains separate and incomplete above.
+- [x] README/run instructions, design tradeoffs, three-page PDF handoff and an edited 60-second walkthrough of captured live UI states. The video labels its synthetic repair example and the real-data accuracy limitation; it is not an uninterrupted recording.
 
 ## Evidence log
 
@@ -97,3 +98,8 @@ Boundaries may move to keep each PR coherent. PR #1 conventions are incorporated
 - Source inspection identified a domain ambiguity requiring clarification: invoices can name a packaging batch while a CoA names a related manufacturing batch. A CoC may corroborate packaging information, but the matching policy is not explicit. Do not resolve this by globally stripping suffixes or changing reference totals. Generated document selection also needs improvement because keyword filtering can exclude numerically named invoice PDFs; this is a separate implementation defect.
 
 - Manual browser demonstration: retained v3 completed a real Gmail packet through five step visits and displayed a report marked Not sent. Its three invoices and three batches matched the supplied reference. This verifies one complete packet path, not the other ten shipment cases.
+- PR #15 passed all required checks and merged. The 77-test suite now includes real local Temporal cancellation regressions for execution, evaluation and repair. These reproduced an unhandled monitor rejection while an activity was stopping; the fix preserves normal cleanup and cancellation without failed workflow tasks. Seven browser journeys also pass in CI.
+- The retained v3 completed the strengthened suite v2: 4/14 cases passed (the same one real shipment plus all three validator regressions), with ten completed but incorrect real reports and no execution errors. All original eleven expected results are unchanged. A new bounded repair session uses this complete baseline and the full captured document inventory.
+- That three-attempt session stopped with v3 retained. Candidate v5 failed 14/14 cases and was rejected for a previously passing batch-count assertion; v6 passed 4/14 but still regressed a previously passing batch-success assertion and was rejected. Aggregate case counts alone are insufficient for baseline acceptance. The third generation exhausted its response allowance and published no partial candidate.
+- The explicit restart with medium reasoning and a 48,000-token allowance produced complete source v7. Source inspection found it globally removed terminal A suffixes without requiring evidence of a batch relationship; the operator cancelled it before acceptance. Its partial evaluation is inconclusive, and v3 remains retained. This verifies generation completion and cancellation, not improved shipment accuracy. Further autonomous sessions were not started while the batch policy remains unresolved.
+- Independent PDF inspection confirmed the upstream selection defect: one numerically named commercial invoice visibly contains all five required fields, but the generated selector omits it because a CoA filename matches its preferred keywords. The private handoff records the source page and printed values for a future extraction benchmark. Neither this defect nor the missing batch policy was hidden by changing expected totals.
