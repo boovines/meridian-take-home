@@ -4,11 +4,13 @@ Open **Engineer workspace** from a frozen whiteboard to turn the customer’s pr
 
 - **Implementation:** Create a plan, optionally request AI method suggestions, choose Code, Agent, or Human for each step, and approve the choices. Customer-required human steps stay human. Approve the complete plan to enable generation.
 - **Agent:** Follow background progress, cancel an operation, select a completed code version, inspect its files, compare with its parent, and download the project ZIP.
-- **Evaluation:** The current feature explains that generated code still needs verified tests. Evaluation and repair are separate implementation milestones.
+- **Evaluation:** Author and verify a test suite, lock its expected answers, then explicitly run it against a code version. Inspect failures and start a bounded repair session. See [evaluations](trusted-evaluations.md) and [repair](bounded-repair.md).
 - **Operation history:** Inspect completed, failed, or cancelled generation attempts. Existing code remains available while new work runs.
 - **Frozen whiteboard:** Return to the customer’s unchanged process through the header link.
 
 Generation continues when you close or reload the browser. A successful generation means the project was saved and its JavaScript passed syntax validation. It remains **Not yet evaluated** until business behavior is checked against trusted expectations.
+
+A model response that is truncated or invalid produces a specific error; partial source is not accepted as a version. Previous complete versions remain inspectable.
 
 Use **Revise plan** to change an approved method. A revision preserves the previous plan and code, copies choices into a new draft, and requires fresh approvals. Only one draft plan and one active expensive operation are allowed per workflow.
 

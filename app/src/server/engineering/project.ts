@@ -8,7 +8,7 @@ import {
 } from "../../domain/project";
 
 // These instructions are both the coding-agent contract and the downloaded project's documentation.
-export const moduleContract = `Each generated module exports async function run(context).
+export const moduleContract = `Every generated file is a Node.js ES module (.mjs). Use the exact declaration export async function run(context) { ... }. Do not use CommonJS exports, module.exports, or require.
 context.input is the immutable original input bundle, context.steps is a map from frozen node ID to its most recent output, and context.tool_result is present only on the second call after an Agent request. context.human_response is supplied only after a fresh human response.
 Return exactly one JSON object:
   {kind:"complete", output:<JSON>, matching_connection_ids:[...]} for a completed step.
