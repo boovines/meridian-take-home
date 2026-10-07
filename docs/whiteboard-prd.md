@@ -42,7 +42,7 @@ Freeze shows concrete fixes if blocked and an acknowledgment warning for unrevie
 
 ## Tech Stack
 
-React and TypeScript with Next.js provide the canvas and API. Supabase/Postgres stores definitions, discussions, reviews, and frozen specifications. An LLM service performs clarification and review. The canvas library and model provider remain implementation choices. General MCP source panels, company-document ingestion, SOP-to-canvas generation, and process mining are outside the core demo. Gmail belongs to the execution feature.
+React and TypeScript with Next.js provide the canvas and API. Supabase/Postgres stores definitions, discussions, reviews, and frozen specifications. An LLM service performs clarification and review. React Flow supplies the canvas and OpenAI supplies the reviewer. General MCP source panels, company-document ingestion, SOP-to-canvas generation, and process mining are outside the core demo. Gmail belongs to the execution feature.
 
 ## Data Model
 
@@ -50,11 +50,11 @@ React and TypeScript with Next.js provide the canvas and API. Supabase/Postgres 
 
 `review_runs` records status, model/settings, and the exact content analyzed. `discussion_threads` distinguishes findings, notes, and clarification threads, with disposition and proposed detail edits. `discussion_messages` preserves replies and decision events using same-thread parent IDs. `thread_anchors` supports multiple targets; workflow-level findings need no artificial node. `frozen_specs` stores the complete immutable graph and review evidence consumed by engineering.
 
-Separate rows allow targeted edits and indexed board/edge lookup. Immutable frozen JSON is appropriate because handoff consumes the whole definition. Short transactions coordinate review, edits, and freeze; per-record revisions reject stale edits, while semantic revisions exclude layout-only movement. No LLM call holds a database transaction open. Detailed fields, constraints, and indexes live in the [canvas schema](../.plans/meridian-canvas-schema-spec.md) and [review schema](../.plans/meridian-review-schema-spec.md).
+Separate rows allow targeted edits and indexed board/edge lookup. Immutable frozen JSON is appropriate because handoff consumes the whole definition. Short transactions coordinate review, edits, and freeze; per-record revisions reject stale edits, while semantic revisions exclude layout-only movement. No LLM call holds a database transaction open. Executable fields, constraints and indexes are in migrations 001–004; the canvas/review schema specifications preserve planning context.
 
 ## API Endpoints
 
-Proposed API contracts, not implemented routes. Mutations validate workflow state and expected revisions; compound changes are transactional.
+Implemented API contracts: Mutations validate workflow state and expected revisions; compound changes are transactional.
 
 | Endpoint | Purpose |
 | --- | --- |
@@ -63,9 +63,9 @@ Proposed API contracts, not implemented routes. Mutations validate workflow stat
 | `POST /api/workflows/:id/nodes` and `/connections` | Create primitives or routes. |
 | `PATCH/DELETE /api/workflows/:id/nodes/:nodeId` and `/connections/:connectionId` | Update or soft-delete a specific element. |
 | `POST /api/workflows/:id/reviews` | Start review against a saved content revision. |
-| `GET /api/reviews/:id`; `POST /api/reviews/:id/answers` or `/cancel` | Inspect review, answer clarification, or cancel. |
-| `POST /api/workflows/:id/threads`; `POST /api/threads/:id/messages` | Create a customer note or append a reply. |
-| `POST /api/threads/:id/resolve`, `/reopen`, or `/apply-and-resolve` | Record a disposition or approved detail update with revision checks. |
-| `POST /api/workflows/:id/freeze`; `GET /api/specs/:id` | Validate and freeze once, or retrieve the immutable handoff. |
+| `GET /api/workflows/:id/reviews`; `POST /api/workflows/:id/reviews/:reviewId/goal` or `/cancel` | Inspect reviews, answer outcome clarification or cancel. |
+| `POST /api/workflows/:id/threads`; `POST /api/workflows/:id/threads/:threadId/messages` | Create a customer note or append a reply. |
+| `POST /api/workflows/:id/threads/:threadId/actions` | Resolve, reject, reopen or apply an approved detail edit with revision checks. |
+| `GET/POST /api/workflows/:id/freeze` | Inspect freeze readiness or validate and freeze once. The engineer workspace reads the saved immutable handoff. |
 
-Stale saves return a conflict with the current revision. Review results and freeze state survive refresh. The [architecture](architecture.md), [data-model decision audit](data-model-decisions.md), [verification plan](verification.md), and [future scope](../README.md#future-work-outside-demo-scope) cover shared design and deferred work. Proposed extra structural rules and infrastructure defaults remain labeled in the schema specs.
+Stale saves return a conflict with the current revision. Review results and freeze state survive refresh. The [architecture](architecture.md), [data-model decision audit](data-model-decisions.md), [verification plan](verification.md), and [future scope](../README.md#future-work-outside-demo-scope) cover shared design and deferred work. The implemented behavior and failure states are detailed in the feature specifications under `specs/`.
