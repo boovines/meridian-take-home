@@ -1,0 +1,2 @@
+# Preserve PDF byte offsets and avoid applying text whitespace/merge rules.
+*.pdf binary

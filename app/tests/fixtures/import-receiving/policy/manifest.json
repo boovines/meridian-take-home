@@ -1,0 +1,74 @@
+[
+  {
+    "key": "supported",
+    "name": "Supported packaging relationship",
+    "shipment_reference": "SYN-POLICY-01",
+    "documents": [
+      "supported-invoice.pdf",
+      "supported-coa.pdf"
+    ],
+    "expected": {
+      "invoices_processed": 1,
+      "invoices_succeeded": 1,
+      "invoices_failed": 0,
+      "goods_failed": 0,
+      "batches_processed": 1,
+      "batches_succeeded": 1,
+      "batches_failed": 0
+    }
+  },
+  {
+    "key": "different-product",
+    "name": "Reject different product with shared batch prefix",
+    "shipment_reference": "SYN-POLICY-02",
+    "documents": [
+      "different-product-invoice.pdf",
+      "different-product-coa.pdf"
+    ],
+    "expected": {
+      "invoices_processed": 1,
+      "invoices_succeeded": 1,
+      "invoices_failed": 0,
+      "goods_failed": 0,
+      "batches_processed": 1,
+      "batches_succeeded": 0,
+      "batches_failed": 1
+    }
+  },
+  {
+    "key": "different-strength",
+    "name": "Reject different strength with shared batch prefix",
+    "shipment_reference": "SYN-POLICY-03",
+    "documents": [
+      "different-strength-invoice.pdf",
+      "different-strength-coa.pdf"
+    ],
+    "expected": {
+      "invoices_processed": 1,
+      "invoices_succeeded": 1,
+      "invoices_failed": 0,
+      "goods_failed": 0,
+      "batches_processed": 1,
+      "batches_succeeded": 0,
+      "batches_failed": 1
+    }
+  },
+  {
+    "key": "different-manufacturer",
+    "name": "Reject different manufacturer with shared batch prefix",
+    "shipment_reference": "SYN-POLICY-04",
+    "documents": [
+      "different-manufacturer-invoice.pdf",
+      "different-manufacturer-coa.pdf"
+    ],
+    "expected": {
+      "invoices_processed": 1,
+      "invoices_succeeded": 1,
+      "invoices_failed": 0,
+      "goods_failed": 0,
+      "batches_processed": 1,
+      "batches_succeeded": 0,
+      "batches_failed": 1
+    }
+  }
+]
