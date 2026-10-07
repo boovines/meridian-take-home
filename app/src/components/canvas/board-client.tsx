@@ -1,0 +1,394 @@
+"use client";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { Check, ChevronDown, Plus, X } from "lucide-react";
+import type { Connection as FlowConnection } from "@xyflow/react";
+import Workspace from "../shell/workspace";
+import { ProcessCanvas } from "./process-canvas";
+import { NodeInspector, ConnectionInspector } from "./inspector";
+import { primitives } from "./primitives";
+import { api, ApiError, errorMessage } from "@/lib/api";
+import {
+  type Board,
+  type CanvasNode,
+  type Connection,
+  type NodeType,
+  type Workflow,
+  nodeLabels,
+  nodeTypes,
+} from "@/domain/canvas";
+export function BoardClient({ id }: { id: string }) {
+  const [board, setBoard] = useState<Board | null>(null),
+    [error, setError] = useState(""),
+    [busy, setBusy] = useState(false),
+    [status, setStatus] = useState("");
+  const [selection, setSelection] = useState<{
+      kind: "node" | "connection";
+      id: string;
+    } | null>(null),
+    [goalOpen, setGoalOpen] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const load = useCallback(async () => {
+    setBoard(await api<Board>(`/api/workflows/${id}`));
+  }, [id]);
+  useEffect(() => {
+    let active = true;
+    api<Board>(`/api/workflows/${id}`)
+      .then((b) => {
+        if (active) setBoard(b);
+      })
+      .catch((e) => {
+        if (active) setError(errorMessage(e));
+      });
+    return () => {
+      active = false;
+    };
+  }, [id]);
+  useEffect(() => {
+    const warn = (e: BeforeUnloadEvent) => {
+      if (dirty) {
+        e.preventDefault();
+      }
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
+  function canLeave() {
+    if (dirty && !window.confirm("Discard the unsaved changes in this panel?"))
+      return false;
+    setDirty(false);
+    return true;
+  }
+  function select(kind: "node" | "connection", nodeId: string) {
+    if (selection?.kind === kind && selection.id === nodeId) return;
+    if (canLeave()) {
+      setSelection({ kind, id: nodeId });
+      setGoalOpen(false);
+    }
+  }
+  async function mutate(fn: () => Promise<void>) {
+    setBusy(true);
+    setError("");
+    setStatus("Saving…");
+    try {
+      await fn();
+      await load();
+      setStatus("All changes saved");
+    } catch (e) {
+      setError(errorMessage(e));
+      setStatus("Change not saved");
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function add(type: NodeType) {
+    if (!board || !canLeave()) return;
+    await mutate(async () => {
+      const n = await api<CanvasNode>(`/api/workflows/${id}/nodes`, "POST", {
+        type,
+        title: nodeLabels[type],
+        x: 80 + (board.nodes.length % 3) * 270,
+        y: 60 + Math.floor(board.nodes.length / 3) * 190,
+      });
+      setSelection({ kind: "node", id: n.id });
+      setGoalOpen(false);
+    });
+  }
+  async function connect(c: FlowConnection) {
+    if (!c.source || !c.target) return;
+    await mutate(async () => {
+      const edge = await api<Connection>(
+        `/api/workflows/${id}/connections`,
+        "POST",
+        { source_node_id: c.source, target_node_id: c.target },
+      );
+      if (canLeave()) setSelection({ kind: "connection", id: edge.id });
+    });
+  }
+  async function move(n: CanvasNode, x: number, y: number) {
+    await mutate(async () => {
+      await api(`/api/workflows/${id}/nodes/${n.id}`, "PATCH", {
+        expected_revision: n.revision,
+        x,
+        y,
+      });
+    });
+  }
+  const selectedNode = board?.nodes.find(
+      (n) => selection?.kind === "node" && n.id === selection.id,
+    ),
+    selectedConnection = board?.connections.find(
+      (c) => selection?.kind === "connection" && c.id === selection.id,
+    );
+  const locked = busy || board?.workflow.state !== "draft";
+  const inspectorProps = board
+    ? {
+        board,
+        locked,
+        onSaved: async () => {
+          await load();
+          setStatus("All changes saved");
+        },
+        onClose: () => {
+          if (canLeave()) setSelection(null);
+        },
+        onDirty: setDirty,
+      }
+    : null;
+  return (
+    <Workspace
+      title={board?.workflow.name || "Workflow"}
+      subtitle="Describe the work. Connect the steps. Make the exceptions explicit."
+      actions={
+        <>
+          <span className="save-status" role="status">
+            {!dirty && status === "All changes saved" && <Check size={13} />} {dirty?'Unsaved changes':status}
+          </span>
+          <span className="status-pill">
+            {board?.workflow.state || "loading"}
+          </span>
+        </>
+      }
+    >
+      <main className="board-workspace">
+        {error && (
+          <div role="alert" className="error-banner">
+            {error}
+            <button
+              onClick={() => {
+                void load()
+                  .then(() => setError(""))
+                  .catch((e) => setError(errorMessage(e)));
+              }}
+            >
+              Reload saved board
+            </button>
+          </div>
+        )}
+        {!board ? (
+          <div className="loading-state" role="status">
+            {error ? "Unable to open workflow." : "Opening your workflow…"}
+          </div>
+        ) : (
+          <>
+            <div className="canvas-toolbar">
+              <div className="canvas-tabs">
+                <span className="current-tab">Whiteboard</span>
+                <span className="toolbar-note">Map your process</span>
+              </div>
+              <button
+                className="subtle"
+                onClick={() => {
+                  if (canLeave()) {
+                    setGoalOpen(!goalOpen);
+                    setSelection(null);
+                  }
+                }}
+              >
+                Workflow details <ChevronDown size={14} />
+              </button>
+            </div>
+            <div className="canvas-layout">
+              <aside className="palette" aria-label="Blocks">
+                <div className="panel-heading">
+                  Blocks <span>{board.nodes.length}</span>
+                </div>
+                <p className="field-help">
+                  Add a step, then describe it in your own words.
+                </p>
+                {nodeTypes.map((type) => {
+                  const Icon = primitives[type].icon;
+                  return (
+                    <button
+                      className={`palette-item ${type}`}
+                      key={type}
+                      disabled={locked}
+                      onClick={() => void add(type)}
+                      aria-label={`Add ${nodeLabels[type]}`}
+                    >
+                      <span className="primitive-icon">
+                        <Icon size={17} />
+                      </span>
+                      <span>
+                        <strong>{nodeLabels[type]}</strong>
+                        <small>{primitives[type].description}</small>
+                      </span>
+                      <Plus size={13} />
+                    </button>
+                  );
+                })}
+                <div className="palette-hint">
+                  Connect a block’s bottom dot to another block’s top dot. Click
+                  a line to describe its condition.
+                </div>
+              </aside>
+              <section className="canvas-stage" aria-label="Process canvas">
+                <ProcessCanvas
+                  board={board}
+                  selected={selection?.id}
+                  locked={locked}
+                  onSelect={select}
+                  onConnect={(c) => void connect(c)}
+                  onMove={(n, x, y) => void move(n, x, y)}
+                />
+                {board.nodes.length === 0 && (
+                  <div className="canvas-empty">
+                    <span className="eyebrow">Start here</span>
+                    <h2>How does this process begin?</h2>
+                    <p>
+                      Add a Trigger, then build out the steps as you would
+                      explain them to a colleague.
+                    </p>
+                    <button
+                      onClick={() => void add("trigger")}
+                      disabled={locked}
+                    >
+                      <Plus size={15} /> Add a Trigger
+                    </button>
+                  </div>
+                )}
+              </section>
+              {selectedNode && inspectorProps ? (
+                <NodeInspector
+                  key={selectedNode.id}
+                  node={selectedNode}
+                  {...inspectorProps}
+                />
+              ) : selectedConnection && inspectorProps ? (
+                <ConnectionInspector
+                  key={selectedConnection.id}
+                  connection={selectedConnection}
+                  {...inspectorProps}
+                />
+              ) : goalOpen ? (
+                <WorkflowDetails
+                  key={board.workflow.id}
+                  workflow={board.workflow}
+                  locked={locked}
+                  onSaved={load}
+                  onDirty={setDirty}
+                  onClose={() => {
+                    if (canLeave()) setGoalOpen(false);
+                  }}
+                />
+              ) : null}
+            </div>
+            <footer className="canvas-footer">
+              <span>
+                {board.nodes.length} blocks · {board.connections.length}{" "}
+                connections
+              </span>
+              <span>Drag to move · Scroll to zoom · Click a block to edit</span>
+            </footer>
+          </>
+        )}
+      </main>
+    </Workspace>
+  );
+}
+function WorkflowDetails({
+  workflow,
+  locked,
+  onSaved,
+  onDirty,
+  onClose,
+}: {
+  workflow: Workflow;
+  locked: boolean;
+  onSaved: () => Promise<void>;
+  onDirty: (v: boolean) => void;
+  onClose: () => void;
+}) {
+  const [name, setName] = useState(workflow.name),
+    [goal, setGoal] = useState(workflow.desired_outcome),
+    [revision, setRevision] = useState(workflow.revision),
+    [saving, setSaving] = useState(false),
+    [error, setError] = useState(""),
+    [conflict, setConflict] = useState<Workflow | null>(null);
+  async function save(e: FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setError("");
+    try {
+      const w = await api<Workflow>(`/api/workflows/${workflow.id}`, "PATCH", {
+        name,
+        desired_outcome: goal,
+        expected_revision: revision,
+      });
+      setRevision(w.revision);
+      onDirty(false);
+      await onSaved();
+    } catch (e) {
+      setError(errorMessage(e));
+      if (e instanceof ApiError && e.code === "STALE_EDIT")
+        setConflict((e.details as { current: Workflow }).current);
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <aside className="inspector" aria-label="Workflow details">
+      <div className="panel-heading">
+        Workflow details
+        <button
+          className="icon-button"
+          aria-label="Close details"
+          onClick={onClose}
+        >
+          <X size={16} />
+        </button>
+      </div>
+      {error && (
+        <div role="alert" className="inline-error">
+          {error}
+        </div>
+      )}
+      {conflict && (
+        <div className="conflict-box">
+          <p>Saved name: {conflict.name}</p>
+          <p>Saved outcome: {conflict.desired_outcome}</p>
+          <button
+            onClick={() => {
+              setRevision(conflict.revision);
+              setConflict(null);
+              setError("Your draft is preserved. Review it and save again.");
+            }}
+          >
+            Use this revision and keep my draft
+          </button>
+        </div>
+      )}
+      <form onSubmit={save}>
+        <fieldset disabled={locked || saving}>
+          <label>
+            Workflow name
+            <input
+              required
+              maxLength={200}
+              value={name}
+              onChange={(e) => {
+                setName(e.target.value);
+                onDirty(true);
+              }}
+            />
+          </label>
+          <label>
+            What should this workflow accomplish?
+            <textarea
+              value={goal}
+              rows={7}
+              maxLength={10000}
+              onChange={(e) => {
+                setGoal(e.target.value);
+                onDirty(true);
+              }}
+              placeholder="Describe the result that matters to you."
+            />
+          </label>
+          <button className="primary full-width" disabled={!!conflict}>
+            {saving ? "Saving…" : "Save workflow details"}
+          </button>
+        </fieldset>
+      </form>
+    </aside>
+  );
+}
