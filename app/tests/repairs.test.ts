@@ -209,6 +209,42 @@ it("supplies only locked-suite input inventory and keeps numeric filenames outsi
   expect(JSON.parse(prompt).step_traces[0].output_data.truncated).toBe(true);
   await repairs.finish(job.id, "cancelled", "Diagnostic context verified.");
 });
+it("carries a rejected candidate's compiler diagnostic into the next repair without adopting its source", async () => {
+  const { f, job, initial } = await prepared();
+  const first = await repairs.beginAttempt(job.id, 1);
+  await generation.run(first.id, generator, AbortSignal.timeout(10000));
+  const evaluation = await repairs.createEvaluation(first.id);
+  await evals.prepare(job.id, evaluation.id);
+  const message =
+    "Syntax validation failed.\nsteps/outcome.mjs:18\nSyntaxError: Unexpected identifier";
+  await evals.finish(
+    job.id,
+    { code: "PROJECT_BUILD_FAILED", message, category: "implementation" },
+    false,
+    evaluation.id,
+  );
+  const decision = await repairs.decide(first.id);
+  expect(decision.attempt.status).toBe("rejected");
+  expect(decision.session.baseline_evaluation_id).toBe(initial.evaluation.id);
+  const next = await repairs.beginAttempt(job.id, 2);
+  const context = await repairs.generationContext(next.id);
+  expect(context.previous_attempts[0].candidate_results[0]).toMatchObject({
+    outcome: "not_run",
+    failure_code: "PROJECT_BUILD_FAILED",
+    failure_message: message,
+  });
+  const { project } = await new VersionService(db, artifacts).load(
+    f.w.id,
+    f.version.id,
+  );
+  const prompt = JSON.parse(repairPrompt(context, project));
+  expect(prompt.previous_attempts[0].candidate_results[0].failure_message).toBe(
+    message,
+  );
+  expect(prompt.baseline_evaluation.id).toBe(initial.evaluation.id);
+  expect(prompt.locked_cases[0].assertions).toEqual(context.cases[0].assertions);
+  await repairs.finish(job.id, "cancelled", "Compiler evidence verified.");
+});
 async function candidate(jobId: string, number: number, actual: Json) {
   let attempt = await repairs.beginAttempt(jobId, number);
   attempt = await generation.run(

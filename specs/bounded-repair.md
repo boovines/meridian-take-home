@@ -12,6 +12,8 @@ Entry point: engineer workspace → Evaluation → failed evaluation → Repair 
 
 ## Observable outcomes
 
+If generated code cannot compile, the evaluation retains the compiler's file, line and error excerpt. The next repair attempt receives that evidence with the rejected candidate's source. Compiler text is bounded; private provider diagnostics are excluded. No case is counted as passing or failing its business assertions when the shared build check prevents execution.
+
 - Passed: a candidate preserves every previous pass and the complete locked suite passes.
 - Rejected attempt: a regression, execution error, missing coverage or inconclusive result leaves the baseline unchanged; the candidate is still inspectable.
 - Accepted attempt with remaining failures: the candidate becomes the baseline and repair continues within the limit.

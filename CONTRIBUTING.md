@@ -2,7 +2,7 @@
 
 Use a feature branch and pull request for changes to `main`. Prefer `codex/<short-description>` for agent work.
 
-Describe what changed, how it was verified, and any known limitations. Review business rules, schema changes, state transitions, and failure handling before merging. Resolve review conversations, wait for required checks, then squash merge with a descriptive PR title.
+Describe what changed, how it was verified, and any known limitations. Leave feature PRs open for Justin's review. Build dependent work as a PR stack and test the combined tip locally. Review business rules, schema changes, state transitions, and failure handling; resolve review conversations and wait for required checks. Passing CI is not permission to merge: merge only after Justin explicitly approves it.
 
 ## Verification
 
