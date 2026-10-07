@@ -16,6 +16,8 @@ Use **Revise plan** to change an approved method. A revision preserves the previ
 
 The workspace is at `/workflows/:id/engineer`; the source whiteboard is at `/workflows/:id`. The demo has no separate role permissions. There is no code editor, repository synchronization, automatic deployment, or email sending. Downloads invoke individual steps under a host; they do not silently bypass agent requests or human gates.
 
+Known OpenAI project spending caps and exhausted quota stop code generation or repair with a specific explanation after the SDK call returns. The operation does not consume another worker generation invocation for the same quota error. Adding account credit may not change a project cap; restart explicitly after the relevant limit is updated. Provider payloads are not stored in the diagnostic. During workflow execution, these failures are infrastructure errors, not evidence for changing generated code. Transient rate limits keep the existing bounded retry behavior.
+
 ## Implementation contract
 
 ### Entry and users

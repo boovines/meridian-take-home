@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   generateText,
+  APICallError,
   NoObjectGeneratedError,
   NoOutputGeneratedError,
+  RetryError,
 } from "ai";
 import { generateProjectSources } from "../src/server/integrations/openai-engineer";
 import { reasonForStep } from "../src/server/integrations/openai-step";
@@ -38,8 +40,94 @@ function parsedFailure(finishReason: "length" | "stop") {
     cause: new Error("Could not parse private source material"),
   });
 }
-beforeEach(() => { generate.mockReset(); });
+beforeEach(() => {
+  generate.mockReset();
+});
 describe("model output boundaries", () => {
+  it.each([false, true])(
+    "reports a project spending cap safely (SDK retry wrapper: %s)",
+    async (wrapped) => {
+      const provider = new APICallError({
+        message: "private provider diagnostic",
+        url: "https://api.openai.com/v1/responses",
+        requestBodyValues: { prompt: "private document" },
+        statusCode: 429,
+        responseBody: JSON.stringify({
+          error: {
+            code: "project_spend_limit_exceeded",
+            type: "insufficient_quota",
+            message: "private provider diagnostic",
+          },
+        }),
+        isRetryable: true,
+      });
+      generate.mockRejectedValue(
+        wrapped
+          ? new RetryError({
+              message: "private retry diagnostic",
+              reason: "maxRetriesExceeded",
+              errors: [provider, provider],
+            })
+          : provider,
+      );
+      const failure = await generateProjectSources(board, [], null, signal).catch(
+        (error) => error,
+      );
+      expect(failure).toMatchObject({
+        code: "MODEL_PROJECT_SPEND_LIMIT",
+        status: 503,
+      });
+      expect(failure.message).toContain("project's spending limit");
+      expect(JSON.stringify(failure)).not.toContain("private");
+      expect(invocationFailure(failure).category).toBe("infrastructure");
+    },
+  );
+  it("classifies exhausted quota as infrastructure rather than repairable code", async () => {
+    generate.mockRejectedValue(
+      new APICallError({
+        message: "private diagnostic",
+        url: "https://api.openai.com/v1/responses",
+        requestBodyValues: {},
+        statusCode: 429,
+        data: { error: { code: "insufficient_quota", type: "insufficient_quota" } },
+      }),
+    );
+    const failure = await reasonForStep("Read this example", {}, signal).catch(
+      (error) => error,
+    );
+    expect(invocationFailure(failure)).toMatchObject({
+      code: "MODEL_QUOTA_EXCEEDED",
+      category: "infrastructure",
+    });
+  });
+  it("leaves transient rate limits eligible for the existing provider retry path", async () => {
+    const provider = new APICallError({
+      message: "Retry later",
+      url: "https://api.openai.com/v1/responses",
+      requestBodyValues: {},
+      statusCode: 429,
+      data: { error: { code: "rate_limit_exceeded", type: "tokens" } },
+    });
+    generate.mockRejectedValue(provider);
+    await expect(generateProjectSources(board, [], null, signal)).rejects.toBe(
+      provider,
+    );
+  });
+  it("preserves cancellation during an SDK retry instead of reporting quota", async () => {
+    const aborted = new RetryError({
+      message: "Aborted during retry",
+      reason: "abort",
+      errors: [new APICallError({
+        message: "Quota exhausted",
+        url: "https://api.openai.com/v1/responses",
+        requestBodyValues: {},
+        statusCode: 429,
+        data: { error: { code: "project_spend_limit_exceeded" } },
+      })],
+    });
+    generate.mockRejectedValue(aborted);
+    await expect(generateProjectSources(board, [], null, signal)).rejects.toBe(aborted);
+  });
   it("reports an exhausted response budget even when the SDK output getter throws", async () => {
     generate.mockResolvedValue({
       finishReason: "length",

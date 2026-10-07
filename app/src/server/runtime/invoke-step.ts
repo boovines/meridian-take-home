@@ -116,7 +116,12 @@ export function invocationFailure(error: unknown): RuntimeError {
           (error instanceof Error && error.name === "ZodError")
         ? "implementation"
         : known &&
-            ["SANDBOX_UNAVAILABLE", "MODEL_UNAVAILABLE"].includes(error.code)
+            [
+              "SANDBOX_UNAVAILABLE",
+              "MODEL_UNAVAILABLE",
+              "MODEL_PROJECT_SPEND_LIMIT",
+              "MODEL_QUOTA_EXCEEDED",
+            ].includes(error.code)
           ? "infrastructure"
           : "unknown";
   return {

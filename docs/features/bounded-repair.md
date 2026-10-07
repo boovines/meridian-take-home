@@ -8,6 +8,8 @@ Acceptance compares individual assertion identities within the same suite. Every
 
 Repair can change step implementation and Agent prompts within approved methods. The platform reassembles the frozen graph, plan, launcher and human gates. The model cannot rewrite expectations, change methods, remove human approval, schedule its own workflow or send reports. It can return `needs_attention` when the approved scope cannot support a fix. Input, infrastructure and unclassified evaluation failures require investigation before starting repair. A syntax/build failure attributable to implementation is repairable.
 
+Known OpenAI project spending caps and exhausted quota stop code generation or repair with a specific explanation after the SDK call returns. The operation does not consume another worker generation invocation for the same quota error. Adding account credit may not change a project cap; restart explicitly after the relevant limit is updated. Provider payloads are not stored in the diagnostic. During workflow execution, these failures are infrastructure errors, not evidence for changing generated code. Transient rate limits keep the existing bounded retry behavior.
+
 ## Persistence and execution
 
 Migration 009 adds `repair_sessions` and `repair_attempts`. A session points to the initial evidence and current accepted baseline; each attempt points to its own starting baseline, candidate and evaluation. Candidate source, completed evaluations, and finished attempts/sessions are immutable. Same-workflow foreign keys and SQL guards constrain plan, suite, parent-code and candidate-evaluation identity. The service computes acceptance against trusted grades; the model's diagnosis is explanatory only.
