@@ -1,6 +1,16 @@
-# Gmail capture and document interpretation
+# Captured Gmail inputs
 
-## Entry points and behavior
+An engineer searches the configured shipment mailbox, chooses existing emails, and captures their contents before running a workflow. Capture reads email without marking it read, editing it, or sending anything. Related messages can be selected together when invoices and certificates arrive separately.
+
+The capture preserves each email's text and envelope plus every attachment. A finished capture is a fixed input packet: retries and evaluations use its saved bytes even if the mailbox later changes. If any attachment fails to download, no partial packet becomes runnable. Retrying capture creates a separate packet.
+
+Open Agent → Run workflow → Capture from Gmail to search and select emails. Existing captured inputs are also available to the evaluation case editor. Workflow steps may ask to interpret supported captured documents; unreadable or unsupported requested files stop that step with an error.
+
+Setup and live verification commands are in the app README.
+
+## Implementation contract
+
+### Entry points and behavior
 
 The engineer searches existing messages for a workflow, with ordinary Gmail search terms or a shipment reference. Results show subject, sender, received time, and pagination. The engineer explicitly selects messages and supplies the shipment reference used to label the saved packet. No mailbox watcher starts runs automatically.
 
@@ -8,7 +18,7 @@ Search and capture are available under Agent → Run workflow → Capture from G
 
 Capture preserves the message text, envelope, and attachment identities, then downloads every attachment. It completes only after every selected message and attachment is available. A disconnected request or provider error can leave retained evidence, but cannot publish a partially captured packet. A retry creates a new capture. Existing workflow runs never re-query Gmail.
 
-## Document reading
+### Document reading
 
 An approved Agent step may request specific documents from that run's saved packet. It receives the interpretation as JSON. The interpretation service can read PDF, PNG, JPEG, WebP, plain text, and CSV. Other formats remain captured but cannot be interpreted by this reader. The service reports unsupported, invalid, or oversized documents as errors; it never substitutes an empty successful extraction.
 
@@ -16,7 +26,7 @@ The step cannot read a different run's uncaptured document, fetch an arbitrary U
 
 Selecting an unsupported attachment is an implementation error that repair may address by correcting document selection. Repair cannot add reader capabilities, discard required evidence, or change the captured input. Invalid document bytes remain an input error requiring attention.
 
-## Limits and exits
+### Limits and exits
 
 A capture accepts 1–10 distinct email selections and a nonblank shipment reference of at most 200 characters. It supports up to 90 attachments, 25 MB per file, 50 MB of attachment bytes per packet, 150 KB of text per email, and 512 KB of combined message/metadata input. Capture has a four-minute deadline. Exceeding a limit leaves no runnable partial packet.
 

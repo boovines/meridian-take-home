@@ -1,5 +1,7 @@
 # Meridian review schema
 
+> Archived interview/design record. Some proposed tables and execution responsibilities were intentionally superseded during implementation. Start with the [documentation index](../../README.md) and [current data-model audit](../../architecture/data-model.md); executable fields and constraints live in [migrations](../../../app/migrations).
+
 October 7, 2026. Design proposal; no migration has been executed. Extends the [canvas schema](meridian-canvas-schema-spec.md).
 
 ## Recommendation

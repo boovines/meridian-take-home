@@ -1,8 +1,8 @@
 # Architecture
 
-Architecture and design contracts · October 7, 2026. Canvas authoring, review/freeze, implementation plans/generation, runtime, evaluations, bounded repair and Gmail ingestion are implemented. A real packet completes end to end; full-dataset shipment accuracy remains incomplete. See `implementation-status.md` for measured outcomes and `app/migrations` for executable schema.
+Architecture and design contracts · October 7, 2026. Canvas authoring, review/freeze, implementation plans/generation, runtime, evaluations, bounded repair and Gmail ingestion are implemented. A real packet completes end to end; full-dataset shipment accuracy remains incomplete. See [implementation status](../implementation-status.md) for measured outcomes and [migrations](../../app/migrations) for executable schema.
 
-Start with the revised [Whiteboard PRD](whiteboard-prd.md) and [Self-Healing Agent PRD](self-healing-agent-prd.md). Detailed fields and constraints are in the [canvas](../.plans/meridian-canvas-schema-spec.md), [review](../.plans/meridian-review-schema-spec.md), [engineering](../.plans/meridian-engineering-schema-spec.md), and [runtime](../.plans/meridian-runtime-schema-spec.md) specs.
+Start with the revised [Whiteboard PRD](../product/whiteboard.md) and [Self-Healing Agent PRD](../product/self-healing-agent.md). Current table rationale is in the [data-model audit](data-model.md); exact fields and constraints are defined by [migrations](../../app/migrations). [Archived interview proposals](../archive/interviews/README.md) preserve earlier alternatives and are not the executable schema.
 
 ## System boundaries
 
@@ -54,7 +54,7 @@ Use same-workflow composite foreign keys on owned relationships and same-run key
 
 ## Data relationships
 
-These diagrams show selected relationships, not every column or foreign key. Full definitions and nullability are in `app/migrations`; the schema specs retain planning context. Temporal is the selected scheduling authority. Runtime split/join state lives in Temporal. Step records expose stable branch references for inspection; no separate parallel-group/branch tables are implemented. Omit custom database worker leases; derive progress from Temporal-owned transitions. The [decision audit](data-model-decisions.md) explains this boundary and the alternatives.
+These diagrams show selected relationships, not every column or foreign key. Full definitions and nullability are in `app/migrations`; the schema specs retain planning context. Temporal is the selected scheduling authority. Runtime split/join state lives in Temporal. Step records expose stable branch references for inspection; no separate parallel-group/branch tables are implemented. Omit custom database worker leases; derive progress from Temporal-owned transitions. The [decision audit](data-model.md) explains this boundary and the alternatives.
 
 ```mermaid
 erDiagram
@@ -129,4 +129,4 @@ Mutable nodes benefit from independent updates; frozen graphs and sealed input m
 
 The implemented path covers canvas/review/freeze, approved plans and source generation, runtime execution, locked evaluations, bounded repair, Gmail capture, and manual report previews. One active expensive operation includes manual runs waiting for a human. Freeze requires a desired outcome, a completed review, resolved findings and structural validity. Runs record fixed limits of 100 scheduled attempts and 900 active seconds, excluding human wait time.
 
-Evaluation starts explicitly in the current UI; automatic first evaluation remains deferred. Hosted artifact storage and app access protection need deployment configuration. Typed runtime contracts live in `app/src/domain`; captured reference cases remain private local/runtime data. See [implementation status](implementation-status.md) for actual live outcomes and [verification](verification.md) for required checks. Local Mermaid diagrams reflect the implementation; the shared Excalidraw drawing has not been edited.
+Evaluation starts explicitly in the current UI; automatic first evaluation remains deferred. Hosted artifact storage and app access protection need deployment configuration. Typed runtime contracts live in `app/src/domain`; captured reference cases remain private local/runtime data. See [implementation status](../implementation-status.md) for actual live outcomes and [verification](../verification.md) for required checks. Local Mermaid diagrams reflect the implementation; the shared Excalidraw drawing has not been edited.

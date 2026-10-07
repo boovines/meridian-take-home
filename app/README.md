@@ -1,6 +1,6 @@
 # Application
 
-Next.js/React application for the Meridian take-home: process whiteboards, AI review, frozen handoff, generated agents, Gmail input capture, isolated execution, trusted evaluations and bounded repair. Measured verification and remaining limitations are tracked in `../docs/implementation-status.md`.
+Next.js/React application for the Meridian take-home: process whiteboards, AI review, frozen handoff, generated agents, Gmail input capture, isolated execution, trusted evaluations and bounded repair. Start with the [documentation index](../docs/README.md). Measured verification and remaining limitations are tracked in [implementation status](../docs/implementation-status.md).
 
 ## Run locally
 
@@ -23,6 +23,7 @@ The current server binds to localhost. Do not expose a hosted deployment without
 ## Verify changes
 
 ```sh
+npm run docs:check
 npm run lint
 npm run typecheck
 npm test
@@ -103,17 +104,17 @@ For Vercel Sandbox development, link the dedicated project with Vercel CLI and o
 
 ## Runtime verification
 
-The [runtime guide](../docs/workflow-runtime.md) explains routing, human waits, limits, history and live recovery verification. Manual run controls and Gmail capture are available under Agent → Run workflow. Generated code only executes inside Vercel Sandbox. The worker owns all scheduling, and SQL records progress without a second scheduler.
+The [runtime guide](../docs/features/workflow-runtime.md) explains routing, human waits, limits, history and live recovery verification. Manual run controls and Gmail capture are available under Agent → Run workflow. Generated code only executes inside Vercel Sandbox. The worker owns all scheduling, and SQL records progress without a second scheduler.
 
 ## Evaluation verification
 
-The [evaluation guide](../docs/trusted-evaluations.md) describes authoring, verification, suite revisions and the results inspector. Apply migration 008 and restart the worker before evaluating. `npm run evaluation:smoke -- --live` creates a synthetic three-case suite and uses real Temporal child workflows and Vercel Sandbox. It expects one pass, one deliberate assertion failure, and one missing-human-fixture error: a completed, inconclusive evaluation. It does not verify Gmail or shipment accuracy.
+The [evaluation guide](../docs/features/trusted-evaluations.md) describes authoring, verification, suite revisions and the results inspector. Apply migration 008 and restart the worker before evaluating. `npm run evaluation:smoke -- --live` creates a synthetic three-case suite and uses real Temporal child workflows and Vercel Sandbox. It expects one pass, one deliberate assertion failure, and one missing-human-fixture error: a completed, inconclusive evaluation. It does not verify Gmail or shipment accuracy.
 
 Required CI includes suite locking/revision checks, full result coverage, late-attempt fencing, cancellation, fixed input ownership, and a browser journey that corrects expectations in a new suite while preserving earlier results. The guarded local fixture executor uses the engineering fixture flags; it never executes source and is labeled in the results view. Full live suites have a four-hour deadline in addition to per-case runtime limits. Expected values remain outside generated code's sandbox.
 
 ## Bounded repair
 
-The [repair guide](../docs/bounded-repair.md) explains the three-attempt loop, baseline decisions and fixed scope. Choose Repair and rerun from an eligible evaluation; inspect candidates and their evaluations in Repair history. Suite corrections require explicit new verification and a fresh baseline evaluation. Runtime/model work stays on the Temporal worker, with generated execution isolated in Vercel Sandbox.
+The [repair guide](../docs/features/bounded-repair.md) explains the three-attempt loop, baseline decisions and fixed scope. Choose Repair and rerun from an eligible evaluation; inspect candidates and their evaluations in Repair history. Suite corrections require explicit new verification and a fresh baseline evaluation. Runtime/model work stays on the Temporal worker, with generated execution isolated in Vercel Sandbox.
 
 `npm run repair:smoke -- --live` is an optional synthetic live check using OpenAI, Temporal, Supabase and Sandbox. It consumes live resources and is separate from required CI fixtures. It does not retrieve or send email.
 
@@ -121,7 +122,7 @@ The [repair guide](../docs/bounded-repair.md) explains the three-attempt loop, b
 
 Set `COMPOSIO_API_KEY` and `COMPOSIO_GMAIL_CONNECTED_ACCOUNT_ID` for the existing read-only connection. The adapter resolves its connected-account user and pins the verified Gmail tool version. Only search, message fetch, and attachment fetch are exposed. It never sends mail or updates labels.
 
-`GET /api/workflows/:id/gmail/messages?query=...` returns 25 messages per page. `POST /api/workflows/:id/gmail/capture` takes `message_ids` and `shipment_reference`, saving all attachments before publishing an input bundle. Capture is a bounded foreground request (four minutes), not another scheduler. Large packets may require a future durable capture job; a failed capture does not become runnable. See [capture behavior and limits](../docs/gmail-inputs.md).
+`GET /api/workflows/:id/gmail/messages?query=...` returns 25 messages per page. `POST /api/workflows/:id/gmail/capture` takes `message_ids` and `shipment_reference`, saving all attachments before publishing an input bundle. Capture is a bounded foreground request (four minutes), not another scheduler. Large packets may require a future durable capture job; a failed capture does not become runnable. See [capture behavior and limits](../docs/features/gmail-inputs.md).
 
 ```sh
 npm run gmail:smoke -- --live --message <message-id> --shipment <reference> --pdf <invoice-filename>

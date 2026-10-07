@@ -2,7 +2,7 @@
 
 From a completed evaluation with implementation failures, the engineer chooses **Repair and rerun**. A session fixes its approved plan, locked suite, starting code and starting evaluation. It generates at most three candidates. Each candidate gets a full evaluation before any acceptance decision; partial or inconclusive evidence never establishes an accepted baseline.
 
-When a candidate cannot compile, its evaluation shows a bounded compiler excerpt with the affected file and line. The next attempt receives the same evidence. All cases remain unrun, and the retained baseline stays unchanged. Operational provider details are excluded from that excerpt. See the [implemented behavior](../specs/bounded-repair.md) for the complete repair contract.
+When a candidate cannot compile, its evaluation shows a bounded compiler excerpt with the affected file and line. The next attempt receives the same evidence. All cases remain unrun, and the retained baseline stays unchanged. Operational provider details are excluded from that excerpt.
 
 Acceptance compares individual assertion identities within the same suite. Every previously passing assertion must still pass. A candidate that preserves those passes can become the next baseline even if other assertions still fail; a regressing candidate remains in history and the next attempt starts from the retained baseline. Later attempts receive earlier candidates' assertion results and execution errors, traces for cases with remaining failures, regressions or execution errors, and the most recent candidate's changed step source. This lets them inspect new evidence from unsuccessful attempts without adopting rejected code as the baseline. All verified assertions passing ends the session. Three attempts, a required engineer decision, or the fixed two-hour operation limit ends it with an explicit status. Another session requires a new engineer action.
 
@@ -31,3 +31,29 @@ Required service tests cover regression rejection, candidate ancestry, complete 
 For a separate live check, start the worker and run `npm run repair:smoke -- --live` from `app/`. It creates a synthetic workflow with explicit counting requirements and deliberately faulty code, verifies three cases, runs an actual baseline evaluation, and requests actual OpenAI repair through Temporal and Vercel Sandbox.
 
 On October 7 the live workflow `9624637b-bb82-48e2-99eb-7fb242af83cf` produced a failed baseline (`3343a611-cfee-4224-916f-8031e96f8639`, 2/3 cases passing). Session `c41fc32b-ae5c-4450-8f26-76f6119fadcd` repaired the failed-good count in one attempt. Evaluation `334ea8fa-3422-4133-b220-176ad3d51e96` passed all three cases and promoted code v3. This verifies synthetic repair, not Gmail ingestion, PDF extraction or the supplied shipment ground truth.
+
+## Implementation contract
+
+Entry point: engineer workspace → Evaluation → failed evaluation → Repair and rerun. History remains within the Evaluation tab. Read-only project/diff inspection uses the existing Agent view; generated versions remain downloadable.
+
+### Contract and ownership
+
+`POST /api/workflows/:id/repairs` accepts a UUID request key and baseline evaluation ID. Reusing the same key and baseline returns the existing session; changing that request conflicts. Only a completed/blocked evaluation with repairable implementation evidence, the latest locked suite and an approved plan can start. The workflow's exclusive operation slot prevents competing generation, execution, evaluation or repair. `GET /repairs` lists the latest 20 sessions and the selected session's bounded attempts; `GET /repairs/:sessionId` retrieves older selected history. Cancellation uses the existing job endpoint.
+
+`domain/repair.ts` validates requests and baseline eligibility. `domain/grading.ts` compares exact case/suite/assertion coverage and preserves previous passes. `server/repairs/service.ts` enforces transactions, ancestry, invocation ownership, acceptance and terminal history. `generation-service.ts` handles complete artifact checkpoints and project assembly. The OpenAI adapter receives frozen requirements, approved methods, baseline source, trusted cases/results, and case-associated step traces. Earlier attempts contribute their diagnoses, assertion results and execution errors. Their included traces are limited to cases with failed assertions, lost previously passing assertions or errors/incomplete evidence. Only the most recent earlier candidate contributes complete changed step source relative to the retained baseline; the prompt identifies these selections explicitly. This evidence stays labeled by candidate and attempt; rejected source never becomes the starting implementation. The model context is limited to 400 KB, including a shared trace-output allowance of at most 160 KB before JSON encoding. Raw final outputs are omitted from the prompt when exact grades and traces already represent them. Baseline and prior candidate trace previews share a bounded budget and are explicitly labeled when shortened; occurrence coverage is reported separately for each evaluation. Full evidence remains stored, and locked assertions and source are never shortened. If required context still exceeds the limit, repair needs engineer attention.
+
+`worker/repair-workflow.ts` runs up to three generation/evaluation/decision cycles within the recorded two-hour job deadline. Each candidate evaluation reuses the ordinary suite and workflow execution paths under the existing repair job. Evaluation completion does not finish the repair job. The host reassembles fixed project scaffolding and never lets candidate code edit trusted tests or choose its own acceptance result.
+
+### Observable outcomes
+
+If generated code cannot compile, the evaluation retains the compiler's file, line and error excerpt. The next repair attempt receives that evidence with the rejected candidate's source. Compiler text is bounded; private provider diagnostics are excluded. No case is counted as passing or failing its business assertions when the shared build check prevents execution.
+
+- Passed: a candidate preserves every previous pass and the complete locked suite passes.
+- Rejected attempt: a regression, execution error, missing coverage or inconclusive result leaves the baseline unchanged; the candidate is still inspectable.
+- Accepted attempt with remaining failures: the candidate becomes the baseline and repair continues within the limit.
+- Needs attention: the three-attempt/time limit, a scope/method decision, or newly discovered non-implementation blocker stops autonomous work.
+- Failed/cancelled: the service retains attempted source and finished results, closes unfinished projections and fences late writes. The engineer can inspect and explicitly start another session when eligible.
+
+A suite correction creates a new version, requests active repair cancellation, preserves old expectations/results, and requires a fresh baseline evaluation before another session. No automatic method changes, test rewriting, post-freeze process revisions, IDE edit import, outbound delivery or unlimited retry is implemented.
+
+Verification evidence and the live command are recorded above. The current demo has no production load test or unbounded history pagination.

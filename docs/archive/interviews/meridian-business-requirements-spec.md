@@ -1,5 +1,7 @@
 # Meridian business requirements
 
+> Archived interview/design record. Some proposed tables and execution responsibilities were intentionally superseded during implementation. Start with the [documentation index](../../README.md) and [current data-model audit](../../architecture/data-model.md); executable fields and constraints live in [migrations](../../../app/migrations).
+
 Interview checkpoint — October 7, 2026. This completes the initial business-requirements pass, before selecting tables, column types, indexes, or infrastructure. Later decisions can refine this document.
 
 ## Product goal

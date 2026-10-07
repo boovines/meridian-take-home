@@ -36,7 +36,8 @@ jobs:
           fi
           test -f README.md
           test -f app/README.md
-          test -f docs/architecture.md
+          test -f docs/README.md
+          test -f docs/architecture/overview.md
           test -f docs/verification.md
           test -f CONTRIBUTING.md
           test -f AGENTS.md
@@ -58,6 +59,7 @@ jobs:
           cache: npm
           cache-dependency-path: app/package-lock.json
       - run: npm ci
+      - run: npm run docs:check
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run worker:check

@@ -1,8 +1,27 @@
-# Trusted evaluations
+# Evaluate an agent
+
+Use **Evaluation** in `/workflows/:id/engineer` to compare a code version against verified examples. A syntax check only establishes that code can be parsed; an evaluation checks its behavior.
+
+1. Create a test suite and add full-workflow or one-step cases. Workflow cases use captured inputs; step cases accept a JSON context.
+2. Add expected values and output paths. Inspect the inputs and confirm the expected answers with **Verify inputs & answers**.
+3. Lock the suite, select a code version, and choose **Run full suite**.
+4. Open **Results & history** to compare values, inspect errors, or expand the step trace. Closing the page does not interrupt the work.
+
+The results view keeps the case list beside its details. A pass means every check passed. Failed means a conclusive comparison disagreed. Inconclusive means evidence is incomplete, such as an execution error, missing human fixture, cancellation, or build blocker. Independent cases continue after an individual failure.
+
+Correct an expected answer by creating a suite revision. Earlier expectations and results remain available; revised cases need verification again. **Run these versions again** repeats the exact historical code/suite pairing as a new evaluation.
+
+When final totals do not explain a failure, add independently checked evidence comparisons in a new suite revision. For example, compare the invoice number, required fields and source document against the original page. Use a descriptive label that names that page. Preserve the existing totals; a more detailed check should diagnose a mismatch, not redefine success to match the agent. Array positions can appear as string keys in an output path, and comparisons are exact.
+
+The operation banner allows cancellation. The Agent tab also shows the latest evaluation status for its selected version. Full-workflow human actions use scripted responses for each visit; automated tests do not wait for a person. Reports are captured without sending email.
+
+Bounded repair and Gmail capture are available; see [bounded repair](bounded-repair.md) and [capturing inputs](gmail-inputs.md). Evaluations start explicitly after generation. One-step cases use supplied JSON context; document extraction should be checked through a full-workflow case with captured documents. Current fixtures verify the interface and grading flow, not shipment accuracy.
+
+## Implementation contract
 
 The engineer checks generated behavior against independently verified expectations in the Evaluation tab at `/workflows/:id/engineer`. A suite is a versioned collection of cases. An evaluation binds one locked suite to one immutable code version. Finishing the operation and passing the tests are separate outcomes.
 
-## Authoring and verification
+### Authoring and verification
 
 The Test cases view lets the engineer create a named suite, add cases, inspect inputs, edit or remove draft cases, verify each case, and lock the suite. Every case has a name and at least one exact comparison. A comparison selects an output path using a JSON array of keys and declares an expected JSON value. Array positions use string keys such as "0". An empty path compares the entire output. Object key order does not matter; array order does. A missing field is different from an explicit null. Comparison labels can identify the independently inspected source page. Engineers can check source evidence as well as final totals when that evidence is included in the final output; the system does not create or verify these expectations automatically.
 
@@ -12,7 +31,7 @@ Full-workflow cases can include scripted human responses keyed to a block and it
 
 Save case records a draft, not a verified answer. Verify inputs & answers is the engineer's explicit confirmation of the current case. Any subsequent edit clears that confirmation. Conflicting edits fail and leave the form text available. Lock verified suite requires at least one case and verification of all cases. Locked cases cannot be edited or removed. Create suite revision copies the cases into a new draft, clears their verification, and preserves the earlier suite and results. Only one draft suite is allowed per workflow.
 
-## Running and inspecting
+### Running and inspecting
 
 Run full suite uses the selected code and locked suite. One expensive operation can run per workflow; existing cases, code, and results remain inspectable. Work survives closing the browser. The operation banner reports phase and allows cancellation.
 
@@ -22,7 +41,7 @@ Results & history shows the exact code/suite pairing, outcome, and number of cas
 
 The Agent tab reports the most recent evaluation of its selected code version and the associated suite number. Syntax validation remains a separate claim.
 
-## Completion rules and limits
+### Completion rules and limits
 
 - **Passed:** every case completed and every comparison passed.
 - **Failed:** all cases were evaluated conclusively and at least one comparison failed.
@@ -32,7 +51,7 @@ The Agent tab reports the most recent evaluation of its selected code version an
 - The operation has a four-hour limit. Each full-workflow case also retains the runtime's fixed step and active-time limits. The worker has bounded infrastructure retries; late attempts cannot replace a newer result.
 - No email is sent. Output reports remain data available for inspection.
 
-## Constraints and pending work
+### Constraints and pending work
 
 The current UI starts evaluations explicitly; generation does not start them automatically. Autonomous repair and Gmail input capture are implemented as separate features. There is no OCR benchmark library, arbitrary test-code editor, selected-case acceptance run, or import of IDE changes. Step checks currently compare JSON outputs, rather than accepting arbitrary engineer-authored test scripts. They do not accept a captured document bundle; document extraction checks require a full-workflow case. Exact comparisons do not normalize formatting or match unordered collections automatically.
 

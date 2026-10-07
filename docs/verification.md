@@ -7,7 +7,7 @@ CI runs on every pull request, including stacked PRs targeting another feature b
 | Check | Coverage |
 | --- | --- |
 | `scaffold` | Required repository files and whitespace errors |
-| Static checks and worker bundle | ESLint, TypeScript, and Temporal workflow bundling |
+| Static checks and worker bundle | Documentation links/navigation, ESLint, TypeScript, and Temporal workflow bundling |
 | Test suite (pglite) | Every `tests/**/*.test.ts` test using isolated in-memory persistence, including local Temporal cancellation tests |
 | Test suite (postgres) | The same complete suite against PostgreSQL 17, including migrations and transactional service behavior |
 | Production build and browser journeys | Next.js production build and every `tests/browser` journey using sanitized fixtures and isolated local persistence |

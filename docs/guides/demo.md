@@ -4,7 +4,7 @@ The demo uses the same whiteboard, generation, runtime and evaluation services a
 
 ## Prepare
 
-Follow [app setup](../app/README.md). Start the web app and the Temporal worker in separate terminals. Use the configured Supabase database, OpenAI project, read-only Composio Gmail connection, and Vercel Sandbox project. Keep source documents and expected-answer manifests in ignored local storage. A local demo can use local artifacts; hosting needs the configured private Supabase storage and access protection.
+Follow [app setup](../../app/README.md). Start the web app and the Temporal worker in separate terminals. Use the configured Supabase database, OpenAI project, read-only Composio Gmail connection, and Vercel Sandbox project. Keep source documents and expected-answer manifests in ignored local storage. A local demo can use local artifacts; hosting needs the configured private Supabase storage and access protection.
 
 From `app/`, `npm run demo:seed -- --create --incomplete` creates an intentionally incomplete five-block draft. Omit `--incomplete` to start with the full example requirements. Each invocation creates a new workflow and prints its path. It does not review, freeze, capture mail, or execute anything automatically.
 
@@ -42,7 +42,7 @@ Only after checking every answer against an independent reference, add `--verifi
 
 An execution error means the case could not produce a valid answer; it is different from a completed result with incorrect counts. A report containing business failures can be the correct expected result. Never revise reference totals to hide a mismatch. Keep the frozen process and suite unchanged during repair, and show unresolved cases if the bounded session cannot fix them.
 
-Use [implementation status](implementation-status.md) for the latest measured outcomes, [runtime behavior](workflow-runtime.md) for limits and retries, and [bounded repair](bounded-repair.md) for acceptance rules.
+Use [implementation status](../implementation-status.md) for the latest measured outcomes, [runtime behavior](../features/workflow-runtime.md) for limits and retries, and [bounded repair](../features/bounded-repair.md) for acceptance rules.
 
 ## Independent policy counterexamples
 
