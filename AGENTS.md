@@ -1,6 +1,7 @@
 # Repository conventions
 
 - Read `CONTRIBUTING.md` before implementation. Work on a feature branch and open a PR; do not push directly to `main`.
+- Leave feature PRs open. Stack dependent work on its predecessor branch and test the combined implementation locally. Passing CI is not permission to merge; wait for Justin's explicit approval.
 - Run checks appropriate to the change and report actual results. Do not claim scaffold CI verifies app behavior.
 - When initializing the app, add real lint, typecheck, and build commands to CI. Add focused business-rule, persistence, and browser tests as their features land, following `docs/verification.md`.
 - Keep expected evaluation answers independently reviewed and fixed during repair. Do not change expected answers just to make failing implementation pass.

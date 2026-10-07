@@ -53,6 +53,18 @@ export async function checkEvaluationBuild(
     return { ok: true };
   } catch (error) {
     if (cancellationSignal().aborted) throw error;
+    const implementation =
+      error instanceof DomainError && error.code === "PROJECT_BUILD_FAILED";
+    // Only the isolated compiler's bounded diagnostic belongs in repair evidence.
+    // Provider errors may include private request details and are not code failures.
+    const diagnostic =
+      implementation &&
+      error.details !== null &&
+      typeof error.details === "object" &&
+      "diagnostic" in error.details &&
+      typeof error.details.diagnostic === "string"
+        ? error.details.diagnostic.slice(0, 2400)
+        : "";
     return {
       ok: false,
       error: {
@@ -60,12 +72,9 @@ export async function checkEvaluationBuild(
           error instanceof DomainError ? error.code : "BUILD_CHECK_UNAVAILABLE",
         message:
           error instanceof DomainError
-            ? error.message
+            ? error.message + (diagnostic ? `\n${diagnostic}` : "")
             : "The isolated build check could not run.",
-        category:
-          error instanceof DomainError && error.code === "PROJECT_BUILD_FAILED"
-            ? "implementation"
-            : "infrastructure",
+        category: implementation ? "implementation" : "infrastructure",
       },
     };
   } finally {
