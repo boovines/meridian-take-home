@@ -367,9 +367,10 @@ export class RepairService {
             result.check_results.filter((check) => check.passed),
           ]),
         );
-        const regressionCases = results
+        const diagnosticCases = results
           .filter(
             (result) =>
+              result.outcome === "failed" ||
               result.outcome === "error" ||
               result.outcome === "not_run" ||
               priorPasses
@@ -386,15 +387,15 @@ export class RepairService {
           ...prior,
           candidate_trace_scope: {
             selection:
-              "Cases with previously passing assertions lost, or execution errors/incomplete evidence. Other candidate traces remain stored but are not included.",
-            case_ids: regressionCases,
+              "Cases with failed assertions, previously passing assertions lost, or execution errors/incomplete evidence. Passing non-regressing cases remain stored but are not included.",
+            case_ids: diagnosticCases,
           },
           candidate_traces: prior.evaluation_run_id
             ? await evaluationTraces(
                 this.db,
                 session.workflow_id,
                 prior.evaluation_run_id,
-                regressionCases,
+                diagnosticCases,
               )
             : [],
           candidate_results: results.map((result) => ({

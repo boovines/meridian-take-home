@@ -73,7 +73,9 @@ export function repairPrompt(
       (count, attempt) => count + attempt.candidate_traces.length,
       0,
     );
-  let outputLimit = Math.min(6000, Math.floor(80000 / Math.max(1, traceCount)));
+  // Reserve a bounded trace pool alongside full source, case definitions and grades.
+  // A multi-case suite can exceed 200 KB before any useful outputs are included.
+  let outputLimit = Math.min(6000, Math.floor(160000 / Math.max(1, traceCount)));
   while (outputLimit >= 64) {
     const traces = (rows: Record<string, unknown>[]) =>
       rows.map(({ output_data, ...trace }) => ({
@@ -115,9 +117,9 @@ export function repairPrompt(
       candidate_source_scope:
         "Complete changed step source for the most recent earlier candidate only, relative to baseline_project. Older source remains stored for inspection.",
       evidence_note:
-        "Raw final outputs are omitted because exact assertion results and step traces are supplied. The included candidate step sources are complete and compared with the retained baseline; omitted step files for that candidate are unchanged. They are diagnostic evidence only: repair baseline_project, do not adopt a rejected project. Inspect candidate traces and source together when a prior fix introduced a regression. Large trace outputs use explicitly marked JSON previews, which may end mid-value. A truncated preview is not missing business evidence. Full outputs remain stored for inspection; do not infer unseen values or fabricate a fix when necessary evidence is unavailable.",
+        "Raw final outputs are omitted because exact assertion results and step traces are supplied. The included candidate step sources are complete and compared with the retained baseline; omitted step files for that candidate are unchanged. They are diagnostic evidence only: repair baseline_project, do not adopt a rejected project. Inspect candidate traces and source together for remaining failures as well as regressions: a rejected candidate may reveal new evidence even when an assertion still fails. Large trace outputs use explicitly marked JSON previews, which may end mid-value. A truncated preview is not missing business evidence. Full outputs remain stored for inspection; do not infer unseen values or fabricate a fix when necessary evidence is unavailable.",
     });
-    if (Buffer.byteLength(prompt) <= 200000) return prompt;
+    if (Buffer.byteLength(prompt) <= 400000) return prompt;
     outputLimit = Math.floor(outputLimit / 2);
   }
   throw new DomainError(

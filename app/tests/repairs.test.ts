@@ -127,6 +127,12 @@ async function prepared(withWorkflowCase = false) {
             path: ["shipment"],
             expected: "SYNTHETIC-001",
           },
+          {
+            key: "goods",
+            label: "Failed goods",
+            path: ["failed_goods"],
+            expected: 1,
+          },
         ],
       }),
     );
@@ -300,7 +306,7 @@ it("rejects regression by assertion identity, keeps rejected code, and repairs f
     })),
   };
   const prompt = repairPrompt(largeContext, project);
-  expect(Buffer.byteLength(prompt)).toBeLessThanOrEqual(200000);
+  expect(Buffer.byteLength(prompt)).toBeLessThanOrEqual(400000);
   const evidence = JSON.parse(prompt);
   expect(evidence.locked_cases).toEqual(
     JSON.parse(JSON.stringify(context.cases)),
@@ -319,7 +325,7 @@ it("rejects regression by assertion identity, keeps rejected code, and repairs f
           ...c,
           assertions: c.assertions.map((a) => ({
             ...a,
-            expected: "fixed expectation ".repeat(20000),
+            expected: "fixed expectation ".repeat(40000),
           })),
         })),
       },
@@ -351,189 +357,201 @@ it("rejects regression by assertion identity, keeps rejected code, and repairs f
     ]),
   ).rejects.toMatchObject({ code: "23514" });
 });
-it("supplies rejected candidate source and its own traces to the next generation without adopting it", async () => {
-  const { f, job } = await prepared(true);
-  const first = await repairs.beginAttempt(job.id, 1);
-  const changedNode = f.nodes[1].id;
-  const published = await generation.run(
-    first.id,
-    {
-      ...generator,
-      generate: async (context) => {
-        const result = await generator.generate(context);
-        result.project.steps
-          .find((step) => step.node_id === changedNode)!
-          .source_lines.push(
-            "// rejected extraction prompt: use only fields explicitly labeled REG",
-          );
-        return result;
+it.each(["regressing", "still-failing"])(
+  "supplies rejected candidate source and %s case traces without adopting it",
+  async (scenario) => {
+    const { f, job } = await prepared(true);
+    const first = await repairs.beginAttempt(job.id, 1);
+    const changedNode = f.nodes[1].id;
+    const published = await generation.run(
+      first.id,
+      {
+        ...generator,
+        generate: async (context) => {
+          const result = await generator.generate(context);
+          result.project.steps
+            .find((step) => step.node_id === changedNode)!
+            .source_lines.push(
+              "// rejected extraction prompt: use only fields explicitly labeled REG",
+            );
+          return result;
+        },
       },
-    },
-    AbortSignal.timeout(10000),
-  );
-  const evaluation = await repairs.createEvaluation(first.id);
-  const ready = (await evals.prepare(job.id, evaluation.id))!;
-  const versions = new VersionService(db, artifacts);
-  const execution = new EvaluationExecutionService(db, versions);
-  const runs = new RunService(db),
-    steps = new StepService(db, versions);
-  const actual = {
-    shipment: "WRONG",
-    failed_goods: 1,
-    extracted: { reg: null },
-  };
-  const adapters = {
-    invoke: async (_project: unknown, nodeId: string) => ({
-      kind: "complete",
-      output: actual,
-      matching_connection_ids: f.board.connections
-        .filter((edge) => edge.source_node_id === nodeId)
-        .map((edge) => edge.id),
-    }),
-    reason: async () => ({}),
-  };
-  for (const result of ready.results) {
-    const task = await evals.beginCase(result.id);
-    if (task.skip) throw new Error("Expected an unevaluated case");
-    if (task.kind === "step") {
-      await execution.step(result.id, adapters, AbortSignal.timeout(10000));
-      continue;
+      AbortSignal.timeout(10000),
+    );
+    const evaluation = await repairs.createEvaluation(first.id);
+    const ready = (await evals.prepare(job.id, evaluation.id))!;
+    const versions = new VersionService(db, artifacts);
+    const execution = new EvaluationExecutionService(db, versions);
+    const runs = new RunService(db),
+      steps = new StepService(db, versions);
+    const actual = {
+      shipment: scenario === "regressing" ? "WRONG" : "SYNTHETIC-001",
+      failed_goods: scenario === "regressing" ? 1 : 2,
+      extracted: { reg: null, newly_observed_detail: "candidate-only evidence" },
+    };
+    const adapters = {
+      invoke: async (
+        _project: unknown,
+        nodeId: string,
+        input: Record<string, Json>,
+      ) => ({
+        kind: "complete",
+        // Keep the candidate rejected by the independent step case while the
+        // workflow case can remain incorrect without losing a previously passing check.
+        output: (input.input as Record<string, Json>).missing_fields
+          ? { ...actual, shipment: "WRONG" }
+          : actual,
+        matching_connection_ids: f.board.connections
+          .filter((edge) => edge.source_node_id === nodeId)
+          .map((edge) => edge.id),
+      }),
+      reason: async () => ({}),
+    };
+    for (const result of ready.results) {
+      const task = await evals.beginCase(result.id);
+      if (task.skip) throw new Error("Expected an unevaluated case");
+      if (task.kind === "step") {
+        await execution.step(result.id, adapters, AbortSignal.timeout(10000));
+        continue;
+      }
+      const context = (await runs.prepareCase(task.run_id))!;
+      const engine = new RuntimeEngine(task.run_id, context.definition, {
+        now: () => Date.now(),
+        scriptedHuman: true,
+        changed() {},
+        project: (progress) => runs.project(task.run_id, progress),
+        step: (data, resume) =>
+          steps.execute(data, adapters, AbortSignal.timeout(10000), resume),
+        human: async () => {
+          throw new Error("No human step in this fixture");
+        },
+      });
+      await runs.finishCase(task.run_id, await engine.run());
+      await execution.workflow(result.id);
     }
-    const context = (await runs.prepareCase(task.run_id))!;
-    const engine = new RuntimeEngine(task.run_id, context.definition, {
-      now: () => Date.now(),
-      scriptedHuman: true,
-      changed() {},
-      project: (progress) => runs.project(task.run_id, progress),
-      step: (data, resume) =>
-        steps.execute(data, adapters, AbortSignal.timeout(10000), resume),
-      human: async () => {
-        throw new Error("No human step in this fixture");
-      },
-    });
-    await runs.finishCase(task.run_id, await engine.run());
-    await execution.workflow(result.id);
-  }
-  await evals.finish(job.id, undefined, false, evaluation.id);
-  expect((await repairs.decide(first.id)).attempt.status).toBe("rejected");
-  const second = await repairs.beginAttempt(job.id, 2);
-  const { project: retained } = await versions.load(f.w.id, f.version.id);
-  const { project: rejected } = await versions.load(
-    f.w.id,
-    published.candidate_version_id!,
-  );
-  let observed = false;
-  await generation.run(
-    second.id,
-    {
-      ...generator,
-      generate: async (context, baseline, _signal, sources) => {
-        observed = true;
-        expect(baseline).toEqual(retained);
-        expect(sources).toEqual([
-          {
-            attempt_number: 1,
-            candidate_version_id: published.candidate_version_id,
-            changed_steps: [
-              {
-                node_id: changedNode,
-                path: rejected.node_file_map[changedNode],
-                source: rejected.files[rejected.node_file_map[changedNode]],
-              },
-            ],
-          },
-        ]);
-        const prior = context.previous_attempts[0];
-        expect(prior.candidate_traces).toEqual(
-          expect.arrayContaining([
-            expect.objectContaining({
-              node_id: changedNode,
-              output_data: actual,
-            }),
-          ]),
-        );
-        expect(context.traces).toEqual([]);
-        const enlarged = {
-          ...context,
-          previous_attempts: context.previous_attempts.map((attempt) => ({
-            ...attempt,
-            candidate_traces: attempt.candidate_traces.map((trace) => ({
-              ...trace,
-              output_data: {
-                ...actual,
-                bulky_evidence: "packet ".repeat(100000),
-              },
-            })),
-          })),
-        };
-        const prompt = repairPrompt(enlarged, baseline, sources);
-        const evidence = JSON.parse(prompt);
-        expect(Buffer.byteLength(prompt)).toBeLessThanOrEqual(200000);
-        expect(evidence.baseline_project).toEqual(retained);
-        expect(evidence.previous_candidate_sources).toEqual(sources);
-        expect(
-          evidence.previous_attempts[0].candidate_traces[0].output_data
-            .truncated,
-        ).toBe(true);
-        expect(evidence.previous_attempts[0].trace_coverage).toMatchObject({
-          included: 2,
-          total: 2,
-        });
-        expect(evidence.previous_attempts[0].candidate_results).toEqual(
-          prior.candidate_results,
-        );
-        expect(evidence.locked_cases).toEqual(
-          JSON.parse(JSON.stringify(context.cases)),
-        );
-        expect(() =>
-          repairPrompt(context, baseline, [
+    await evals.finish(job.id, undefined, false, evaluation.id);
+    expect((await repairs.decide(first.id)).attempt.status).toBe("rejected");
+    const second = await repairs.beginAttempt(job.id, 2);
+    const { project: retained } = await versions.load(f.w.id, f.version.id);
+    const { project: rejected } = await versions.load(
+      f.w.id,
+      published.candidate_version_id!,
+    );
+    let observed = false;
+    await generation.run(
+      second.id,
+      {
+        ...generator,
+        generate: async (context, baseline, _signal, sources) => {
+          observed = true;
+          expect(baseline).toEqual(retained);
+          expect(sources).toEqual([
             {
-              ...sources[0],
+              attempt_number: 1,
+              candidate_version_id: published.candidate_version_id,
               changed_steps: [
                 {
-                  ...sources[0].changed_steps[0],
-                  source: "exact source ".repeat(20000),
+                  node_id: changedNode,
+                  path: rejected.node_file_map[changedNode],
+                  source: rejected.files[rejected.node_file_map[changedNode]],
                 },
               ],
             },
-          ]),
-        ).toThrow(/Required repair context exceeds/);
-        return generator.generate(context);
+          ]);
+          const prior = context.previous_attempts[0];
+          expect(prior.candidate_traces).toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({
+                node_id: changedNode,
+                output_data: actual,
+              }),
+            ]),
+          );
+          expect(context.traces).toEqual([]);
+          const enlarged = {
+            ...context,
+            previous_attempts: context.previous_attempts.map((attempt) => ({
+              ...attempt,
+              candidate_traces: attempt.candidate_traces.map((trace) => ({
+                ...trace,
+                output_data: {
+                  ...actual,
+                  bulky_evidence: "packet ".repeat(100000),
+                },
+              })),
+            })),
+          };
+          const prompt = repairPrompt(enlarged, baseline, sources);
+          const evidence = JSON.parse(prompt);
+          expect(Buffer.byteLength(prompt)).toBeLessThanOrEqual(400000);
+          expect(evidence.baseline_project).toEqual(retained);
+          expect(evidence.previous_candidate_sources).toEqual(sources);
+          expect(
+            evidence.previous_attempts[0].candidate_traces[0].output_data
+              .truncated,
+          ).toBe(true);
+          expect(evidence.previous_attempts[0].trace_coverage).toMatchObject({
+            included: 2,
+            total: 2,
+          });
+          expect(evidence.previous_attempts[0].candidate_results).toEqual(
+            prior.candidate_results,
+          );
+          expect(evidence.locked_cases).toEqual(
+            JSON.parse(JSON.stringify(context.cases)),
+          );
+          expect(() =>
+            repairPrompt(context, baseline, [
+              {
+                ...sources[0],
+                changed_steps: [
+                  {
+                    ...sources[0].changed_steps[0],
+                    source: "exact source ".repeat(40000),
+                  },
+                ],
+              },
+            ]),
+          ).toThrow(/Required repair context exceeds/);
+          return generator.generate(context);
+        },
       },
-    },
-    AbortSignal.timeout(10000),
-  );
-  expect(observed).toBe(true);
-  expect((await repairs.state(f.w.id)).sessions[0].baseline_version_id).toBe(
-    f.version.id,
-  );
-  const secondEvaluation = await repairs.createEvaluation(second.id);
-  await record(job.id, secondEvaluation.id, actual);
-  expect((await repairs.decide(second.id)).attempt.status).toBe("rejected");
-  const third = await repairs.beginAttempt(job.id, 3);
-  await generation.run(
-    third.id,
-    {
-      ...generator,
-      generate: async (context, baseline, _signal, sources) => {
-        expect(context.previous_attempts).toHaveLength(2);
-        expect(sources).toHaveLength(1);
-        expect(sources[0].attempt_number).toBe(2);
-        expect(baseline).toEqual(retained);
-        expect(repairPrompt(context, baseline, sources)).toContain(
-          "most recent earlier candidate only",
-        );
-        return generator.generate(context);
+      AbortSignal.timeout(10000),
+    );
+    expect(observed).toBe(true);
+    expect((await repairs.state(f.w.id)).sessions[0].baseline_version_id).toBe(
+      f.version.id,
+    );
+    const secondEvaluation = await repairs.createEvaluation(second.id);
+    await record(job.id, secondEvaluation.id, { ...actual, shipment: "WRONG" });
+    expect((await repairs.decide(second.id)).attempt.status).toBe("rejected");
+    const third = await repairs.beginAttempt(job.id, 3);
+    await generation.run(
+      third.id,
+      {
+        ...generator,
+        generate: async (context, baseline, _signal, sources) => {
+          expect(context.previous_attempts).toHaveLength(2);
+          expect(sources).toHaveLength(1);
+          expect(sources[0].attempt_number).toBe(2);
+          expect(baseline).toEqual(retained);
+          expect(repairPrompt(context, baseline, sources)).toContain(
+            "most recent earlier candidate only",
+          );
+          return generator.generate(context);
+        },
       },
-    },
-    AbortSignal.timeout(10000),
-  );
-  await repairs.finish(
-    job.id,
-    "cancelled",
-    "Candidate evidence handoff verified.",
-  );
-});
+      AbortSignal.timeout(10000),
+    );
+    await repairs.finish(
+      job.id,
+      "cancelled",
+      "Candidate evidence handoff verified.",
+    );
+  },
+);
+
 it("stops at three full-suite attempts and permits a deliberate new session from the retained evaluation", async () => {
   const { f, job } = await prepared();
   for (let n = 1; n <= 3; n++) {
