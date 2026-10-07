@@ -56,6 +56,19 @@ function active(job: WorkflowJob, session: RepairSession) {
       "The repair session reached its two-hour limit.",
     );
 }
+async function evaluationTraces(
+  db: Queryable,
+  workflowId: string,
+  evaluationId: string,
+  caseIds?: string[],
+) {
+  return (
+    await db.query(
+      "SELECT count(*) OVER() AS total_occurrences,c.case_id,s.id AS occurrence_id,s.run_id,s.node_id,s.node_visit_number,s.status,s.output_data,s.failure_code,s.failure_message FROM step_executions s JOIN workflow_runs r ON r.id=s.run_id JOIN evaluation_case_results c ON c.id=r.evaluation_case_result_id WHERE c.workflow_id=$1 AND c.evaluation_run_id=$2 AND ($3::uuid[] IS NULL OR c.case_id=ANY($3::uuid[])) ORDER BY (s.failure_code IS NULL),s.started_at,s.id LIMIT 300",
+      [workflowId, evaluationId, caseIds ?? null],
+    )
+  ).rows;
+}
 export class RepairService {
   constructor(private db: Database) {}
   async start(wid: string, raw: z.infer<typeof startRepairInput>) {
@@ -319,31 +332,81 @@ export class RepairService {
     );
     const previous = (
       await this.db.query(
-        "SELECT attempt_number,diagnosis,status,decision_reason,error_message,evaluation_run_id FROM repair_attempts WHERE session_id=$1 AND attempt_number<$2 ORDER BY attempt_number",
+        "SELECT attempt_number,candidate_version_id,baseline_evaluation_id,diagnosis,status,decision_reason,error_message,evaluation_run_id FROM repair_attempts WHERE session_id=$1 AND attempt_number<$2 ORDER BY attempt_number",
         [session.id, attempt.attempt_number],
       )
-    ).rows;
-    // At most two earlier attempts exist. Keep their failed checks/errors as
-    // evidence while the immutable baseline remains the only source to repair.
+    ).rows as unknown as Pick<
+      RepairAttempt,
+      | "attempt_number"
+      | "candidate_version_id"
+      | "baseline_evaluation_id"
+      | "diagnosis"
+      | "status"
+      | "decision_reason"
+      | "error_message"
+      | "evaluation_run_id"
+    >[];
+    // At most two earlier attempts exist. Keep their grades and traces as
+    // diagnostic evidence; rejected code never replaces the retained baseline.
+    const baselineResults = await resultsByEvaluation(
+      this.db,
+      attempt.baseline_evaluation_id,
+    );
     const previousAttempts = await Promise.all(
-      previous.map(async (prior) => ({
-        ...prior,
-        candidate_results: prior.evaluation_run_id
-          ? (
-              await resultsByEvaluation(
+      previous.map(async (prior) => {
+        const results = prior.evaluation_run_id
+          ? await resultsByEvaluation(this.db, prior.evaluation_run_id)
+          : [];
+        const earlierBaseline =
+          prior.baseline_evaluation_id === attempt.baseline_evaluation_id
+            ? baselineResults
+            : await resultsByEvaluation(this.db, prior.baseline_evaluation_id);
+        const priorPasses = new Map(
+          earlierBaseline.map((result) => [
+            result.case_id,
+            result.check_results.filter((check) => check.passed),
+          ]),
+        );
+        const regressionCases = results
+          .filter(
+            (result) =>
+              result.outcome === "error" ||
+              result.outcome === "not_run" ||
+              priorPasses
+                .get(result.case_id)
+                ?.some(
+                  (check) =>
+                    !result.check_results.some(
+                      (actual) => actual.key === check.key && actual.passed,
+                    ),
+                ),
+          )
+          .map((result) => result.case_id);
+        return {
+          ...prior,
+          candidate_trace_scope: {
+            selection:
+              "Cases with previously passing assertions lost, or execution errors/incomplete evidence. Other candidate traces remain stored but are not included.",
+            case_ids: regressionCases,
+          },
+          candidate_traces: prior.evaluation_run_id
+            ? await evaluationTraces(
                 this.db,
-                String(prior.evaluation_run_id),
+                session.workflow_id,
+                prior.evaluation_run_id,
+                regressionCases,
               )
-            ).map((result) => ({
-              case_id: result.case_id,
-              outcome: result.outcome,
-              check_results: result.check_results,
-              failure_code: result.failure_code,
-              failure_message: result.failure_message,
-              failure_category: result.failure_category,
-            }))
-          : [],
-      })),
+            : [],
+          candidate_results: results.map((result) => ({
+            case_id: result.case_id,
+            outcome: result.outcome,
+            check_results: result.check_results,
+            failure_code: result.failure_code,
+            failure_message: result.failure_message,
+            failure_category: result.failure_category,
+          })),
+        };
+      }),
     );
     return {
       attempt,
@@ -352,18 +415,14 @@ export class RepairService {
       steps: await planSteps(this.db, plan.id),
       spec: await frozenSpec(this.db, session.workflow_id),
       evaluation: await evaluationById(this.db, attempt.baseline_evaluation_id),
-      results: await resultsByEvaluation(
-        this.db,
-        attempt.baseline_evaluation_id,
-      ),
+      results: baselineResults,
       cases,
       input_inventory: inventory,
-      traces: (
-        await this.db.query(
-          "SELECT count(*) OVER() AS total_occurrences,c.case_id,s.id AS occurrence_id,s.run_id,s.node_id,s.node_visit_number,s.status,s.output_data,s.failure_code,s.failure_message FROM step_executions s JOIN workflow_runs r ON r.id=s.run_id JOIN evaluation_case_results c ON c.id=r.evaluation_case_result_id WHERE c.evaluation_run_id=$1 ORDER BY (s.failure_code IS NULL),s.started_at,s.id LIMIT 300",
-          [attempt.baseline_evaluation_id],
-        )
-      ).rows,
+      traces: await evaluationTraces(
+        this.db,
+        session.workflow_id,
+        attempt.baseline_evaluation_id,
+      ),
       previous_attempts: previousAttempts,
     };
   }

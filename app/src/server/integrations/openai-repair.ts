@@ -6,13 +6,14 @@ import type { RepairContext } from "../repairs/generation-service";
 import { engineeringModel } from "./openai-engineer";
 import { moduleContract } from "../engineering/project";
 import { modelOutput } from "./model-output";
-import { repairPrompt } from "../repairs/evidence";
+import { repairPrompt, type PreviousSourceEvidence } from "../repairs/evidence";
 export async function repairProjectSources(
   context: RepairContext,
   baseline: Project,
   signal: AbortSignal,
+  previousSources: PreviousSourceEvidence[],
 ) {
-  const prompt = repairPrompt(context, baseline);
+  const prompt = repairPrompt(context, baseline, previousSources);
   return modelOutput(
     () =>
       generateText({

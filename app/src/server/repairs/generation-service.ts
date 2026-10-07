@@ -5,7 +5,9 @@ import type { Project } from "../../domain/project";
 import type { Database } from "../database";
 import { ArtifactService } from "../artifacts/service";
 import { assembleProject, validateProject } from "../engineering/project";
+import { VersionService } from "../engineering/version-service";
 import { RepairService } from "./service";
+import { changedStepSources, type PreviousSourceEvidence } from "./evidence";
 export type RepairContext = Awaited<
   ReturnType<RepairService["generationContext"]>
 >;
@@ -15,6 +17,7 @@ export interface RepairGenerator {
     context: RepairContext,
     baseline: Project,
     signal: AbortSignal,
+    previousSources: PreviousSourceEvidence[],
   ): Promise<z.infer<typeof repairSources>>;
 }
 export class RepairGenerationService {
@@ -51,24 +54,30 @@ export class RepairGenerationService {
         (checkpoint.metadata as Record<string, unknown>).diagnosis,
       );
     } else {
-      const version = (
-        await this.db.query(
-          "SELECT artifact_id FROM implementation_versions WHERE id=$1 AND workflow_id=$2",
-          [claimed.attempt.baseline_version_id, claimed.job.workflow_id],
-        )
-      ).rows[0];
-      const baseline = validateProject(
-        JSON.parse(
-          (
-            await this.artifacts.read(
-              claimed.job.workflow_id,
-              String(version.artifact_id),
-            )
-          ).bytes.toString(),
-        ),
+      const versions = new VersionService(this.db, this.artifacts);
+      const { project: baseline } = await versions.load(
+        claimed.job.workflow_id,
+        claimed.attempt.baseline_version_id,
       );
+      const previousSources = await Promise.all(
+        context.previous_attempts
+          .filter((prior) => prior.candidate_version_id)
+          .slice(-1)
+          .map(async (prior) => {
+            const { project: candidate } = await versions.load(
+              claimed.job.workflow_id,
+              String(prior.candidate_version_id),
+            );
+            return {
+              attempt_number: Number(prior.attempt_number),
+              candidate_version_id: String(prior.candidate_version_id),
+              changed_steps: changedStepSources(candidate, baseline),
+            };
+          }),
+      );
+      signal.throwIfAborted();
       const generated = repairSources.parse(
-        await adapter.generate(context, baseline, signal),
+        await adapter.generate(context, baseline, signal, previousSources),
       );
       signal.throwIfAborted();
       diagnosis = generated.diagnosis;
