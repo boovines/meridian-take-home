@@ -14,6 +14,8 @@ One workflow job owns the entire repair session, including candidate evaluations
 
 A new suite revision requests cancellation of active repair. New repair sessions reject older suites: the engineer must verify/lock the revised suite and evaluate the chosen baseline against it first. Candidate builds are checked and generated code is executed only inside Vercel Sandbox, without network egress or application secrets. Report delivery is outside scope.
 
+Repair receives the complete document metadata inventory for the locked suite's captured inputs, separately from bounded trace-output previews. This lets it identify selection mistakes involving numeric or ambiguous filenames without copying email bodies into the inventory. Exact source, requirements, assertions, grades and inventory must fit the context budget; oversized required context stops for inspection rather than silently dropping evidence. Passing a finite suite does not prove every business rule: independent counterexamples and source inspection can require a new suite revision.
+
 ## Interface
 
 Evaluation keeps its existing case/result inspector. Repair history adds a baseline sidebar and chronological attempts with acceptance reasons, diagnosis, changes, evaluation links and direct code inspection. The three explored layouts were Attempt ledger, Candidate cards and Baseline sidebar. Baseline sidebar was selected because it distinguishes retained code from candidate history without requiring the engineer to reconstruct the chain. All picker scaffolding was removed.

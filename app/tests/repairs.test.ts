@@ -15,7 +15,7 @@ import { RepairService } from "../src/server/repairs/service";
 import { RepairGenerationService } from "../src/server/repairs/generation-service";
 import { JobService } from "../src/server/engineering/job-service";
 import { VersionService } from "../src/server/engineering/version-service";
-import { repairPrompt } from "../src/server/repairs/evidence";
+import { inputInventory, repairPrompt } from "../src/server/repairs/evidence";
 import { caseInput } from "../src/domain/evaluation";
 import type { Json } from "../src/domain/runtime";
 import { runtimeFixture } from "./fixtures/runtime";
@@ -68,7 +68,7 @@ async function record(jobId: string, evaluationId: string, actual: Json) {
   }
   await evals.finish(jobId, undefined, false, evaluationId);
 }
-async function prepared() {
+async function prepared(withWorkflowCase = false) {
   const f = await runtimeFixture(db, artifacts, ["trigger", "outcome"]);
   await f.runs.finish(f.job.id, { status: "cancelled" });
   const suite = await suites.create(f.w.id, {
@@ -107,6 +107,29 @@ async function prepared() {
   await suites.verifyCase(f.w.id, suite.id, c.id, {
     expected_revision: c.revision,
   });
+  if (withWorkflowCase) {
+    const workflowCase = await suites.addCase(
+      f.w.id,
+      suite.id,
+      caseInput.parse({
+        case_key: "captured-input",
+        name: "Captured input identity",
+        kind: "workflow",
+        input_bundle_id: f.bundle.id,
+        assertions: [
+          {
+            key: "shipment",
+            label: "Shipment",
+            path: ["shipment"],
+            expected: "SYNTHETIC-001",
+          },
+        ],
+      }),
+    );
+    await suites.verifyCase(f.w.id, suite.id, workflowCase.id, {
+      expected_revision: workflowCase.revision,
+    });
+  }
   await suites.lock(f.w.id, suite.id, {
     expected_revision: (await suites.state(f.w.id)).suites[0].revision,
   });
@@ -130,6 +153,58 @@ async function prepared() {
   await repairs.prepare(started.job.id);
   return { f, suite, initial, ...started };
 }
+it("supplies only locked-suite input inventory and keeps numeric filenames outside truncated traces", async () => {
+  const { f, job } = await prepared(true);
+  const attempt = await repairs.beginAttempt(job.id, 1);
+  const context = await repairs.generationContext(attempt.id);
+  expect(context.input_inventory).toEqual([
+    {
+      input_bundle_id: f.bundle.id,
+      shipment_reference: "SYNTHETIC-001",
+      documents: [],
+    },
+  ]);
+  const inventory = inputInventory([
+    {
+      id: f.bundle.id,
+      shipment_reference: "SYNTHETIC-001",
+      manifest: {
+        input: {
+          messages: [{ text: "private email body" }],
+          documents: [
+            {
+              artifact_id: randomUUID(),
+              name: "180-465.pdf",
+              media_type: "application/pdf",
+              byte_size: 123,
+              contents: "private document contents",
+              download_url: "private URL",
+            },
+          ],
+        },
+      },
+    },
+  ]);
+  const { project } = await new VersionService(db, artifacts).load(
+    f.w.id,
+    f.version.id,
+  );
+  const prompt = repairPrompt(
+    {
+      ...context,
+      input_inventory: inventory,
+      traces: [{ output_data: "large trace ".repeat(10000) }],
+    },
+    project,
+  );
+  expect(JSON.parse(prompt).input_inventory).toEqual(inventory);
+  expect(prompt).toContain("180-465.pdf");
+  expect(prompt).not.toMatch(
+    /private email body|private document contents|private URL/,
+  );
+  expect(JSON.parse(prompt).step_traces[0].output_data.truncated).toBe(true);
+  await repairs.finish(job.id, "cancelled", "Diagnostic context verified.");
+});
 async function candidate(jobId: string, number: number, actual: Json) {
   let attempt = await repairs.beginAttempt(jobId, number);
   attempt = await generation.run(
@@ -164,10 +239,17 @@ it("rejects regression by assertion identity, keeps rejected code, and repairs f
   expect(context.previous_attempts[0].candidate_results[0]).toMatchObject({
     outcome: "failed",
     check_results: expect.arrayContaining([
-      expect.objectContaining({ key: "shipment", passed: false, actual: "WRONG" }),
+      expect.objectContaining({
+        key: "shipment",
+        passed: false,
+        actual: "WRONG",
+      }),
     ]),
   });
-  const { project } = await new VersionService(db, artifacts).load(f.w.id, f.version.id);
+  const { project } = await new VersionService(db, artifacts).load(
+    f.w.id,
+    f.version.id,
+  );
   const largeContext = {
     ...context,
     traces: Array.from({ length: 40 }, (_, index) => ({
@@ -180,18 +262,30 @@ it("rejects regression by assertion identity, keeps rejected code, and repairs f
   const prompt = repairPrompt(largeContext, project);
   expect(Buffer.byteLength(prompt)).toBeLessThanOrEqual(200000);
   const evidence = JSON.parse(prompt);
-  expect(evidence.locked_cases).toEqual(JSON.parse(JSON.stringify(context.cases)));
-  expect(evidence.previous_attempts).toEqual(JSON.parse(JSON.stringify(context.previous_attempts)));
+  expect(evidence.locked_cases).toEqual(
+    JSON.parse(JSON.stringify(context.cases)),
+  );
+  expect(evidence.previous_attempts).toEqual(
+    JSON.parse(JSON.stringify(context.previous_attempts)),
+  );
   expect(evidence.step_traces[0].output_data.truncated).toBe(true);
   expect(evidence.trace_coverage).toMatchObject({ included: 40, total: 40 });
   expect(largeContext.traces[0].output_data.messages.length).toBe(320000);
-  expect(() => repairPrompt({
-    ...context,
-    cases: context.cases.map((c) => ({
-      ...c,
-      assertions: c.assertions.map((a) => ({ ...a, expected: "fixed expectation ".repeat(20000) })),
-    })),
-  }, project)).toThrow(/Required repair context exceeds/);
+  expect(() =>
+    repairPrompt(
+      {
+        ...context,
+        cases: context.cases.map((c) => ({
+          ...c,
+          assertions: c.assertions.map((a) => ({
+            ...a,
+            expected: "fixed expectation ".repeat(20000),
+          })),
+        })),
+      },
+      project,
+    ),
+  ).toThrow(/Required repair context exceeds/);
   const parent = (
     await db.query(
       "SELECT parent_version_id FROM implementation_versions WHERE id=$1",

@@ -25,6 +25,7 @@ import {
   resultsByEvaluation,
 } from "../evaluations/evaluation-service";
 import { suiteById, suiteCases } from "../evaluations/suite-service";
+import { inputInventory } from "./evidence";
 export async function sessionByJob(tx: Queryable, jobId: string) {
   const row = (
     await tx.query("SELECT * FROM repair_sessions WHERE job_id=$1", [jobId])
@@ -302,6 +303,20 @@ export class RepairService {
       session.workflow_id,
       session.plan_version_id,
     );
+    const cases = await suiteCases(this.db, session.suite_version_id);
+    const bundleIds = [
+      ...new Set(
+        cases.flatMap((c) => (c.input_bundle_id ? [c.input_bundle_id] : [])),
+      ),
+    ];
+    const inventory = inputInventory(
+      (
+        await this.db.query(
+          "SELECT id,shipment_reference,manifest FROM input_bundles WHERE workflow_id=$1 AND id=ANY($2::uuid[]) ORDER BY id",
+          [session.workflow_id, bundleIds],
+        )
+      ).rows,
+    );
     const previous = (
       await this.db.query(
         "SELECT attempt_number,diagnosis,status,decision_reason,error_message,evaluation_run_id FROM repair_attempts WHERE session_id=$1 AND attempt_number<$2 ORDER BY attempt_number",
@@ -310,11 +325,16 @@ export class RepairService {
     ).rows;
     // At most two earlier attempts exist. Keep their failed checks/errors as
     // evidence while the immutable baseline remains the only source to repair.
-    const previousAttempts = await Promise.all(previous.map(async (prior) => ({
-      ...prior,
-      candidate_results: prior.evaluation_run_id
-        ? (await resultsByEvaluation(this.db, String(prior.evaluation_run_id)))
-            .map((result) => ({
+    const previousAttempts = await Promise.all(
+      previous.map(async (prior) => ({
+        ...prior,
+        candidate_results: prior.evaluation_run_id
+          ? (
+              await resultsByEvaluation(
+                this.db,
+                String(prior.evaluation_run_id),
+              )
+            ).map((result) => ({
               case_id: result.case_id,
               outcome: result.outcome,
               check_results: result.check_results,
@@ -322,8 +342,9 @@ export class RepairService {
               failure_message: result.failure_message,
               failure_category: result.failure_category,
             }))
-        : [],
-    })));
+          : [],
+      })),
+    );
     return {
       attempt,
       session,
@@ -335,7 +356,8 @@ export class RepairService {
         this.db,
         attempt.baseline_evaluation_id,
       ),
-      cases: await suiteCases(this.db, session.suite_version_id),
+      cases,
+      input_inventory: inventory,
       traces: (
         await this.db.query(
           "SELECT count(*) OVER() AS total_occurrences,c.case_id,s.id AS occurrence_id,s.run_id,s.node_id,s.node_visit_number,s.status,s.output_data,s.failure_code,s.failure_message FROM step_executions s JOIN workflow_runs r ON r.id=s.run_id JOIN evaluation_case_results c ON c.id=r.evaluation_case_result_id WHERE c.evaluation_run_id=$1 ORDER BY (s.failure_code IS NULL),s.started_at,s.id LIMIT 300",
