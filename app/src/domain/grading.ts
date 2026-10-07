@@ -46,10 +46,35 @@ export function grade(
       }
       value = (value as Record<string, Json>)[segment];
     }
+    let passed = !missing && equal(value, a.expected);
+    if (a.operator === "contains_record" || a.operator === "excludes_record") {
+      const expected = a.expected;
+      passed = false;
+      if (
+        !missing &&
+        Array.isArray(value) &&
+        expected !== null &&
+        typeof expected === "object" &&
+        !Array.isArray(expected) &&
+        Object.keys(expected).length > 0
+      ) {
+        const contains = value.some(
+          (item) =>
+            item !== null &&
+            typeof item === "object" &&
+            !Array.isArray(item) &&
+            Object.entries(expected).every(
+              ([key, wanted]) =>
+                Object.hasOwn(item, key) && equal(item[key], wanted),
+            ),
+        );
+        passed = a.operator === "contains_record" ? contains : !contains;
+      }
+    }
     return {
       key: a.key,
       label: a.label,
-      passed: !missing && equal(value, a.expected),
+      passed,
       actual: missing ? null : value,
       missing,
     };

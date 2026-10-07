@@ -10,9 +10,28 @@ export const assertionSchema = z
     key,
     label: z.string().trim().min(1).max(300),
     path: z.array(z.string().max(200)).max(20),
+    operator: z
+      .enum(["equals", "contains_record", "excludes_record"])
+      .optional(),
     expected: z.json(),
   })
-  .strict();
+  .strict()
+  .superRefine((a, ctx) => {
+    if (
+      a.operator &&
+      a.operator !== "equals" &&
+      (a.expected === null ||
+        typeof a.expected !== "object" ||
+        Array.isArray(a.expected) ||
+        Object.keys(a.expected).length === 0)
+    )
+      ctx.addIssue({
+        code: "custom",
+        path: ["expected"],
+        message:
+          "Record checks require a nonempty JSON object of fields to match.",
+      });
+  });
 export const scriptedResponse = z
   .object({
     node_id: uuid,

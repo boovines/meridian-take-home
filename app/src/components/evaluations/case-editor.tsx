@@ -33,10 +33,17 @@ export function CaseEditor({
     [checks, setChecks] = useState(
       initial?.assertions.map((a) => ({
         ...a,
+        operator: a.operator || "equals",
         path: JSON.stringify(a.path),
         expected: JSON.stringify(a.expected, null, 2),
       })) || [
-        { key: "result", label: "Expected result", path: "[]", expected: "{}" },
+        {
+          key: "result",
+          label: "Expected result",
+          path: "[]",
+          expected: "{}",
+          operator: "equals" as const,
+        },
       ],
     ),
     [error, setError] = useState(""),
@@ -201,6 +208,7 @@ export function CaseEditor({
                 label: "",
                 path: "[]",
                 expected: "null",
+                operator: "equals",
               },
             ])
           }
@@ -210,7 +218,8 @@ export function CaseEditor({
       </div>
       <p className="field-help" id="check-path-help">
         A path selects output fields, such as {'["totals", "goods_failed"]'}.
-        Use [] for the whole output. Values use exact JSON equality.
+        Use [] for the whole output. Record checks select an array and match
+        fields in one record, regardless of its position.
       </p>
       {checks.map((c, i) => (
         <fieldset className="assertion-editor" key={c.key}>
@@ -245,9 +254,40 @@ export function CaseEditor({
             />
           </label>
           <label>
+            Comparison
+            <select
+              value={c.operator}
+              aria-describedby={`check-comparison-help-${c.key}`}
+              onChange={(e) =>
+                setChecks(
+                  checks.map((x, n) =>
+                    n === i
+                      ? {
+                          ...x,
+                          operator: e.target.value as NonNullable<
+                            EvaluationCase["assertions"][number]["operator"]
+                          >,
+                        }
+                      : x,
+                  ),
+                )
+              }
+            >
+              <option value="equals">Equals exactly</option>
+              <option value="contains_record">Contains a record</option>
+              <option value="excludes_record">Excludes a record</option>
+            </select>
+          </label>
+          <p className="field-help" id={`check-comparison-help-${c.key}`}>
+            {c.operator === "equals"
+              ? "Compare the complete JSON value. Array order matters."
+              : "Enter a nonempty JSON object. All its fields must match one record exactly; extra fields are allowed. Missing or non-array output fails either record check."}
+          </p>
+          <label>
             Expected value (JSON)
             <textarea
               required
+              aria-describedby={`check-comparison-help-${c.key}`}
               rows={3}
               spellCheck={false}
               value={c.expected}
