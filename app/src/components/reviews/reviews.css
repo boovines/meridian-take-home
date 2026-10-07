@@ -1,0 +1,183 @@
+/* Process review shares the workbench's canvas and detail-panel layout. */
+.button-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.canvas-toolbar > .button-row {
+  margin-left: auto;
+}
+.state-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 20px;
+  border-bottom: 1px solid var(--line);
+  background: var(--accent-soft);
+  font-size: 12px;
+}
+.state-banner button {
+  margin-left: auto;
+  padding: 4px 9px;
+  font-size: 11px;
+}
+.workbench .review-panel {
+  width: 360px;
+}
+.review-progress,
+.review-summary,
+.proposal {
+  padding: 12px;
+  background: var(--accent-soft);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  margin: 14px 0;
+}
+.review-progress p {
+  font-size: 12px;
+  line-height: 1.5;
+}
+.review-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.review-summary span {
+  font-size: 11px;
+  color: var(--muted);
+}
+.review-intro {
+  text-align: center;
+  padding: 24px 6px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+.review-intro svg {
+  color: var(--accent);
+}
+.review-thread {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  margin: 14px 0;
+  background: var(--surface);
+}
+.review-thread summary {
+  cursor: pointer;
+  padding: 12px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.review-thread summary strong {
+  display: block;
+  margin-top: 5px;
+}
+.thread-status {
+  display: inline-block;
+  color: var(--accent);
+  background: var(--accent-soft);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+}
+.thread-content {
+  padding: 0 12px 12px;
+}
+.thread-message {
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+  margin-top: 10px;
+}
+.thread-message small,
+.proposal small {
+  color: var(--muted);
+  font-size: 10px;
+}
+.thread-message p,
+.proposal p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 4px 0 10px;
+}
+.thread-message.event {
+  color: var(--muted);
+}
+.thread-message.event p {
+  font-size: 11px;
+}
+.anchor-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.anchor-links button {
+  color: var(--accent);
+  padding: 3px 0;
+  text-align: left;
+  font-size: 11px;
+}
+.proposal-before {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+.proposal strong {
+  font-size: 12px;
+  display: block;
+  margin-bottom: 8px;
+}
+.finding-resolution {
+  border-top: 1px solid var(--line);
+  margin-top: 15px;
+  padding-top: 12px;
+}
+.review-history > p {
+  font-size: 11px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 10px;
+}
+.review-history small {
+  display: block;
+  color: var(--muted);
+  margin-top: 5px;
+}
+.finding-badge {
+  position: absolute;
+  right: -6px;
+  top: -12px;
+  font-size: 10px;
+  padding: 4px 7px;
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.freeze-checklist {
+  max-height: 50vh;
+  overflow: auto;
+  margin: 20px 0;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.freeze-checklist ul {
+  padding-left: 20px;
+}
+.freeze-checklist li {
+  margin-bottom: 9px;
+}
+.freeze-checklist strong {
+  display: block;
+  margin-top: 15px;
+}
+@media (max-width: 760px) {
+  .workbench .review-panel {
+    width: min(360px, calc(100% - 65px));
+  }
+  .canvas-toolbar {
+    flex-wrap: wrap;
+  }
+  .canvas-toolbar > .button-row {
+    margin-left: 0;
+  }
+}

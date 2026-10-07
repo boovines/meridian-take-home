@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { DomainError, uuid } from "../domain/canvas";
+import { DomainError } from "../domain/errors";
+import { uuid } from "../domain/validation";
 
 export async function body<T>(
   request: Request,

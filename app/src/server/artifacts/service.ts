@@ -1,5 +1,5 @@
 import { randomUUID, createHash } from "node:crypto";
-import { DomainError } from "../../domain/canvas";
+import { DomainError } from "../../domain/errors";
 import type { Artifact } from "../../domain/engineering";
 import type { Database } from "../database";
 import { objectStore, type ObjectStore } from "./storage";

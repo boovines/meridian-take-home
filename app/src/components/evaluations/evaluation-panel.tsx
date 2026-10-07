@@ -1,9 +1,10 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import type { EngineeringState } from "../engineering/types";
 import type { EvaluationCase, EvaluationRun } from "@/domain/evaluation";
 import { api, errorMessage } from "@/lib/api";
-import type { SuiteState, EvaluationState, BundleSummary } from "./types";
+import { useEvaluationData } from "./use-evaluation-data";
+import { EvaluationResultsHeader } from "./evaluation-results-header";
 import { EvaluationWorkbench } from "./evaluation-workbench";
 import { CaseDetail } from "./case-detail";
 import { CaseEditor } from "./case-editor";
@@ -22,86 +23,26 @@ export function EvaluationPanel({
   onInspectCode: (id: string) => void;
 }) {
   const base = `/api/workflows/${state.workflow.id}`;
-  const [suites, setSuites] = useState<SuiteState | null>(null),
-    [history, setHistory] = useState<EvaluationState | null>(null),
-    [bundles, setBundles] = useState<BundleSummary[]>([]),
-    [suiteId, setSuiteId] = useState(""),
+  const [suiteId, setSuiteId] = useState(""),
     [versionId, setVersionId] = useState(""),
     [runId, setRunId] = useState(""),
-    [runDetail, setRunDetail] = useState<EvaluationState | null>(null),
-    [runCases, setRunCases] = useState<SuiteState | null>(null),
     [mode, setMode] = useState<"cases" | "results" | "repairs">("cases"),
     [selected, setSelected] = useState(""),
     [editing, setEditing] = useState<EvaluationCase | "new" | null>(null),
     [name, setName] = useState("Workflow checks"),
-    [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
-  const fetchState = useCallback(
-    () =>
-      Promise.all([
-        api<SuiteState>(`${base}/suites${suiteId ? `?suite=${suiteId}` : ""}`),
-        api<EvaluationState>(`${base}/evaluations`),
-        api<BundleSummary[]>(`${base}/input-bundles`),
-      ]),
-    [base, suiteId],
-  );
-  const load = useCallback(async () => {
-    const [s, h, b] = await fetchState();
-    setSuites(s);
-    setHistory(h);
-    setBundles(b);
-  }, [fetchState]);
-  useEffect(() => {
-    let active = true;
-    fetchState()
-      .then(([s, h, b]) => {
-        if (active) {
-          setSuites(s);
-          setHistory(h);
-          setBundles(b);
-        }
-      })
-      .catch((e) => {
-        if (active) setError(errorMessage(e));
-      });
-    return () => {
-      active = false;
-    };
-  }, [fetchState, operationActive]);
-  useEffect(() => {
-    if (!operationActive) return;
-    const t = setInterval(
-      () => void load().catch((e) => setError(errorMessage(e))),
-      2500,
-    );
-    return () => clearInterval(t);
-  }, [load, operationActive]);
-  const selectedRunId = runId || history?.runs[0]?.id;
-  const currentRun =
-    history?.runs.find((r) => r.id === selectedRunId) ||
-    (runDetail && runDetail.runs[0]?.id === selectedRunId
-      ? runDetail.runs[0]
-      : undefined);
-  useEffect(() => {
-    if (!selectedRunId) return;
-    let active = true;
-    api<EvaluationState>(`${base}/evaluations/${selectedRunId}`)
-      .then(async (d) => {
-        const s = await api<SuiteState>(
-          `${base}/suites?suite=${d.runs[0].suite_version_id}`,
-        );
-        if (active) {
-          setRunDetail(d);
-          setRunCases(s);
-        }
-      })
-      .catch((e) => {
-        if (active) setError(errorMessage(e));
-      });
-    return () => {
-      active = false;
-    };
-  }, [base, selectedRunId, history]);
+  const {
+    suites,
+    history,
+    bundles,
+    runDetail,
+    runCases,
+    selectedRunId,
+    currentRun,
+    load,
+    error,
+    setError,
+  } = useEvaluationData(base, suiteId, runId, operationActive);
   const suite =
       suites?.suites.find((s) => s.id === suites.selected_suite_id) ||
       suites?.suites[0],
@@ -435,82 +376,25 @@ export function EvaluationPanel({
           ) : (
             <>
               {mode === "results" && (
-                <div className="evaluation-run-heading">
-                  <label>
-                    Evaluation history
-                    <select
-                      value={selectedRunId || ""}
-                      onChange={(e) => {
-                        setRunId(e.target.value);
-                        setSelected("");
-                      }}
-                    >
-                      {currentRun &&
-                        !history?.runs.some((r) => r.id === currentRun.id) && (
-                          <option value={currentRun.id}>
-                            {new Date(currentRun.created_at).toLocaleString()} ·{" "}
-                            {currentRun.verdict || currentRun.status}
-                          </option>
-                        )}
-                      {history?.runs.map((r) => (
-                        <option key={r.id} value={r.id}>
-                          {new Date(r.created_at).toLocaleString()} ·{" "}
-                          {r.verdict || r.status}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  {currentRun && (
-                    <>
-                      <button
-                        disabled={busy || operationActive}
-                        onClick={() =>
-                          void start(
-                            currentRun.implementation_version_id,
-                            currentRun.suite_version_id,
-                          )
-                        }
-                      >
-                        Run these versions again
-                      </button>
-                      <button
-                        className="primary"
-                        disabled={busy || operationActive || !!repairReason}
-                        title={
-                          repairReason ||
-                          "Start up to three repairs with full regression checks."
-                        }
-                        onClick={() => void repair()}
-                      >
-                        Repair and rerun
-                      </button>
-                      <div>
-                        <strong data-result={currentRun.verdict}>
-                          {currentRun.verdict || currentRun.status}
-                        </strong>
-                        <p className="field-help">
-                          Code v{currentRun.code_version_number || "—"} · suite
-                          v{currentRun.suite_version_number || "—"} ·{" "}
-                          {readyRun?.results.filter(
-                            (r) => r.outcome === "passed",
-                          ).length || 0}{" "}
-                          / {readyRun?.results.length || 0} cases passed
-                        </p>
-                      </div>
-                    </>
-                  )}
-                </div>
-              )}
-              {mode === "results" && currentRun && (
-                <p className="repair-guidance">
-                  {repairReason ||
-                    "Repair runs up to three attempts. The frozen process, approved methods, and verified suite stay fixed."}
-                </p>
-              )}
-              {currentRun?.failure_message && mode === "results" && (
-                <p role="status" className="error-banner">
-                  {currentRun.failure_message}
-                </p>
+                <EvaluationResultsHeader
+                  history={history}
+                  selectedRunId={selectedRunId}
+                  currentRun={currentRun}
+                  readyRun={readyRun}
+                  repairReason={repairReason}
+                  busy={busy}
+                  operationActive={operationActive}
+                  onSelect={(id) => {
+                    setRunId(id);
+                    setSelected("");
+                  }}
+                  onRerun={(codeId, suiteId) => {
+                    void start(codeId, suiteId);
+                  }}
+                  onRepair={() => {
+                    void repair();
+                  }}
+                />
               )}
               <EvaluationWorkbench
                 items={items}

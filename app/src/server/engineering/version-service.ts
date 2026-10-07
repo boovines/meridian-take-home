@@ -1,5 +1,5 @@
 import { zipSync, strToU8 } from "fflate";
-import { DomainError } from "../../domain/canvas";
+import { DomainError } from "../../domain/errors";
 import type { ImplementationVersion } from "../../domain/engineering";
 import type { Database } from "../database";
 import { ArtifactService } from "../artifacts/service";

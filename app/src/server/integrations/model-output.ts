@@ -1,5 +1,5 @@
 import { NoObjectGeneratedError, NoOutputGeneratedError } from "ai";
-import { DomainError } from "../../domain/canvas";
+import { DomainError } from "../../domain/errors";
 
 interface OutputMetadata {
   finishReason?: string;

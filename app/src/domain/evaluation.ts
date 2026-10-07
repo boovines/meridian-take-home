@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { uuid, revisionSchema } from "./canvas";
+import { uuid, revisionSchema } from "./validation";
 import { humanResponse, type Json } from "./runtime";
 const key = z
   .string()

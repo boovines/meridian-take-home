@@ -1,6 +1,6 @@
 import type { z } from "zod";
+import { DomainError } from "../../domain/errors";
 import {
-  DomainError,
   validateDraftConnection,
   type Board,
   type Workflow,

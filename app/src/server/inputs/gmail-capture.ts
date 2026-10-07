@@ -1,5 +1,5 @@
 import type { z } from "zod";
-import { DomainError } from "../../domain/canvas";
+import { DomainError } from "../../domain/errors";
 import { gmailCapture, type GmailReader } from "../../domain/gmail";
 import type { Database } from "../database";
 import { ArtifactService } from "../artifacts/service";

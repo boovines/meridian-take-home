@@ -1,5 +1,5 @@
 import type { Queryable } from "../database";
-import { DomainError } from "../../domain/canvas";
+import { DomainError } from "../../domain/errors";
 import type {
   DiscussionThread,
   DiscussionMessage,

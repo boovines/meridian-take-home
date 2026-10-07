@@ -1,6 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
 import type { z } from "zod";
-import { DomainError } from "../../domain/canvas";
+import { DomainError } from "../../domain/errors";
 import {
   caseInput,
   type SuiteVersion,

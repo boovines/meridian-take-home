@@ -1,4 +1,4 @@
-import { DomainError } from "../../domain/canvas";
+import { DomainError } from "../../domain/errors";
 import type { Database } from "../database";
 import { recommendMethods } from "../integrations/openai-engineer";
 import { fixtureEngineering } from "./dispatch";

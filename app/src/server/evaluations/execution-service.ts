@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { workflow } from "../workflows/store";
-import { DomainError } from "../../domain/canvas";
+import { DomainError } from "../../domain/errors";
 import type { CaseResult } from "../../domain/evaluation";
 import {
   selectRoutes,

@@ -1,5 +1,6 @@
 import type { z } from "zod";
-import { DomainError, type CanvasNode } from "../../domain/canvas";
+import { DomainError } from "../../domain/errors";
+import type { CanvasNode } from "../../domain/canvas";
 import {
   detailPatch,
   type DiscussionThread,

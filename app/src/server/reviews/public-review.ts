@@ -1,5 +1,5 @@
 import type { ReviewRun } from "../../domain/review";
-import { DomainError } from "../../domain/canvas";
+import { DomainError } from "../../domain/errors";
 import { getDatabase } from "../database";
 export function publicReview(run: ReviewRun) {
   const { initial_snapshot, analyzed_snapshot, ...summary } = run;

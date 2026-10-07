@@ -1,6 +1,6 @@
 import { generateText, Output, type UserContent } from "ai";
 import { openai } from "@ai-sdk/openai";
-import { DomainError } from "../../domain/canvas";
+import { DomainError } from "../../domain/errors";
 import type { Json } from "../../domain/runtime";
 import type { ReasoningDocument } from "../runtime/documents";
 import { modelOutput } from "./model-output";

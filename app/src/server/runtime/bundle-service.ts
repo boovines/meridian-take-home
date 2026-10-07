@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { z } from "zod";
-import { DomainError } from "../../domain/canvas";
+import { DomainError } from "../../domain/errors";
 import { bundleInput } from "../../domain/runtime";
 import type { Database } from "../database";
 import { workflow } from "../workflows/store";

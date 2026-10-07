@@ -1,6 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
 import type { z } from "zod";
-import { DomainError } from "../../domain/canvas";
+import { DomainError } from "../../domain/errors";
 import { answerInput, type HumanRequest } from "../../domain/runtime";
 import type { Database } from "../database";
 import { workflow } from "../workflows/store";

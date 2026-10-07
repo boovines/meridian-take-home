@@ -1,4 +1,4 @@
-import { DomainError } from "../../domain/canvas";
+import { DomainError } from "../../domain/errors";
 import type { Method } from "../../domain/engineering";
 import { stepResult, type Project } from "../../domain/project";
 import type { Json, RuntimeError } from "../../domain/runtime";

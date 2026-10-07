@@ -1,5 +1,5 @@
 import type { z } from "zod";
-import { DomainError } from "../../domain/canvas";
+import { DomainError } from "../../domain/errors";
 import { repairSources } from "../../domain/repair";
 import type { Project } from "../../domain/project";
 import type { Database } from "../database";

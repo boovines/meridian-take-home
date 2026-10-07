@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { uuid, type Board, type CanvasNode, type Connection } from "./canvas";
+import { uuid } from "./validation";
+import type { Board, CanvasNode, Connection } from "./canvas";
 import type { Method } from "./engineering";
 
 export type Json = z.infer<ReturnType<typeof z.json>>;

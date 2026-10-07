@@ -1,6 +1,6 @@
 import { cancellationSignal, heartbeat } from "@temporalio/activity";
 import { ApplicationFailure } from "@temporalio/common";
-import { DomainError } from "../domain/canvas";
+import { DomainError } from "../domain/errors";
 import type { ScheduleStep, RuntimeProjection } from "../domain/runtime";
 import { getDatabase } from "../server/database";
 import { RunService } from "../server/runtime/run-service";
