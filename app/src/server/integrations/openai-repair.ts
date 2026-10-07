@@ -1,33 +1,18 @@
 import { generateText, Output } from "ai";
 import { openai } from "@ai-sdk/openai";
-import { DomainError } from "../../domain/canvas";
 import { repairSources } from "../../domain/repair";
 import type { Project } from "../../domain/project";
 import type { RepairContext } from "../repairs/generation-service";
 import { engineeringModel } from "./openai-engineer";
 import { moduleContract } from "../engineering/project";
 import { modelOutput } from "./model-output";
+import { repairPrompt } from "../repairs/evidence";
 export async function repairProjectSources(
   context: RepairContext,
   baseline: Project,
   signal: AbortSignal,
 ) {
-  const prompt = JSON.stringify({
-    board: context.spec.board,
-    steps: context.steps,
-    baseline_project: baseline,
-    baseline_evaluation: context.evaluation,
-    baseline_results: context.results,
-    locked_cases: context.cases,
-    step_traces: context.traces,
-    previous_attempts: context.previous_attempts,
-  });
-  if (Buffer.byteLength(prompt) > 200000)
-    throw new DomainError(
-      413,
-      "CONTEXT_TOO_LARGE",
-      "Repair evidence exceeds the demo context limit. Inspect the failed steps with an engineer.",
-    );
+  const prompt = repairPrompt(context, baseline);
   return modelOutput(
     () =>
       generateText({

@@ -338,7 +338,7 @@ export class RepairService {
       cases: await suiteCases(this.db, session.suite_version_id),
       traces: (
         await this.db.query(
-          "SELECT c.case_id,s.id AS occurrence_id,s.run_id,s.node_id,s.node_visit_number,s.status,s.output_data,s.failure_code,s.failure_message FROM step_executions s JOIN workflow_runs r ON r.id=s.run_id JOIN evaluation_case_results c ON c.id=r.evaluation_case_result_id WHERE c.evaluation_run_id=$1 ORDER BY s.started_at,s.id LIMIT 300",
+          "SELECT count(*) OVER() AS total_occurrences,c.case_id,s.id AS occurrence_id,s.run_id,s.node_id,s.node_visit_number,s.status,s.output_data,s.failure_code,s.failure_message FROM step_executions s JOIN workflow_runs r ON r.id=s.run_id JOIN evaluation_case_results c ON c.id=r.evaluation_case_result_id WHERE c.evaluation_run_id=$1 ORDER BY (s.failure_code IS NULL),s.started_at,s.id LIMIT 300",
           [attempt.baseline_evaluation_id],
         )
       ).rows,
