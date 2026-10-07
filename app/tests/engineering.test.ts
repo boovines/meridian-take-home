@@ -340,7 +340,7 @@ it("resumes generation from durable source after validation failure and download
   await expect(
     service.run(job.id, adapters, AbortSignal.timeout(10000)),
   ).rejects.toThrow("Transient sandbox");
-  expect((await plans.state(w.id)).versions).toHaveLength(0);
+  expect((await plans.state(w.id)).versions).toHaveLength(1);
   await service.run(job.id, adapters, AbortSignal.timeout(10000));
   await service.run(job.id, adapters, AbortSignal.timeout(10000));
   expect(calls).toBe(1);
@@ -364,7 +364,7 @@ it("resumes generation from durable source after validation failure and download
     code: "NOT_FOUND",
   });
 });
-it("does not publish a version when cancellation arrives during sandbox validation", async () => {
+it("retains completed source when cancellation interrupts its validation without claiming success", async () => {
   const { w, plan } = await approved(),
     jobs = new JobService(db),
     job = await jobs.startGeneration(w.id, {
@@ -389,7 +389,9 @@ it("does not publish a version when cancellation arrives during sandbox validati
       AbortSignal.timeout(10000),
     ),
   ).rejects.toMatchObject({ code: "JOB_INACTIVE" });
-  expect((await plans.state(w.id)).versions).toHaveLength(0);
+  const state = await plans.state(w.id);
+  expect(state.versions).toHaveLength(1);
+  expect(state.jobs[0].status).toBe("cancel_requested");
 });
 it("rejects incomplete sources and escaping paths, and inserts human behavior independently of the coding agent", async () => {
   const { w, plan } = await approved(),
@@ -462,4 +464,32 @@ it("releases expired generation slots during inspection even when the worker is 
       })
     ).status,
   ).toBe("queued");
+});
+
+it("rejects late source publication when cancellation arrives during code synthesis", async () => {
+  const { w, plan } = await approved(),
+    jobs = new JobService(db),
+    job = await jobs.startGeneration(w.id, {
+      request_key: randomUUID(),
+      plan_version_id: plan.id,
+      input_version_id: null,
+    });
+  await expect(
+    new GenerationService(
+      db,
+      new ArtifactService(db, new LocalObjectStore(directory)),
+    ).run(
+      job.id,
+      {
+        model: "fixture",
+        generate: async (context) => {
+          await jobs.requestCancel(w.id, job.id);
+          return fixtureSources(context.spec.board, context.steps);
+        },
+        validate: async () => ({}),
+      },
+      AbortSignal.timeout(10000),
+    ),
+  ).rejects.toMatchObject({ code: "JOB_INACTIVE" });
+  expect((await plans.state(w.id)).versions).toHaveLength(0);
 });

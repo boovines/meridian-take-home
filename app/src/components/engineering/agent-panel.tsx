@@ -1,16 +1,20 @@
 "use client";
 import { useEffect, useState } from "react";
 import { api, errorMessage } from "@/lib/api";
-import type { ImplementationVersion } from "@/domain/engineering";
+import type { ImplementationVersion, WorkflowJob } from "@/domain/engineering";
 import type { VersionDetail } from "./types";
 export function AgentPanel({
   workflowId,
   versions,
   generating = false,
+  jobs,
+  nodeTitles,
 }: {
   workflowId: string;
   versions: ImplementationVersion[];
   generating?: boolean;
+  jobs: WorkflowJob[];
+  nodeTitles: Record<string, string>;
 }) {
   const [selected, setSelected] = useState(""),
     [detail, setDetail] = useState<VersionDetail | null>(null),
@@ -52,6 +56,22 @@ export function AgentPanel({
     );
   const ready = detail?.version.id === versionId,
     change = detail?.changes.find((c) => c.path === file);
+  const job = jobs.find((j) => j.id === detail?.version.created_by_job_id);
+  const buildLabel =
+    job?.progress.engine === "fixture"
+      ? "Fixture build result"
+      : job?.progress.syntax_status === "passed" ||
+          (job?.status === "succeeded" && job.progress.check === "node --check")
+        ? "Syntax check passed"
+        : job?.progress.syntax_status === "failed"
+          ? "Syntax check failed"
+          : "Build check incomplete";
+  const fileLabel = (path: string) => {
+    const nodeId = Object.entries(detail?.project.node_file_map || {}).find(
+      ([, file]) => file === path,
+    )?.[0];
+    return nodeId ? `steps / ${nodeTitles[nodeId] || nodeId}` : path;
+  };
   return (
     <section aria-label="Generated agent">
       <div className="engineer-section-heading">
@@ -90,15 +110,27 @@ export function AgentPanel({
       ) : (
         <>
           <p className="field-help">{detail.project.generator.summary}</p>
+          <p className="field-help">
+            {buildLabel}. Business behavior has not been evaluated.
+          </p>
+          {job?.progress.diagnostic !== undefined && (
+            <details>
+              <summary>Build diagnostic</summary>
+              <pre className="build-diagnostic">
+                {JSON.stringify(job.progress.diagnostic, null, 2)}
+              </pre>
+            </details>
+          )}
           <div className="source-layout">
             <nav aria-label="Project files">
               {detail.changes.map((c) => (
                 <button
                   key={c.path}
+                  title={c.path}
                   aria-pressed={file === c.path}
                   onClick={() => setFile(c.path)}
                 >
-                  <span>{c.path}</span>
+                  <span>{fileLabel(c.path)}</span>
                   {c.status !== "unchanged" && <small>{c.status}</small>}
                 </button>
               ))}

@@ -30,16 +30,6 @@ export class GenerationService {
       context = await jobs.prepareGeneration(id);
     if (!context) return;
     const { job, plan, steps, spec } = context;
-    const published = (
-      await this.db.query(
-        "SELECT id FROM implementation_versions WHERE created_by_job_id=$1 AND generation_key='initial'",
-        [id],
-      )
-    ).rows[0];
-    if (published) {
-      await jobs.finish(id, "succeeded");
-      return;
-    }
     signal.throwIfAborted();
     // A durable ready artifact is the checkpoint across activity retries. Partial bytes are never reused.
     const checkpoint = (
@@ -114,6 +104,14 @@ export class GenerationService {
         "PROJECT_CONTEXT_CHANGED",
         "The generated project does not match the pinned implementation plan.",
       );
+    // Complete source is inspectable even when its build check fails. A code
+    // version is historical evidence, never a correctness or baseline verdict.
+    await jobs.publishVersion(id, {
+      artifactId,
+      entrypoint: project.entrypoint,
+      nodeFileMap: project.node_file_map,
+      generationKey: "initial",
+    });
     await jobs.progress(id, "validating", {
       completed_steps: steps.length,
       total_steps: steps.length,
@@ -124,17 +122,15 @@ export class GenerationService {
     } catch (error) {
       if (error instanceof DomainError && error.code === "PROJECT_BUILD_FAILED")
         await jobs.progress(id, "validation_failed", {
+          syntax_status: "failed",
           diagnostic: error.details,
         });
       throw error;
     }
     signal.throwIfAborted();
-    await jobs.progress(id, "publishing", validation);
-    await jobs.publishVersion(id, {
-      artifactId,
-      entrypoint: project.entrypoint,
-      nodeFileMap: project.node_file_map,
-      generationKey: "initial",
+    await jobs.progress(id, "validated", {
+      ...validation,
+      syntax_status: "passed",
     });
     await jobs.finish(id, "succeeded");
   }

@@ -164,6 +164,10 @@ export function EngineerClient({ id }: { id: string }) {
           <AgentPanel
             workflowId={id}
             versions={state.versions}
+            jobs={state.jobs}
+            nodeTitles={Object.fromEntries(
+              state.spec.board.nodes.map((n) => [n.id, n.title]),
+            )}
             generating={activeJob?.kind === "generation"}
           />
         ) : (

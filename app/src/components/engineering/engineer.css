@@ -307,3 +307,10 @@
   background: var(--accent-soft);
   color: var(--accent);
 }
+.build-diagnostic {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  max-height: 260px;
+  overflow: auto;
+}
