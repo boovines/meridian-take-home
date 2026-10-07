@@ -1,6 +1,6 @@
 # Application
 
-Next.js/React application for the Meridian take-home. The app supports persisted process whiteboards, AI review and frozen handoff. Generation and execution progress is tracked in `../docs/implementation-status.md`.
+Next.js/React application for the Meridian take-home: process whiteboards, AI review, frozen handoff, generated agents, Gmail input capture, isolated execution, trusted evaluations and bounded repair. Measured verification and remaining limitations are tracked in `../docs/implementation-status.md`.
 
 ## Run locally
 
@@ -33,7 +33,7 @@ npm run test:browser
 
 `npm test` uses an in-memory PGlite database by default. To exercise PostgreSQL locally, point `TEST_DATABASE_URL` at an isolated localhost database. The tests reject remote database hosts. Browser tests start a production server on port 3101 with a separate local database in `../.runtime/browser-tests`; they never use `.env.local`'s Supabase connection. Live service checks are separate from these fixture tests.
 
-CI runs lint, typecheck, production build, service/domain tests against PostgreSQL 17, and browser journeys for persistence and stale-edit recovery. It needs no Gmail or model credentials.
+CI runs lint, typecheck, production build, Temporal workflow bundling, service/domain tests against PostgreSQL 17, and browser journeys through authoring, review, generation, evaluation, human responses and report preview. It needs no Gmail or model credentials.
 
 ## Implementation boundaries
 

@@ -36,7 +36,7 @@ Implementation, Agent, and Evaluation remain three tabs in the same workspace, l
 
 Agent shows the selected version, file tree, source preview, changes from its parent, and Download. Background work shows its actual stage, completed work, useful errors, and Cancel. Existing code and results stay readable. Only one generation, evaluation, or repair operation runs per workflow; a repair's internal evaluations belong to that operation. Operations survive closing the browser.
 
-Evaluation shows the code and suite versions together, per-case results, and expected versus actual output. Selecting a failure exposes step inputs, outputs, errors, and any proposed diagnosis. History distinguishes the latest attempt from the current repair baseline. Recommended launch default: generation starts the first evaluation when a locked suite is selected; otherwise show Generated—not yet evaluated. Repair always requires an explicit action.
+Evaluation shows the code and suite versions together, per-case results, and expected versus actual output. Selecting a failure exposes step inputs, outputs, errors, and any proposed diagnosis. History distinguishes the latest attempt from the current repair baseline. Generation produces a version labeled Not yet evaluated. The engineer explicitly selects the locked suite and starts its first evaluation; automatic first evaluation is deferred. Repair always requires an explicit action.
 
 A manual run starts from an existing shipment email or shipment number. A human step pauses for text or approval/rejection in the app, then resumes. Each visit requires a new response, including loop revisits. Changed documents start a new bundle and run; uploads into a paused run are deferred. Automated evaluations use explicit fixture responses; missing responses are test execution errors, not indefinite human waits.
 
@@ -56,34 +56,35 @@ A durable background executor handles generation, evaluation, repair, and runs. 
 
 `artifacts` identifies immutable stored files; `input_bundles` seals a manifest of source messages and attachments so retries use identical inputs. `workflow_runs` stores code, bundle, limits, outcome, and retry ancestry. `step_executions` records each visit separately from the canvas node. `human_requests` belongs to one visit. Temporal associates arrivals with a particular split occurrence, preventing a prior loop iteration from satisfying a new join; separate SQL parallel-coordination tables are omitted.
 
-Ownership constraints, indexed parent lookups, idempotent scheduling, and short atomic mutations protect history and prevent duplicate work. Large bytes stay outside rows. Separate records are justified by independent lifecycles; immutable manifests and bounded per-step attempt details can remain JSON. Project/evaluator hashes come from their immutable artifacts. Case edits use revision checks and invalidate suite verification. Per-node visit numbers address human-response fixtures independently of parallel scheduling order. Detailed fields, constraints, and indexes live in the [engineering schema](../.plans/meridian-engineering-schema-spec.md) and [runtime schema](../.plans/meridian-runtime-schema-spec.md).
+Ownership constraints, indexed parent lookups, idempotent scheduling, and short atomic mutations protect history and prevent duplicate work. Large bytes stay outside rows. Separate records are justified by independent lifecycles; immutable manifests and bounded per-step attempt details can remain JSON. Project hashes come from immutable artifacts. The demo uses the host’s fixed JSON-path equality grader rather than custom evaluator artifacts. Case edits use revision checks, clear that case’s verification, and advance the suite revision. Per-node visit numbers address human-response fixtures independently of parallel scheduling order. Executable fields, constraints and indexes live in `app/migrations/005_engineering.sql` and migrations 007–009. The earlier engineering/runtime schema specifications preserve planning context.
 
-The [data-model decision audit](data-model-decisions.md) justifies each table and the alternatives. Explicit parallel coordination tables and custom worker leases are conditional on executor ownership; their logical guarantees remain required, but the app must not build a competing scheduler alongside a durable executor.
+The [data-model decision audit](data-model-decisions.md) justifies each table and the alternatives. Temporal owns parallel coordination and recovery. The implemented schema omits separate SQL branch-coordination tables and worker leases.
 
 ## API Endpoints
 
-Proposed API contracts, not implemented routes. Background operations return a durable job ID; duplicate request keys return the original operation, and conflicting key reuse is rejected.
+Implemented routes below are relative to `/api/workflows/:id`. Background operations return durable identities; duplicate request keys return the original operation and conflicting reuse is rejected.
 
 | Endpoint | Purpose |
 | --- | --- |
-| `POST /api/specs/:id/implementation-plans` | Propose a plan or create a revision from an existing plan. |
-| `PATCH /api/implementation-plans/:id/steps/:stepId`; `POST /api/implementation-plans/:id/approve` | Edit/approve methods and seal the plan. |
-| `POST /api/implementation-plans/:id/generations` | Generate a code version; optionally select a locked suite for first evaluation. |
-| `GET /api/workflows/:id/versions`; `GET /api/implementation-versions/:id` or `/:id/download` | Inspect code, parent diff, and downloadable artifact. |
-| `POST /api/specs/:id/evaluation-suites`; `PATCH /api/evaluation-suites/:id` | Create/revise and edit a draft suite and its cases. |
-| `POST /api/evaluation-suites/:id/lock` | Record independent verification and seal the expectations. |
-| `POST /api/workflows/:id/evaluations`; `GET /api/evaluations/:id` | Run the full selected code/suite pairing or inspect results. |
-| `POST /api/workflows/:id/repairs`; `GET /api/repair-sessions/:id` | Start a bounded session or inspect attempts and baseline. |
-| `GET /api/jobs/:id`; `POST /api/jobs/:id/cancel` | Inspect or cancel durable work. |
-| `POST /api/workflows/:id/runs`; `GET /api/runs/:id` | Capture selected Gmail inputs and execute, or inspect trace/report. |
-| `POST /api/runs/:id/retry`; `POST /api/human-requests/:id/respond` | Start a linked fresh run or atomically record one human response and continuation. |
+| `GET /engineering`; `POST /plans` | Inspect plan/code/job history; create or revise a plan. |
+| `PATCH /plans/:planId/steps/:nodeId`; `POST /plans/:planId/recommend` or `/approve` | Edit choices, request suggestions or approve the plan. |
+| `POST /generations`; `GET /versions/:versionId` or `/:versionId/download` | Generate, inspect or download a code version. |
+| `GET/POST /suites`; `POST /suites/:suiteId/cases` | Inspect/create suite revisions and add cases. |
+| `PATCH/DELETE /suites/:suiteId/cases/:caseId`; `POST /suites/:suiteId/cases/:caseId/verify` | Edit/remove a draft case or record verification. |
+| `POST /suites/:suiteId/lock` | Seal verified expectations. |
+| `GET/POST /evaluations`; `GET /evaluations/:evaluationId` | Run a full code/suite pairing or inspect results. |
+| `GET/POST /repairs`; `GET /repairs/:sessionId` | Start or inspect bounded repair. |
+| `POST /jobs/:jobId/cancel` | Cancel durable work; status is included in the relevant workspace response. |
+| `GET /gmail/messages`; `POST /gmail/capture` | Search existing email and capture the selected packet. |
+| `GET /input-bundles` or `/:bundleId`; `GET/POST /runs`; `GET /runs/:runId` | Inspect inputs, start execution or view history. Retry uses `POST /runs` with the prior run reference. |
+| `POST /human-requests/:requestId/answer` | Save one fresh response and its durable continuation. |
 
-The [architecture](architecture.md) and [verification plan](verification.md) define shared behavior and failure checks. Numeric limits, executor choice, and extending operation exclusivity to paused manual runs are recommended defaults to validate during implementation, not additional confirmed requirements. Deferred work remains in the [README](../README.md#future-work-outside-demo-scope).
+The [architecture](architecture.md) and [verification plan](verification.md) define shared behavior and failure checks. The demo records 100-step and 900-active-second limits on each run. The one-operation rule includes paused manual runs; waiting for a human does not consume active time. Deferred work remains in the [README](../README.md#future-work-outside-demo-scope).
 
 ## Current implementation checkpoint
 
-The [generation](engineer-generation.md), [runtime](workflow-runtime.md), and [evaluation](trusted-evaluations.md) guides describe implemented behavior and routes. The evaluation screen supports full-workflow and JSON-output step checks, explicit verification, sealed suite revisions, full-suite execution, comparison details and visit traces. Arbitrary unit-test code and broad OCR benchmarks remain deferred. Evaluation currently starts explicitly; automatic evaluation of a selected suite after generation and the bounded repair loop are still pending. These limits do not change the acceptance target above.
+The [generation](engineer-generation.md), [runtime](workflow-runtime.md), and [evaluation](trusted-evaluations.md) guides describe implemented behavior and routes. The evaluation screen supports full-workflow and JSON-output step checks, explicit verification, sealed suite revisions, full-suite execution, comparison details and visit traces. Arbitrary unit-test code and broad OCR benchmarks remain deferred. Evaluation starts explicitly. Bounded repair is implemented; automatic first evaluation, arbitrary test-code execution and broad OCR benchmarking remain deferred.
 
 ### Bounded repair implementation checkpoint
 
-Repair is now implemented with a three-attempt limit and a recorded two-hour session deadline. Every candidate uses the same approved plan and locked suite; regression checks compare assertion identities. Candidate history and the retained baseline are distinct. The Evaluation tab includes a baseline sidebar, attempt diagnoses, acceptance reasons and links to code/evaluations. The executable schema is migration 009 and the implemented contract is in `specs/bounded-repair.md`. Live synthetic repair passed; Gmail/PDF ground-truth verification remains pending.
+Repair is now implemented with a three-attempt limit and a recorded two-hour session deadline. Every candidate uses the same approved plan and locked suite; regression checks compare assertion identities. Candidate history and the retained baseline are distinct. The Evaluation tab includes a baseline sidebar, attempt diagnoses, acceptance reasons and links to code/evaluations. The executable schema is migration 009 and the implemented contract is in `specs/bounded-repair.md`. Live synthetic repair passed. See [implementation status](implementation-status.md) for current Gmail/PDF results; fixture checks do not establish shipment accuracy.

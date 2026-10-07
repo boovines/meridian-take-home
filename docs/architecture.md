@@ -12,18 +12,19 @@ Use relational rows for independently changing records, immutable versions/manif
 flowchart TD
     UI["Web app: canvas and engineer views"] --> API["Application API and controlled mutations"]
     API <--> DB["Postgres: drafts, versions, jobs and history"]
-    API --> Review["AI review and clarification"]
+    Dispatch --> Review["AI review and clarification"]
     Review --> Findings["Persist suggestions for customer decisions"]
     Findings --> DB
     API --> Dispatch["Durable background dispatch"]
     Dispatch --> Generate["Generation and bounded repair"]
     Generate <--> Files["Object storage: immutable artifacts"]
-    Dispatch --> Ingest["Capture selected Gmail inputs"]
+    API --> Ingest["Capture selected Gmail inputs"]
     Gmail["Gmail: existing messages"] --> Ingest
     Ingest --> Files
     Dispatch --> Runtime["Trusted workflow runtime"]
     Files --> Runtime
-    Runtime <--> Sandbox["Isolated generated code and agent steps"]
+    Runtime <--> Sandbox["Isolated generated code"]
+    Runtime <--> Interpret["Host-brokered OpenAI document interpretation"]
     Runtime --> DB
     Runtime --> Grader["Trusted evaluator: locked cases and expectations"]
     Grader --> DB
@@ -53,7 +54,7 @@ Use same-workflow composite foreign keys on owned relationships and same-run key
 
 ## Data relationships
 
-These diagrams show selected relationships, not every column or foreign key. Full definitions and nullability remain in the schema specs. Temporal is the selected scheduling authority. Runtime split/join state lives in Temporal. Step records expose stable branch references for inspection; no separate parallel-group/branch tables are implemented. Omit custom database worker leases; derive progress from Temporal-owned transitions. The [decision audit](data-model-decisions.md) explains this boundary and the alternatives.
+These diagrams show selected relationships, not every column or foreign key. Full definitions and nullability are in `app/migrations`; the schema specs retain planning context. Temporal is the selected scheduling authority. Runtime split/join state lives in Temporal. Step records expose stable branch references for inspection; no separate parallel-group/branch tables are implemented. Omit custom database worker leases; derive progress from Temporal-owned transitions. The [decision audit](data-model-decisions.md) explains this boundary and the alternatives.
 
 ```mermaid
 erDiagram
@@ -97,7 +98,7 @@ erDiagram
     step_executions ||--o| human_requests : awaits
 ```
 
-Artifacts are immutable file metadata referenced by code versions, suites, input manifests, and traces. Manifests validate artifact existence, readiness, and ownership before sealing; JSON references do not have automatic foreign-key protection. `node_id` is a definition identity; `step_execution_id` is one visit. Each Temporal join belongs to one split visit so arrivals cannot leak across loop iterations. Step branch references include the split scheduling key and entry connection.
+Artifacts are immutable file metadata referenced by code versions and captured input manifests; large diagnostic files can use the same registry. Manifests validate artifact existence, readiness, and ownership before sealing; JSON references do not have automatic foreign-key protection. `node_id` is a definition identity; `step_execution_id` is one visit. Each Temporal join belongs to one split visit so arrivals cannot leak across loop iterations. Step branch references include the split scheduling key and entry connection.
 
 ## Operations that must be atomic
 
@@ -112,11 +113,11 @@ Artifacts are immutable file metadata referenced by code versions, suites, input
 | Parallel arrival | Record a branch's result once; schedule one merge only after all required arrivals from the same split occurrence. |
 | Repair decision | Store attempt decision and change baseline together, using full-suite evidence and a current worker token. |
 
-Unique request/scheduling keys prevent duplicate logical actions. Worker fencing prevents an old worker from publishing after a replacement or cancellation. The transport may deliver work more than once; the design must not assume exactly-once delivery. A transactional outbox or equivalent durable executor mechanism is needed; its concrete storage is an infrastructure decision beyond these domain tables.
+Unique request/scheduling keys prevent duplicate logical actions. Worker fencing prevents an old worker from publishing after a replacement or cancellation. The transport may deliver work more than once; the design must not assume exactly-once delivery. Queued jobs/reviews and undelivered human responses serve as durable dispatch intents. The outbox loop retries Temporal starts/signals using stable identities; no additional queue table is needed.
 
 ## Efficiency and scope
 
-The reference proposal contains 25 domain tables: four canvas, four review, ten engineering, and seven runtime. Twenty-three are recommended application record boundaries; the two explicit parallel coordination tables are conditional on runtime ownership. This is not a fixed migration count or 25 services. One nodes table covers all primitive types; one discussion model covers notes/findings; one jobs mechanism handles expensive operations. Review runs can share executor infrastructure without conflating review history with engineering job history.
+The executable schema has 23 application tables: four canvas, four review, ten engineering/evaluation, and five runtime/artifact records. Temporal owns parallel coordination, so the two proposed coordination tables are omitted. One nodes table covers every primitive type; one discussion model covers notes and findings; one jobs mechanism admits expensive operations. This is a set of record boundaries, not 23 services.
 
 One row per node does not by itself cause a scaling problem. Load a board with workflow-filtered queries; update a single node by key; query incoming/outgoing connections with endpoint indexes. An in-memory map helps rendering and traversal after loading the graph but does not replace persistent constraints or concurrency control. Do not store duplicate adjacency lists on nodes when connections already define the graph.
 
@@ -124,13 +125,8 @@ For an explicit sizing example—not a traffic forecast—10,000 workflows with 
 
 Mutable nodes benefit from independent updates; frozen graphs and sealed input manifests are consumed as whole immutable aggregates. This explains the deliberate mix of rows and JSON. Avoid per-keystroke or per-pointer-move writes; debounce edits, save final positions, and retain explicit save failures. Debounce timing remains an implementation default.
 
-## Implementation order and remaining defaults
+## Implemented defaults and remaining work
 
-1. Persist one complete canvas/review/freeze path and prove its stale-edit and atomic-handoff rules.
-2. Early, prove that one generated project runs in isolation and is scored by a protected fixed evaluator. Resolve executor/sandbox feasibility before polishing all engineer screens.
-3. Add versioned suites, full evaluation history, and bounded repair with baseline regression protection.
-4. Complete loop/parallel/human/cancellation behavior, captured Gmail inputs, report preview, and the customer walkthrough.
+The implemented path covers canvas/review/freeze, approved plans and source generation, runtime execution, locked evaluations, bounded repair, Gmail capture, and manual report previews. One active expensive operation includes manual runs waiting for a human. Freeze requires a desired outcome, a completed review, resolved findings and structural validity. Runs record fixed limits of 100 scheduled attempts and 900 active seconds, excluding human wait time.
 
-Recommended defaults still requiring implementation validation: automatic first evaluation when a locked suite is selected; extending one-operation-per-workflow to manual runs including human waits; a nonblank desired outcome at freeze; and initial limits of 100 scheduled attempts and 900 active seconds. The numeric limits are calibration starting points, not assignment requirements. Waiting for a human releases execution resources, even if the workflow's logical operation slot remains occupied.
-
-Typed handler input/output contracts and per-node config schemas still need coding-level definitions. Trusted fixture values must be transcribed and independently verified. These are implementation tasks; another broad product interview is unnecessary. The [verification plan](verification.md) identifies the behavior to prove. Local Mermaid diagrams have been updated here; the shared Excalidraw drawing has not been edited.
+Evaluation starts explicitly in the current UI; automatic first evaluation remains deferred. Hosted artifact storage and app access protection need deployment configuration. Typed runtime contracts live in `app/src/domain`; captured reference cases remain private local/runtime data. See [implementation status](implementation-status.md) for actual live outcomes and [verification](verification.md) for required checks. Local Mermaid diagrams reflect the implementation; the shared Excalidraw drawing has not been edited.

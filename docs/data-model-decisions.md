@@ -1,22 +1,22 @@
 # Data model decisions and justification
 
-Audit date: October 7, 2026. Scope: the agreed take-home features, with growth considered but no claimed production capacity. This document explains the proposed tables, important field groups, relationships, and alternatives. Exact field inventories remain in the linked schema specifications. No migration or load test has been run.
+Audit date: October 7, 2026. Scope: the agreed take-home features, with growth considered but no claimed production capacity. This document explains the implemented tables, important field groups, relationships, and alternatives. Migrations 001–009 are the source of truth for exact fields and constraints; the earlier schema specifications preserve planning context. The migrations run against Supabase and PostgreSQL in CI. No production load test has been run.
 
 ## Audit conclusion
 
-The main domain boundaries are justified by concrete operations. The previous proposal nevertheless overstated how settled the physical runtime design was and had several field-level gaps. This audit makes the following changes:
+The main domain boundaries are justified by independently edited or versioned records. Implementation resolved the executor choice and simplified evaluation to fixed JSON assertions. The consequential decisions are:
 
 | Decision reconsidered | Revised decision | Reason |
 | --- | --- | --- |
 | Project/evaluator hashes duplicated on version rows | Keep the authoritative byte hash on `artifacts`; versions reference that immutable record. | Independent copies add a consistency obligation without a demonstrated query benefit. |
-| Evaluator required even on an empty draft suite | Allow null during drafting; require a ready evaluator before lock. | Creation should not require the finished evaluator. Locked suites still pin exact grading behavior. |
+| Custom evaluator artifact per suite | Use the trusted host’s fixed JSON-path equality grader for the demo. | Cases need immutable assertions, not generated grading code. Versioned grader artifacts are deferred; historical grades remain immutable, but future re-execution across grader changes is not guaranteed. |
 | Test cases had no stale-edit version | Add a case revision; serialize case edits and suite locking through the parent suite. | Otherwise two editors can overwrite a case or change expectations while the suite is being locked. |
-| Verification was only a timestamp | Invalidate it on every draft suite/case/evaluator/input change; lock checks the verified suite revision. | A previous verification must not cover subsequent unverified edits. |
+| Case verification freshness | Editing a case clears its verification; adding a case starts unverified. All edits advance the suite revision, and lock checks that revision plus every case’s verification. | A prior verification cannot cover edited case content. Unchanged independently verified cases need not be reverified. |
 | Fixture responses addressed by an ambiguous visit number | Add a per-node visit number separately from the run-wide scheduling number. | Parallel execution order must not change which response a human step receives. |
 | Model/settings sufficient to explain review behavior | Add `reviewer_version`, identifying the deployed prompt/application revision. | The same model can produce different review behavior with a changed prompt. This is provenance, not guaranteed reproducibility. |
-| Custom leases and parallel coordination implicitly required | Make these physical choices conditional on executor ownership. | A durable executor and the database must not become competing scheduling authorities. |
+| Custom leases and parallel coordination implicitly required | Temporal owns scheduling and per-occurrence fork/join state; omit SQL coordination tables and leases. | The database stores inspection history and idempotent dispatch intents without becoming a second scheduler. |
 
-The reference design still lists **25 application tables**. That is not a target count or a requirement to implement a custom engine. Twenty-three tables are the recommended application record boundaries; the two explicit parallel coordination tables depend on the executor decision. Some fields on jobs/steps also depend on that choice. Infrastructure may require its own tables. The runtime decision cannot honestly be called final before a small execution prototype.
+The executable schema has **23 application tables**: four canvas, four review, ten engineering/evaluation, and five runtime/artifact tables. The two proposed parallel coordination tables were intentionally omitted because Temporal owns that state. The count follows record lifecycles; it is not a scalability target or a count of services.
 
 ## How a table earns its place
 
@@ -98,13 +98,13 @@ A parent is necessary because a repair can continue from an older non-regressing
 
 ### 12. `evaluation_suite_versions` — keep, tighten locking
 
-One row defines a draft or locked collection of trusted expectations and evaluator behavior. Version/parent references preserve corrections. Evaluator identity may be absent while drafting but must reference a ready immutable artifact at lock; its hash comes from that artifact.
+One row defines a draft or locked collection of trusted expectations. Version/parent references preserve corrections. The demo uses one trusted host implementation of JSON-path equality; suites do not reference custom evaluator artifacts. Retaining grader-version identity before changing that implementation is future work.
 
-Verification applies to the exact suite revision. Draft changes clear verification; lock checks the expected revision, requires at least one required case, and seals children too. Merely versioning expected totals while allowing the grader or inputs to change would not preserve the benchmark.
+Verification applies to each case revision. Case edits clear verification and advance the suite revision. Lock checks that parent revision, requires at least one case with every case verified, and seals its children. Captured inputs and assertions remain unchanged during evaluation and repair.
 
 ### 13. `evaluation_cases` — keep, add concurrency protection
 
-One row is a named case owned by one suite version. `case_key` identifies the scenario across revisions; `kind` distinguishes unit/integration/extraction/workflow checks. Inputs, expected output, and the check manifest have separate roles. Workflow cases require a sealed bundle; small parameters and scripted responses can remain JSON.
+One row is a named case owned by one suite version. `case_key` identifies the scenario across revisions; `kind` distinguishes an isolated step from a full workflow. Inputs and the assertion list have separate roles; each assertion names a JSON path and expected value. Workflow cases require a sealed bundle; small parameters and scripted responses can remain JSON.
 
 Per-case revision rejects stale edits; every case mutation advances the parent suite revision and clears verification under its lock. Cloning cases on suite revision deliberately preserves history. A global mutable case library would add sharing/version complexity not required by the demo.
 
@@ -120,11 +120,11 @@ One row stores a particular case's actual output, assertion results, trace, and 
 
 Independent cases finish at different times and are inspected individually. Rows avoid one growing evaluation-results blob. Assertion-level outcomes remain JSON because the UI consumes one case's checks together; cross-run assertion analytics could justify further normalization later. Read expected values from the locked case rather than duplicating them.
 
-### 16. `workflow_jobs` — keep application identity; condition worker fields
+### 16. `workflow_jobs` — application operation identity
 
 One row captures an explicit expensive operation, including failures before a code version or workflow run exists. Kind, immutable input references, request key, status, progress, and cancellation give the UI a durable operation to follow. Different kinds can share a table because admission, cancellation, and progress behavior are common; kind-specific checks validate required inputs.
 
-`executor_ref` links external execution. Custom leases/tokens are justified only if this database owns worker claims. If a durable executor owns recovery, use its identifiers and state-checked callbacks instead of a second lease system. Progress is a projection, never authority to pass tests or promote code. One active operation per workflow is a demo restriction, not a future throughput strategy.
+`executor_ref` links the Temporal workflow. Queued job rows also serve as dispatch intents: the worker retries dispatch by stable executor identity. Activity tokens fence stale writes where needed; there is no SQL worker lease scheduler. Progress is a projection, never authority to pass tests or promote code. One active operation per workflow is a demo restriction, not a future throughput strategy.
 
 ### 17. `repair_sessions` — keep
 
@@ -138,7 +138,7 @@ One row records one attempt's starting baseline, diagnosis, optional candidate/e
 
 Unique session/attempt number and unique candidate identity preserve ordering and provenance. Neither code versions nor evaluations alone capture generation failures, rejected candidates, or why the baseline did not advance. Diagnosis is model-produced advice; the trusted result and acceptance rule determine promotion.
 
-## Runtime and artifacts: seven reference tables
+## Runtime and artifacts: five tables
 
 ### 19. `artifacts` — keep
 
@@ -158,7 +158,7 @@ One row represents business execution on fixed code and inputs, with job, source
 
 Separating runs from jobs supports multiple test-case executions inside one evaluation job and records input-preparation failure before any run exists. Retry creates another row, not a reset of the old one. Aggregate budgets belong on the run because parallel visits share them. Historical applied limits must survive later default changes.
 
-### 22. `step_executions` — keep logical trace; adapt executor fields
+### 22. `step_executions` — per-visit execution trace
 
 One row is one visit to a frozen node, with inputs, outputs, selected transitions, state, and error evidence. Loops require multiple rows for one node. Scheduling keys prevent duplicate logical visits. The global occurrence number orders scheduling; the new per-node visit number addresses fixtures independently of parallel scheduling order.
 
@@ -170,23 +170,15 @@ One row is the prompt, response contract, pending/answered/cancelled state, and 
 
 Embedding this on the step row is a valid smaller alternative. Prefer the extension because only human visits need these fields, the record has a specific actionable lifecycle, and manual responses must be distinguished from fixture responses. This is an ergonomic boundary, not a claim that nullable columns are intrinsically slow.
 
-### 24. `parallel_groups` — conditional physical table
+### Omitted alternative: `parallel_groups` and `parallel_branches`
 
-One group identifies a split occurrence, its paired merge, expected completion state, and eventual merge occurrence. A node-level completed flag cannot distinguish successive loops.
-
-Keep this table if the application runtime owns coordination. If the executor durably owns it, consume its authoritative state and retain an idempotent history projection only if needed for the UI. Do not independently schedule merges from both. The logical identity is required; this particular physical representation is not final.
-
-### 25. `parallel_branches` — conditional physical table
-
-One row records an expected branch's entry connection, progress, arrival, and output within one group. With database-owned coordination, rows allow independent completion and unique arrivals; a shared group JSON object would serialize all branch updates and weaken relational constraints.
-
-With executor-owned branches, use the executor's branch identity/history instead. Choose this together with `parallel_groups` and adapt step branch references accordingly. Never remove the representation without preserving per-occurrence join correctness, failed-branch diagnostics, and duplicate-arrival handling.
+A split must have per-occurrence identity, expected branches and one paired merge. Temporal owns these durable records in workflow state. Step rows retain `branch_ref` for diagnosis. Separate SQL coordination tables would duplicate the scheduler and create two authorities for branch completion. If orchestration moves away from Temporal, this state must be preserved in the replacement executor; it cannot be replaced by a node-level completed flag.
 
 ## Cross-cutting schema decisions
 
 | Choice | Justification and limit |
 | --- | --- |
-| One application database namespace initially | The four domains are documentation groups, not a requirement for four PostgreSQL schemas or one schema per customer. Namespace separation adds no necessary demo behavior. Select an exposed/private namespace and grants during implementation; permissions scope being deferred does not authorize unrestricted database writes. |
+| One application database namespace initially | The four domains are documentation groups, not a requirement for four PostgreSQL schemas or one schema per customer. Namespace separation adds no necessary demo behavior. Tables use the application database’s public namespace with RLS enabled and no anonymous REST policies; controlled server access owns mutations. Public hosting still requires app-level access protection. |
 | UUID identity | Stable references across browser drafts, background work, and artifacts. No claimed performance advantage over integer keys; identity format can change before migrations if measured needs justify it. |
 | Explicit `workflow_id` on owned children | Supports workflow filtering and composite ownership constraints without repeated joins. It is deliberate denormalization, constrained against the parent rather than trusted as a free-standing label. It is not tenant isolation. |
 | Composite ownership keys | `(workflow_id, id)` and selected `(run_id, id)` references prevent legal IDs from being linked in the wrong context. Add supporting uniqueness only where needed by actual foreign keys/query paths. |
@@ -214,7 +206,7 @@ JSON does not eliminate contention: updating JSON still locks its containing row
 | Admit background operation | Unique active-job index per workflow | Enforces the chosen demo concurrency rule; cannot itself recover workers. |
 | Load plan/suite/results | Parent-prefixed unique keys such as plan/node, suite/case key, evaluation/case | Enforce identity and serve the parent collection without redundant indexes. |
 | Inspect run/history | Run/occurrence and workflow/time indexes | Paginate histories and exclude large payloads from list queries. |
-| Complete a branch/response | Unique group/entry edge, split occurrence, and human step references | Duplicate delivery cannot create a second logical completion. |
+| Complete a branch/response | Temporal split-occurrence identity; unique human step and run/scheduling keys | Duplicate delivery cannot create a second logical completion. |
 
 Partial indexes must match the intended query predicates; verify actual query plans rather than adding indexes to every column. [PostgreSQL partial indexes](https://www.postgresql.org/docs/current/indexes-partial.html)
 
@@ -227,15 +219,14 @@ Partial indexes must match the intended query predicates; verify actual query pl
 - No generalized event sourcing, global test library, reused human approval cache, post-freeze revisions, or failed-step resume.
 - No speculative JSON search indexes, partitioning, sharding, or assertion of production readiness based on row count.
 
-## What remains unresolved and how to resolve it
+## Remaining scale and deployment work
 
-1. **Executor ownership:** prototype one generated project, one paused human step, a repeated parallel split, and cancellation/recovery. Choose a single scheduling authority, then finalize conditional tables/fields. This is the main architecture decision, not another product interview.
-2. **JSON contracts:** specify node-type config, frozen graph, manifest, handler input/output, and check-result schemas with format versions and size limits. Current descriptions are design intent, not complete runtime validators.
-3. **Workload and retention:** estimate active workflows, edits per board, cases/runs per day, visits per run, artifact sizes, and retention. Runtime traces grow much faster than draft nodes. Measure representative queries and mutation contention before claiming capacity.
-4. **Deployment boundary:** select concrete database grants, storage access, job dispatch, sandbox, and credential handling. Workflow foreign keys do not authenticate users; protected grader records need actual enforcement.
-5. **Migration verification:** translate the proposal into DDL/functions, test cross-owner/run links, state transitions, immutable children, races, and crash recovery. Cyclic references such as workflow/active-review require ordered table creation followed by the relevant foreign keys.
+1. **Workload and retention:** measure active workflows, edit contention, runs/visits per day and artifact sizes. Execution history grows faster than draft nodes; choose retention and pagination before partitioning or sharding.
+2. **Hosted access:** the laptop demo uses local artifacts. A hosted app needs shared private storage, a persistent worker and app access protection. Same-workflow keys do not authenticate users.
+3. **Reproducibility:** code, inputs, expected values and historical grades are immutable. Archive grader identity before introducing alternate graders; a model name and prompt version do not guarantee identical inference.
+4. **Generalization:** step/workflow equality checks satisfy this demo. Custom unit-test runners, independently labeled intermediate extraction suites and broader workflow fixtures would provide stronger repair evidence.
 
-The model is now defensible as a scoped proposal with explicit alternatives and unresolved physical choices. It is not justified to call every field final, to equate 25 tables with scalability, or to implement a second runtime solely to preserve this count.
+The executor and JSON boundaries are implemented and exercised by CI and live recovery checks. Those results support the scoped design, not a claim of production capacity.
 
 ## Related specifications
 
@@ -262,7 +253,7 @@ Temporal owns parallel coordination, so the conditional `parallel_groups`/`paral
 
 Unique run/scheduling keys and run/node/visit keys serve idempotency and ordered-history queries. Runs use workflow/time and job indexes. Pending human requests and undelivered answers use partial indexes matching their polling predicates. Outputs are bounded to 128 KB; the run stores its outcome step reference rather than duplicating that payload. Runtime is limited to 100 scheduled attempts, so a selected run's full trace is bounded. Longer-term retention and production workload sizing remain future work.
 
-Live restart recovery and local behavior checks are recorded in the [runtime guide](workflow-runtime.md). These establish the chosen executor boundary, not production traffic capacity. Evaluation-case relationships will be added with the evaluation migration; no placeholder FK points at nonexistent suite tables.
+Live restart recovery and local behavior checks are recorded in the [runtime guide](workflow-runtime.md). These establish the chosen executor boundary, not production traffic capacity. Migration 008 adds evaluation-case relationships with enforced code, suite and captured-input identity.
 
 ## Implementation checkpoint: trusted evaluations
 
