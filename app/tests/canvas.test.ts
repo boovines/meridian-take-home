@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDatabase, migrate, type Database } from "../src/server/database";
-import { CanvasService } from "../src/server/canvas-service";
+import { CanvasService } from "../src/server/canvas/service";
 import { nodeInput, connectionInput } from "../src/domain/canvas";
 
 let db: Database, canvas: CanvasService;

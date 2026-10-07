@@ -1,6 +1,6 @@
 # Application
 
-Next.js/React application for the Meridian take-home. The current feature is a persisted process whiteboard; review, freeze, generation and execution are tracked in `../docs/implementation-status.md`.
+Next.js/React application for the Meridian take-home. The app supports persisted process whiteboards, AI review and frozen handoff. Generation and execution progress is tracked in `../docs/implementation-status.md`.
 
 ## Run locally
 
@@ -40,3 +40,41 @@ CI runs lint, typecheck, production build, service/domain tests against PostgreS
 `src/domain` holds contracts; `src/server` holds database adapters and transactional services; `src/app/api` holds HTTP boundaries; `src/components` holds the UI. Nodes and connections have independent rows and revisions. Position is saved at drag end, and semantic revisions exclude position-only edits. Failed stale saves leave form text intact for comparison and retry.
 
 The live design exploration selected Compact workbench: all seven block types are visible at laptop height, while plain-language guidance stays in the detail panel. The temporary picker has been removed.
+
+## Review and freeze
+
+Apply migrations, then run `npm run worker` in a second terminal. The web app dispatches review IDs to the configured Temporal task queue; the worker reads the sealed draft from Supabase, calls OpenAI, and publishes validated findings. Keep both processes running for local demos. Vercel may host the web/API, but the long-running Temporal worker needs a separate persistent process.
+
+`Review & comments` opens anchored findings, replies, ordinary notes and review history. A missing desired outcome is clarified first. Review locks editing until it completes or is cancelled. Detail suggestions can be applied explicitly; graph changes remain manual. Freeze checks graph structure and requires one completed review and a decision on every finding. The resulting board cannot be edited in this demo.
+
+The fixture reviewer is available only with all three flags: `MERIDIAN_REVIEW_PROVIDER=fixture`, `MERIDIAN_DATABASE=local`, and `MERIDIAN_LOCAL_DEMO=true`. It is for browser tests, is recorded as `fixture-reviewer`, and does not verify AI quality or Temporal. It cannot run against the configured remote database.
+
+Additional verification, from `app/`:
+
+```sh
+npm run worker:check
+npm run services:check -- --openai --temporal
+npm run review:smoke -- --live
+```
+
+The first command bundles workflows without credentials and runs in CI. The last two consume live service resources; the smoke command creates a clearly named synthetic workflow in Supabase and performs one bounded OpenAI review through Temporal. Start the worker first. No email is retrieved or sent by these checks.
+
+## File map
+
+| Location | Responsibility |
+| --- | --- |
+| `src/app/api/workflows` | Request validation and delegation; no orchestration or model prompts |
+| `src/components/canvas`, `src/components/reviews` | Feature UI and browser state |
+| `src/domain` | Typed contracts and pure graph/business rules |
+| `src/server/canvas` | Targeted, revision-checked canvas mutations |
+| `src/server/workflows/store.ts` | Shared workflow locking and graph reads |
+| `src/server/reviews` | Transactional review, discussion and freeze behavior |
+| `src/server/integrations` | OpenAI and Temporal clients/configuration |
+| `src/server/database.ts`, `src/server/http.ts` | Database and HTTP infrastructure |
+| `src/worker` | Temporal workflow definitions, activities and worker entry point |
+| `migrations` | Ordered SQL migrations; existing applied migrations are not rewritten |
+| `tests`, `tests/browser`, `tests/fixtures` | Business/persistence tests, browser journeys and sanitized fixtures |
+| `scripts` | Explicit operator commands and live smoke checks |
+| `../.runtime` | Ignored runtime databases, certificates and future generated projects |
+
+Keep shared modules small and named for their responsibility. Split growing feature modules when another responsibility appears; do not add empty architectural folders or a catch-all utilities file.

@@ -6,6 +6,13 @@
 - Keep expected evaluation answers independently reviewed and fixed during repair. Do not change expected answers just to make failing implementation pass.
 - Use fixtures for required CI; keep live Gmail/LLM verification separate. Never commit credentials or unsanitized customer data.
 
+## File placement
+
+- Keep HTTP handlers in `app/src/app/api` thin. Put transactional feature logic in `app/src/server/<feature>` and pure contracts/rules in `app/src/domain`. UI components belong in their feature folder under `app/src/components`.
+- Share workflow row locking and graph reads through `server/workflows/store.ts`; keep provider clients in `server/integrations`. Temporal workflow code stays in `src/worker` and must not import database or network implementations at runtime.
+- Put migrations in `app/migrations`, behavioral tests in `app/tests`, browser journeys in `app/tests/browser`, and sanitized fixtures in `app/tests/fixtures`. Keep generated projects and scratch/runtime state outside source under ignored `.runtime/`.
+- Split a growing module by a concrete feature or responsibility; avoid catch-all utilities and folders with no implemented purpose. Update the app README map when a new boundary is introduced.
+
 ## Skills
 
 - For frontend development, automatically load and use `$jhouui` (`~/.codex/skills/jhouui/SKILL.md`) without requiring explicit invocation. Use its live variants when developing visual designs; preserve an explicitly chosen design and avoid unnecessary variants for behavior-only fixes. Per Justin's project instruction, generate and inspect three variants, choose the strongest using your own judgment, apply it, remove the picker scaffolding, and explain the choice. Do not wait for Justin to select a variant.

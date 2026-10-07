@@ -17,7 +17,10 @@ import {
 import "@xyflow/react/dist/style.css";
 import { type Board, type CanvasNode, nodeLabels } from "@/domain/canvas";
 import { primitives } from "./primitives";
-type ProcessNode = Node<{ block: CanvasNode }, "process">;
+type ProcessNode = Node<
+  { block: CanvasNode; findingCount: number; onOpenReviews: () => void },
+  "process"
+>;
 function ProcessBlock({ data, selected }: NodeProps<ProcessNode>) {
   const n = data.block,
     Icon = primitives[n.type].icon;
@@ -45,6 +48,18 @@ function ProcessBlock({ data, selected }: NodeProps<ProcessNode>) {
               : "Wait for both paths"}
         </div>
       )}
+      {data.findingCount > 0 && (
+        <button
+          className="finding-badge nodrag"
+          onClick={(e) => {
+            e.stopPropagation();
+            data.onOpenReviews();
+          }}
+          aria-label={`${data.findingCount} review findings on ${n.title}`}
+        >
+          {data.findingCount} to review
+        </button>
+      )}
       <Handle
         type="source"
         position={Position.Bottom}
@@ -57,6 +72,8 @@ const nodeTypes = { process: ProcessBlock };
 interface Props {
   board: Board;
   selected?: string;
+  findingCounts?: Record<string, number>;
+  onOpenReviews?: () => void;
   locked: boolean;
   onSelect: (kind: "node" | "connection", id: string) => void;
   onConnect: (c: FlowConnection) => void;
@@ -65,23 +82,30 @@ interface Props {
 function FlowCanvas({
   board,
   selected,
+  findingCounts,
+  onOpenReviews,
   locked,
   onSelect,
   onConnect,
   onMove,
 }: Props) {
-  const frame=useRef<HTMLDivElement>(null);
-  const {fitView}=useReactFlow();
-  useEffect(()=>{
-    if(!frame.current)return;
-    let animationFrame=0;
-    const observer=new ResizeObserver(()=>{
+  const frame = useRef<HTMLDivElement>(null);
+  const { fitView } = useReactFlow();
+  useEffect(() => {
+    if (!frame.current) return;
+    let animationFrame = 0;
+    const observer = new ResizeObserver(() => {
       cancelAnimationFrame(animationFrame);
-      animationFrame=requestAnimationFrame(()=>{void fitView({padding:.25,maxZoom:1});});
+      animationFrame = requestAnimationFrame(() => {
+        void fitView({ padding: 0.25, maxZoom: 1 });
+      });
     });
     observer.observe(frame.current);
-    return()=>{observer.disconnect();cancelAnimationFrame(animationFrame);};
-  },[fitView]);
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(animationFrame);
+    };
+  }, [fitView]);
   const [positions, setPositions] = useState<
     Record<string, { revision: number; position: { x: number; y: number } }>
   >({});
@@ -94,10 +118,14 @@ function FlowCanvas({
           positions[n.id]?.revision === n.revision
             ? positions[n.id].position
             : { x: n.x, y: n.y },
-        data: { block: n },
+        data: {
+          block: n,
+          findingCount: findingCounts?.[n.id] || 0,
+          onOpenReviews: onOpenReviews || (() => {}),
+        },
         selected: n.id === selected,
       })),
-    [board.nodes, positions, selected],
+    [board.nodes, positions, selected, findingCounts, onOpenReviews],
   );
   const onNodesChange: OnNodesChange<ProcessNode> = (changes) => {
     const updates = changes.filter((c) => c.type === "position");
@@ -113,40 +141,42 @@ function FlowCanvas({
       });
   };
   return (
-    <div ref={frame} style={{width:'100%',height:'100%'}}><ReactFlow<ProcessNode>
-      nodes={nodes}
-      edges={board.connections.map((c) => ({
-        id: c.id,
-        source: c.source_node_id,
-        target: c.target_node_id,
-        label: c.is_default ? "Otherwise" : c.condition_text,
-        selected: c.id === selected,
-        markerEnd: { type: MarkerType.ArrowClosed },
-        style: { strokeWidth: 1.6 },
-        labelStyle: { fontSize: 11 },
-        labelBgPadding: [6, 4] as [number, number],
-      }))}
-      nodeTypes={nodeTypes}
-      onNodesChange={onNodesChange}
-      onNodeClick={(_, n) => onSelect("node", n.id)}
-      onEdgeClick={(_, e) => onSelect("connection", e.id)}
-      onConnect={onConnect}
-      onNodeDragStop={(_, n) =>
-        onMove(n.data.block, n.position.x, n.position.y)
-      }
-      nodesDraggable={!locked}
-      nodesConnectable={!locked}
-      deleteKeyCode={null}
-      fitView
-      fitViewOptions={{padding:.25,maxZoom:1}}
-      minZoom={0.25}
-      maxZoom={1.5}
-      defaultViewport={{ x: 80, y: 60, zoom: 1 }}
-      proOptions={{ hideAttribution: false }}
-    >
-      <Background gap={22} size={1} />
-      <Controls showInteractive={false} />
-    </ReactFlow></div>
+    <div ref={frame} style={{ width: "100%", height: "100%" }}>
+      <ReactFlow<ProcessNode>
+        nodes={nodes}
+        edges={board.connections.map((c) => ({
+          id: c.id,
+          source: c.source_node_id,
+          target: c.target_node_id,
+          label: c.is_default ? "Otherwise" : c.condition_text,
+          selected: c.id === selected,
+          markerEnd: { type: MarkerType.ArrowClosed },
+          style: { strokeWidth: 1.6 },
+          labelStyle: { fontSize: 11 },
+          labelBgPadding: [6, 4] as [number, number],
+        }))}
+        nodeTypes={nodeTypes}
+        onNodesChange={onNodesChange}
+        onNodeClick={(_, n) => onSelect("node", n.id)}
+        onEdgeClick={(_, e) => onSelect("connection", e.id)}
+        onConnect={onConnect}
+        onNodeDragStop={(_, n) =>
+          onMove(n.data.block, n.position.x, n.position.y)
+        }
+        nodesDraggable={!locked}
+        nodesConnectable={!locked}
+        deleteKeyCode={null}
+        fitView
+        fitViewOptions={{ padding: 0.25, maxZoom: 1 }}
+        minZoom={0.25}
+        maxZoom={1.5}
+        defaultViewport={{ x: 80, y: 60, zoom: 1 }}
+        proOptions={{ hideAttribution: false }}
+      >
+        <Background gap={22} size={1} />
+        <Controls showInteractive={false} />
+      </ReactFlow>
+    </div>
   );
 }
 export function ProcessCanvas(props: Props) {

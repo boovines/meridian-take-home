@@ -1,5 +1,6 @@
+import { service } from "@/server/canvas/service";
 import { connectionInput } from "@/domain/canvas";
-import { body, respond, service, parseId } from "@/server/http";
+import { body, respond, parseId } from "@/server/http";
 export async function POST(
   request: Request,
   context: { params: Promise<{ id: string }> },

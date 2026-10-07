@@ -1,6 +1,7 @@
+import { service } from "@/server/canvas/service";
 import { z } from "zod";
 import { connectionPatch, revisionSchema } from "@/domain/canvas";
-import { body, respond, service, parseId } from "@/server/http";
+import { body, respond, parseId } from "@/server/http";
 type Context = { params: Promise<{ id: string; connectionId: string }> };
 export async function PATCH(request: Request, context: Context) {
   return respond(async () => {

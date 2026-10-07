@@ -12,15 +12,26 @@
     "test": "vitest run",
     "test:browser": "playwright test",
     "db:check": "tsx scripts/database.ts",
-    "db:migrate": "tsx scripts/database.ts --migrate"
+    "db:migrate": "tsx scripts/database.ts --migrate",
+    "worker": "tsx src/worker/main.ts",
+    "services:check": "tsx scripts/services-check.ts",
+    "worker:check": "tsx scripts/worker-check.ts",
+    "review:smoke": "tsx scripts/review-smoke.ts"
   },
   "engines": {
     "node": ">=22"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^4.0.86",
     "@electric-sql/pglite": "0.5.8",
     "@next/env": "^16.4.0",
+    "@temporalio/activity": "^1.24.0",
+    "@temporalio/client": "^1.24.0",
+    "@temporalio/common": "^1.24.0",
+    "@temporalio/worker": "^1.24.0",
+    "@temporalio/workflow": "^1.24.0",
     "@xyflow/react": "12.12.0",
+    "ai": "^7.0.130",
     "lucide-react": "^0.468.0",
     "next": "16.4.0",
     "pg": "^8.16.3",

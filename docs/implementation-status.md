@@ -20,8 +20,8 @@ The interview decisions in `.plans/` and revised PRDs refine that scope. Explici
 ## Feature PRs
 
 1. Persisted whiteboard and app foundation: workflows, nodes, connections, optimistic concurrency, canvas interactions, CI.
-2. AI review and frozen handoff: anchored discussion, clarification, resolution history, immutable snapshot and guards.
-3. Engineer plan and code generation: approved plans, inspectable versioned code, Temporal worker, isolated Sandbox execution.
+2. AI review and frozen handoff: anchored discussion, clarification, resolution history, immutable snapshot and guards; shared Temporal worker infrastructure.
+3. Engineer plan and code generation: approved plans, inspectable versioned code, generation activities, isolated Sandbox execution.
 4. Trusted evaluations and bounded repair: versioned cases, result coverage, three attempts, regression-safe baseline, cancellation.
 5. Gmail and complete demonstration: captured real inputs, document extraction, human steps/loops/parallelism, report preview, complete demo evidence.
 
@@ -29,11 +29,11 @@ Boundaries may move to keep each PR coherent. PR #1 conventions are incorporated
 
 ## Acceptance checklist
 
-- [x] Create/list/reopen independent workflows; edit node details, conditions, loop edges, paired parallel splits/merges. Whole-graph freeze validation belongs to the next feature.
+- [x] Create/list/reopen independent workflows; edit node details, conditions, loop edges, paired parallel splits/merges. Whole-graph validation now runs at freeze.
 - [x] Save/reload persists; stale edits preserve client text; cross-workflow references rejected.
-- [ ] Anchored AI review and clarification; cancel cannot publish late results; simplification findings are suggestions only.
-- [ ] Resolve/reject/reopen histories; atomic detail application; ordinary notes nonblocking; eligible deletion closure.
-- [ ] Freeze structural checks, completed-review minimum, closed findings, acknowledged later changes; immutable handoff.
+- [x] Anchored AI review and clarification; cancel cannot publish late results; simplification findings are suggestions only.
+- [x] Resolve/reject/reopen histories; atomic detail application; ordinary notes nonblocking; eligible deletion closure.
+- [x] Freeze structural checks, completed-review minimum, closed findings, acknowledged later changes; immutable handoff.
 - [ ] Engineer plan approvals and explicit revisions; immutable mandatory human methods.
 - [ ] Generated downloadable source from reusable skeleton and frozen requirements; real background progress/cancellation.
 - [ ] Locked independent expectations; revised suites preserve history; full-suite grading with errors/blockers distinguished.
@@ -52,4 +52,8 @@ Boundaries may move to keep each PR coherent. PR #1 conventions are incorporated
 - Credentials follow-up: OpenAI key and Supabase password are now present. Supabase connection verified with the provider's CA and certificate verification enabled; canvas migrations applied to the take-home database. OpenAI presence is not yet a live inference check.
 - Whiteboard shell: three live variants inspected in Chrome; Compact workbench selected under Justin's instruction to make the choice autonomously. It keeps seven primitive types visible at laptop height. Picker files and alternate variants removed.
 - Foundation: targeted relational edits, optimistic revisions, same-workflow constraints, RLS against direct anonymous REST access, and independent local test persistence implemented. A browser test exposed omitted PATCH fields receiving create defaults; update schemas now explicitly preserve absent fields.
-- Foundation verification: lint/typecheck/production build pass, 10 local persistence/request tests pass, and both production-browser journeys pass (return-loop persistence and two-tab conflict recovery). PostgreSQL verification is wired into CI and awaits the first PR run. Production dependency audit has no findings; the development lint dependency tree currently reports five advisories involving braces, with no compatible patch offered by npm audit.
+- Foundation verification: lint/typecheck/production build pass, 10 local persistence/request tests pass, and both production-browser journeys pass (return-loop persistence and two-tab conflict recovery). PostgreSQL 17 and production-browser checks passed in PR #2 (merged); both scaffold and app checks are now required on main. Production dependency audit has no findings; the development lint dependency tree currently reports five advisories involving braces, with no compatible patch offered by npm audit.
+
+- Review/handoff: 23 local tests and four production browser journeys pass. The browser flow performs two fixture review rounds, approves a detail edit, and freezes a persisted board. OpenAI + Temporal live verification completed successfully on a synthetic Supabase workflow using `gpt-5.4-mini`; no Gmail access or sending occurred.
+- File placement: feature-specific server/UI folders, shared workflow persistence helpers, isolated integration adapters and a separate worker entry point are implemented and documented. Review messages, anchors and recent-run queries have workflow-scoped indexes.
+- Live review continuation: two real OpenAI reviews completed on the synthetic workflow, with a saved customer answer, a manual outcome edit, recorded resolution, and a handoff acknowledgment for the later semantic edit. This verifies the review path only; generated agents, Gmail and full shipment evaluation remain unchecked above.
