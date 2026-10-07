@@ -1,6 +1,6 @@
 # Architecture
 
-Design consolidation · October 7, 2026. The main requirements/schema interview is complete. These are proposed contracts, not implemented services or tested migrations.
+Architecture and design contracts · October 7, 2026. Canvas authoring and draft review/freeze are implemented; engineering and runtime sections remain planned. See `implementation-status.md` for verified progress and `app/migrations` for executable schema.
 
 Start with the revised [Whiteboard PRD](whiteboard-prd.md) and [Self-Healing Agent PRD](self-healing-agent-prd.md). Detailed fields and constraints are in the [canvas](../.plans/meridian-canvas-schema-spec.md), [review](../.plans/meridian-review-schema-spec.md), [engineering](../.plans/meridian-engineering-schema-spec.md), and [runtime](../.plans/meridian-runtime-schema-spec.md) specs.
 
@@ -33,7 +33,7 @@ flowchart TD
 
 The return to generation is conditional on an explicitly started repair session and its remaining budget. It is not an endless loop. Manual runs need no grading; unit tests need no full workflow run. Reports are previews only. Generated code cannot bypass human gates, rewrite fixtures, or publish its own acceptance result.
 
-Vercel is a candidate for the web/API surface. The worker/executor and sandbox need a separately validated hosting arrangement; no provider is selected here. Database transactions never span LLM calls or generated execution.
+The web/API can deploy to Vercel. Temporal Cloud owns orchestration; its worker runs as a separate persistent Node process. Vercel Sandbox is selected for generated execution. Supabase Postgres stores application state and immutable evidence; direct server connections verify TLS with the project CA. OpenAI performs review and generation, and Composio supplies read-only Gmail retrieval. Database transactions never span model calls or generated execution. The app README documents the implemented module boundaries.
 
 ## Version and ownership boundaries
 
@@ -53,7 +53,7 @@ Use same-workflow composite foreign keys on owned relationships and same-run key
 
 ## Data relationships
 
-These diagrams show selected relationships, not every column or foreign key. Full definitions and nullability remain in the schema specs. The runtime diagram shows the explicit database-owned coordination option. Parallel group/branch storage and custom worker lease fields are conditional on executor ownership; do not implement them as a second scheduling authority alongside an executor that already owns those transitions. The [decision audit](data-model-decisions.md) explains this boundary and the alternatives.
+These diagrams show selected relationships, not every column or foreign key. Full definitions and nullability remain in the schema specs. Temporal is the selected scheduling authority. Runtime group/branch rows in the diagram describe inspection/history projections, not a second scheduler. Omit custom database worker leases; derive progress from Temporal-owned transitions. The [decision audit](data-model-decisions.md) explains this boundary and the alternatives.
 
 ```mermaid
 erDiagram

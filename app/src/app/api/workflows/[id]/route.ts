@@ -1,5 +1,6 @@
+import { service } from "@/server/canvas/service";
 import { workflowPatch } from "@/domain/canvas";
-import { body, respond, service, parseId } from "@/server/http";
+import { body, respond, parseId } from "@/server/http";
 type Context = { params: Promise<{ id: string }> };
 export async function GET(_: Request, context: Context) {
   return respond(async () =>

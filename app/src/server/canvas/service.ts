@@ -12,65 +12,22 @@ import {
   type nodePatch,
   type connectionInput,
   type connectionPatch,
-} from "../domain/canvas";
-import type { Database, Queryable } from "./database";
+} from "../../domain/canvas";
+import { getDatabase, type Database, type Queryable } from "../database";
+import { closeDeletedNodeFindings } from "../reviews/discussion-store";
+import {
+  record,
+  workflow,
+  editable,
+  expectRevision,
+  activeNodes,
+} from "../workflows/store";
 
-// pg returns bigint as text; revisions are restricted to JavaScript's safe range.
-function record<T>(row: Record<string, unknown>): T {
-  return {
-    ...row,
-    ...("revision" in row ? { revision: Number(row.revision) } : {}),
-    ...("content_revision" in row
-      ? { content_revision: Number(row.content_revision) }
-      : {}),
-  } as T;
-}
-async function workflow(
-  tx: Queryable,
-  id: string,
-  lock = false,
-): Promise<Workflow> {
-  const row = (
-    await tx.query(
-      `SELECT * FROM workflows WHERE id = $1${lock ? " FOR UPDATE" : ""}`,
-      [id],
-    )
-  ).rows[0];
-  if (!row) throw new DomainError(404, "NOT_FOUND", "Workflow not found.");
-  return record(row);
-}
-function editable(w: Workflow) {
-  if (w.state !== "draft")
-    throw new DomainError(
-      409,
-      "WORKFLOW_LOCKED",
-      w.state === "frozen"
-        ? "This workflow is frozen."
-        : "Cancel the active review before editing.",
-    );
-}
-function expectRevision(current: { revision: number }, expected: number) {
-  if (current.revision !== expected)
-    throw new DomainError(
-      409,
-      "STALE_EDIT",
-      "This item changed in another tab. Your unsaved text is preserved; reload the saved version before retrying.",
-      { current },
-    );
-}
 async function touch(tx: Queryable, id: string, semantic: boolean) {
   await tx.query(
     "UPDATE workflows SET updated_at=now(), content_revision=content_revision+$2 WHERE id=$1",
     [id, semantic ? 1 : 0],
   );
-}
-async function activeNodes(tx: Queryable, id: string): Promise<CanvasNode[]> {
-  return (
-    await tx.query(
-      "SELECT * FROM nodes WHERE workflow_id=$1 AND deleted_at IS NULL ORDER BY created_at,id",
-      [id],
-    )
-  ).rows.map((r) => record<CanvasNode>(r));
 }
 async function activeNode(
   tx: Queryable,
@@ -251,6 +208,7 @@ export class CanvasService {
         "UPDATE nodes SET deleted_at=now(),updated_at=now(),revision=revision+1 WHERE id=$1",
         [nodeId],
       );
+      await closeDeletedNodeFindings(tx, id, nodeId);
       await tx.query(
         "UPDATE connections SET deleted_at=now(),updated_at=now(),revision=revision+1 WHERE workflow_id=$1 AND (source_node_id=$2 OR target_node_id=$2) AND deleted_at IS NULL",
         [id, nodeId],
@@ -332,4 +290,8 @@ export class CanvasService {
       await touch(tx, id, true);
     });
   }
+}
+
+export async function service() {
+  return new CanvasService(await getDatabase());
 }

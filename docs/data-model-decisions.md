@@ -245,3 +245,11 @@ The model is now defensible as a scoped proposal with explicit alternatives and 
 - [Runtime/artifact fields and constraints](../.plans/meridian-runtime-schema-spec.md)
 - [Architecture and diagrams](architecture.md)
 - [Verification plan](verification.md)
+
+## Implementation checkpoint: review and handoff
+
+Migrations 003–004 implement `review_runs`, `discussion_threads`, `discussion_messages`, and `thread_anchors`. Missing-outcome clarification uses a dedicated thread kind within the active review; it does not need a separate table with the same conversation fields. Thread messages hold both replies and append-only disposition events, while the thread stores its current state for efficient freeze checks. Composite foreign keys enforce same-workflow references; parent-message keys enforce same-thread replies. The active-review partial unique index and workflow pointer prevent overlapping reviews.
+
+Live editing remains relational. Review input and frozen handoff use immutable JSON snapshots because their whole-document identity matters more than per-node mutation; this duplication preserves the exact content judged or approved. Large historical snapshots are excluded from routine review-list responses. Workflow-scoped indexes support comment reads and recent-run lists. Model calls occur outside database transactions, and cancelled/stale results are rejected when publishing. Temporal owns execution; no SQL lease queue was introduced.
+
+The executable schema and behavior take precedence over earlier proposed field names. The implemented flow and its limits are traced in `../specs/review-handoff.md`.

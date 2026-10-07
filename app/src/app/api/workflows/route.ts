@@ -1,5 +1,6 @@
+import { service } from "@/server/canvas/service";
 import { workflowInput } from "@/domain/canvas";
-import { body, respond, service } from "@/server/http";
+import { body, respond } from "@/server/http";
 export const runtime = "nodejs";
 export async function GET() {
   return respond(async () => (await service()).list());

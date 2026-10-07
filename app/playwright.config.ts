@@ -20,6 +20,7 @@ export default defineConfig({
     env: {
       MERIDIAN_DATABASE: "local",
       MERIDIAN_LOCAL_DEMO: "true",
+      MERIDIAN_REVIEW_PROVIDER: "fixture",
       LOCAL_DATABASE_PATH: path.resolve("../.runtime/browser-tests"),
     },
   },

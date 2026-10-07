@@ -1,11 +1,6 @@
 import { z } from "zod";
 import { DomainError, uuid } from "../domain/canvas";
-import { CanvasService } from "./canvas-service";
-import { getDatabase } from "./database";
 
-export async function service() {
-  return new CanvasService(await getDatabase());
-}
 export async function body<T>(
   request: Request,
   schema: z.ZodType<T>,

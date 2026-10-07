@@ -1,6 +1,13 @@
 "use client";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { Check, ChevronDown, Plus, X } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  Plus,
+  X,
+  MessageSquare,
+  LockKeyhole,
+} from "lucide-react";
 import type { Connection as FlowConnection } from "@xyflow/react";
 import Workspace from "../shell/workspace";
 import { ProcessCanvas } from "./process-canvas";
@@ -16,6 +23,9 @@ import {
   nodeLabels,
   nodeTypes,
 } from "@/domain/canvas";
+import { useReview } from "../reviews/use-review";
+import { ReviewPanel } from "../reviews/review-panel";
+import { FreezeDialog } from "../reviews/freeze-dialog";
 export function BoardClient({ id }: { id: string }) {
   const [board, setBoard] = useState<Board | null>(null),
     [error, setError] = useState(""),
@@ -27,9 +37,12 @@ export function BoardClient({ id }: { id: string }) {
     } | null>(null),
     [goalOpen, setGoalOpen] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false),
+    [freezeOpen, setFreezeOpen] = useState(false);
   const load = useCallback(async () => {
     setBoard(await api<Board>(`/api/workflows/${id}`));
   }, [id]);
+  const review = useReview(id, load);
   useEffect(() => {
     let active = true;
     api<Board>(`/api/workflows/${id}`)
@@ -59,8 +72,10 @@ export function BoardClient({ id }: { id: string }) {
     return true;
   }
   function select(kind: "node" | "connection", nodeId: string) {
-    if (selection?.kind === kind && selection.id === nodeId) return;
+    if (selection?.kind === kind && selection.id === nodeId && !reviewOpen)
+      return;
     if (canLeave()) {
+      setReviewOpen(false);
       setSelection({ kind, id: nodeId });
       setGoalOpen(false);
     }
@@ -71,7 +86,7 @@ export function BoardClient({ id }: { id: string }) {
     setStatus("Saving…");
     try {
       await fn();
-      await load();
+      await review.refresh();
       setStatus("All changes saved");
     } catch (e) {
       setError(errorMessage(e));
@@ -89,6 +104,7 @@ export function BoardClient({ id }: { id: string }) {
         x: 80 + (board.nodes.length % 3) * 270,
         y: 60 + Math.floor(board.nodes.length / 3) * 190,
       });
+      setReviewOpen(false);
       setSelection({ kind: "node", id: n.id });
       setGoalOpen(false);
     });
@@ -119,13 +135,27 @@ export function BoardClient({ id }: { id: string }) {
     selectedConnection = board?.connections.find(
       (c) => selection?.kind === "connection" && c.id === selection.id,
     );
+  const counts: Record<string, number> = {};
+  for (const t of review.state.threads.filter(
+    (t) => t.kind === "finding" && t.status === "open",
+  ))
+    for (const a of review.state.anchors.filter((a) => a.thread_id === t.id)) {
+      const id = a.node_id || a.connection_id!;
+      counts[id] = (counts[id] || 0) + 1;
+    }
+  const openReviews = () => {
+    if (canLeave()) {
+      setReviewOpen(true);
+      setGoalOpen(false);
+    }
+  };
   const locked = busy || board?.workflow.state !== "draft";
   const inspectorProps = board
     ? {
         board,
         locked,
         onSaved: async () => {
-          await load();
+          await review.refresh();
           setStatus("All changes saved");
         },
         onClose: () => {
@@ -141,7 +171,8 @@ export function BoardClient({ id }: { id: string }) {
       actions={
         <>
           <span className="save-status" role="status">
-            {!dirty && status === "All changes saved" && <Check size={13} />} {dirty?'Unsaved changes':status}
+            {!dirty && status === "All changes saved" && <Check size={13} />}{" "}
+            {dirty ? "Unsaved changes" : status}
           </span>
           <span className="status-pill">
             {board?.workflow.state || "loading"}
@@ -150,6 +181,39 @@ export function BoardClient({ id }: { id: string }) {
       }
     >
       <main className="board-workspace">
+        {review.error && (
+          <div role="alert" className="error-banner">
+            {review.error}
+            <button onClick={() => void review.refresh().catch(() => {})}>
+              Retry loading review
+            </button>
+          </div>
+        )}
+        {board?.workflow.state === "reviewing" && (
+          <div className="state-banner" role="status">
+            Review in progress. The canvas is temporarily read-only.
+            <button onClick={openReviews}>View review</button>
+          </div>
+        )}
+        {board?.workflow.state === "frozen" && (
+          <div className="state-banner">
+            <LockKeyhole size={15} /> Frozen for engineer handoff. This process
+            and its review decisions are saved.
+          </div>
+        )}
+        {freezeOpen && (
+          <FreezeDialog
+            workflowId={id}
+            onClose={() => setFreezeOpen(false)}
+            onFrozen={review.refresh}
+            onLocate={(issue) =>
+              select(
+                issue.node_id ? "node" : "connection",
+                (issue.node_id || issue.connection_id)!,
+              )
+            }
+          />
+        )}
         {error && (
           <div role="alert" className="error-banner">
             {error}
@@ -179,6 +243,7 @@ export function BoardClient({ id }: { id: string }) {
                 className="subtle"
                 onClick={() => {
                   if (canLeave()) {
+                    setReviewOpen(false);
                     setGoalOpen(!goalOpen);
                     setSelection(null);
                   }
@@ -186,6 +251,27 @@ export function BoardClient({ id }: { id: string }) {
               >
                 Workflow details <ChevronDown size={14} />
               </button>
+              <div className="button-row">
+                <button onClick={openReviews} aria-pressed={reviewOpen}>
+                  <MessageSquare size={14} /> Review & comments{" "}
+                  {review.state.threads.filter(
+                    (t) => t.kind === "finding" && t.status === "open",
+                  ).length || ""}
+                </button>
+                <button
+                  className="primary"
+                  disabled={busy || board.workflow.state !== "draft"}
+                  onClick={() => {
+                    if (canLeave()) {
+                      setSelection(null);
+                      setGoalOpen(false);
+                      setFreezeOpen(true);
+                    }
+                  }}
+                >
+                  <LockKeyhole size={14} /> Freeze
+                </button>
+              </div>
             </div>
             <div className="canvas-layout">
               <aside className="palette" aria-label="Blocks">
@@ -224,6 +310,8 @@ export function BoardClient({ id }: { id: string }) {
               <section className="canvas-stage" aria-label="Process canvas">
                 <ProcessCanvas
                   board={board}
+                  findingCounts={counts}
+                  onOpenReviews={openReviews}
                   selected={selection?.id}
                   locked={locked}
                   onSelect={select}
@@ -247,7 +335,16 @@ export function BoardClient({ id }: { id: string }) {
                   </div>
                 )}
               </section>
-              {selectedNode && inspectorProps ? (
+              {reviewOpen ? (
+                <ReviewPanel
+                  board={board}
+                  state={review.state}
+                  onRefresh={review.refresh}
+                  selected={selection}
+                  onClose={() => setReviewOpen(false)}
+                  onLocate={select}
+                />
+              ) : selectedNode && inspectorProps ? (
                 <NodeInspector
                   key={selectedNode.id}
                   node={selectedNode}
