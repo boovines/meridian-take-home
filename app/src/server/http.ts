@@ -42,7 +42,9 @@ export async function body<T>(
 export const parseId = (value: string) => uuid.parse(value);
 export async function respond(fn: () => Promise<unknown>, status = 200) {
   try {
-    return Response.json(await fn(), {
+    const result = await fn();
+    if (result instanceof Response) return result;
+    return Response.json(result, {
       status,
       headers: { "Cache-Control": "no-store" },
     });

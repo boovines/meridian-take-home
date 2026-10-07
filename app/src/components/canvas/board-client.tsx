@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import {
   Check,
@@ -199,6 +200,7 @@ export function BoardClient({ id }: { id: string }) {
           <div className="state-banner">
             <LockKeyhole size={15} /> Frozen for engineer handoff. This process
             and its review decisions are saved.
+            <Link className="button-link" href={`/workflows/${id}/engineer`}>Open engineer workspace</Link>
           </div>
         )}
         {freezeOpen && (

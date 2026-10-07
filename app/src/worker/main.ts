@@ -2,6 +2,7 @@ import nextEnv from "@next/env";
 import { fileURLToPath } from "node:url";
 import { NativeConnection, Worker } from "@temporalio/worker";
 import { temporalConfig } from "../server/integrations/temporal-config";
+import { startOutbox } from "./dispatch-outbox";
 import * as activities from "./activities";
 import { getDatabase } from "../server/database";
 nextEnv.loadEnvConfig(process.cwd());
@@ -17,7 +18,12 @@ try {
     maxConcurrentActivityTaskExecutions: 4,
   });
   console.log("Meridian worker ready.");
-  await worker.run();
+  const stopOutbox = startOutbox(await getDatabase());
+  try {
+    await worker.run();
+  } finally {
+    stopOutbox();
+  }
 } finally {
   await connection.close();
   await (await getDatabase()).close();

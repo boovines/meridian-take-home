@@ -207,6 +207,14 @@ it("seals artifact bytes, rejects cross-workflow reads and detects later content
 });
 
 import { JobService } from "../src/server/engineering/job-service";
+import { GenerationService } from "../src/server/engineering/generation-service";
+import { VersionService } from "../src/server/engineering/version-service";
+import { fixtureSources } from "./fixtures/engineer";
+import {
+  assembleProject,
+  validateProject,
+} from "../src/server/engineering/project";
+import { unzipSync } from "fflate";
 async function approved() {
   const { w } = await frozen(),
     plan = await plans.create(w.id, {
@@ -241,7 +249,9 @@ it("pins job inputs, deduplicates requests, and keeps the active slot until canc
     jobs.startGeneration(w.id, { ...request, request_key: randomUUID() }),
   ).rejects.toMatchObject({ code: "OPERATION_ACTIVE" });
   await jobs.prepareGeneration(job.id);
-  await expect(jobs.finish(job.id,"succeeded")).rejects.toMatchObject({code:"NO_GENERATED_PROJECT"});
+  await expect(jobs.finish(job.id, "succeeded")).rejects.toMatchObject({
+    code: "NO_GENERATED_PROJECT",
+  });
   await jobs.requestCancel(w.id, job.id);
   await expect(jobs.progress(job.id, "generated", {})).rejects.toMatchObject({
     code: "JOB_INACTIVE",
@@ -297,4 +307,159 @@ it("publishes a complete version once, retains its approved plan and forbids lat
   await expect(
     jobs.publishVersion(job.id, { ...data, generationKey: "late" }),
   ).rejects.toMatchObject({ code: "JOB_INACTIVE" });
+});
+
+it("resumes generation from durable source after validation failure and downloads the exact immutable project", async () => {
+  const { w, plan } = await approved(),
+    jobs = new JobService(db),
+    artifacts = new ArtifactService(db, new LocalObjectStore(directory));
+  const job = await jobs.startGeneration(w.id, {
+    request_key: randomUUID(),
+    plan_version_id: plan.id,
+    input_version_id: null,
+  });
+  let calls = 0,
+    validations = 0;
+  const adapters = {
+    model: "fixture",
+    generate: async (
+      context: NonNullable<
+        Awaited<ReturnType<JobService["prepareGeneration"]>>
+      >,
+    ) => {
+      calls++;
+      return fixtureSources(context.spec.board, context.steps);
+    },
+    validate: async () => {
+      validations++;
+      if (validations === 1) throw new Error("Transient sandbox outage");
+      return { verified: true };
+    },
+  };
+  const service = new GenerationService(db, artifacts);
+  await expect(
+    service.run(job.id, adapters, AbortSignal.timeout(10000)),
+  ).rejects.toThrow("Transient sandbox");
+  expect((await plans.state(w.id)).versions).toHaveLength(0);
+  await service.run(job.id, adapters, AbortSignal.timeout(10000));
+  await service.run(job.id, adapters, AbortSignal.timeout(10000));
+  expect(calls).toBe(1);
+  expect(validations).toBe(2);
+  const state = await plans.state(w.id);
+  expect(state.jobs[0].status).toBe("succeeded");
+  expect(state.versions).toHaveLength(1);
+  const versions = new VersionService(db, artifacts),
+    versionId = String(state.versions[0].id),
+    detail = await versions.inspect(w.id, versionId);
+  const response = await versions.download(w.id, versionId),
+    zip = unzipSync(new Uint8Array(await response.arrayBuffer()));
+  expect(new TextDecoder().decode(zip["run-step.mjs"])).toBe(
+    detail.project.files["run-step.mjs"],
+  );
+  expect(Object.keys(zip).sort()).toEqual(
+    Object.keys(detail.project.files).sort(),
+  );
+  const other = await canvas.create({ name: "Other", desired_outcome: "" });
+  await expect(versions.inspect(other.id, versionId)).rejects.toMatchObject({
+    code: "NOT_FOUND",
+  });
+});
+it("does not publish a version when cancellation arrives during sandbox validation", async () => {
+  const { w, plan } = await approved(),
+    jobs = new JobService(db),
+    job = await jobs.startGeneration(w.id, {
+      request_key: randomUUID(),
+      plan_version_id: plan.id,
+      input_version_id: null,
+    });
+  await expect(
+    new GenerationService(
+      db,
+      new ArtifactService(db, new LocalObjectStore(directory)),
+    ).run(
+      job.id,
+      {
+        model: "fixture",
+        generate: async (c) => fixtureSources(c.spec.board, c.steps),
+        validate: async () => {
+          await jobs.requestCancel(w.id, job.id);
+          return {};
+        },
+      },
+      AbortSignal.timeout(10000),
+    ),
+  ).rejects.toMatchObject({ code: "JOB_INACTIVE" });
+  expect((await plans.state(w.id)).versions).toHaveLength(0);
+});
+it("rejects incomplete sources and escaping paths, and inserts human behavior independently of the coding agent", async () => {
+  const { w, plan } = await approved(),
+    context = (await new JobService(db).prepareGeneration(
+      (
+        await new JobService(db).startGeneration(w.id, {
+          request_key: randomUUID(),
+          plan_version_id: plan.id,
+          input_version_id: null,
+        })
+      ).id,
+    ))!;
+  const sources = fixtureSources(context.spec.board, context.steps);
+  expect(() =>
+    assembleProject(
+      context.spec.board,
+      context.spec.id,
+      context.plan,
+      context.steps,
+      { ...sources, steps: [] },
+      "fixture",
+    ),
+  ).toThrow("every approved step");
+  const project = assembleProject(
+    context.spec.board,
+    context.spec.id,
+    context.plan,
+    context.steps,
+    sources,
+    "fixture",
+  );
+  const human = context.steps.find((s) => s.selected_method === "human")!;
+  expect(project.files[project.node_file_map[human.node_id]]).toContain(
+    "human_response",
+  );
+  expect(() =>
+    validateProject({
+      ...project,
+      files: { ...project.files, "../escape.mjs": "anything" },
+    }),
+  ).toThrow();
+  expect(() =>
+    validateProject({
+      ...project,
+      files: { ...project.files, "run-step.mjs": "" },
+    }),
+  ).toThrow();
+});
+
+it("releases expired generation slots during inspection even when the worker is offline", async () => {
+  const { w, plan } = await approved(),
+    jobs = new JobService(db),
+    job = await jobs.startGeneration(w.id, {
+      request_key: randomUUID(),
+      plan_version_id: plan.id,
+      input_version_id: null,
+    });
+  await db.query(
+    "UPDATE workflow_jobs SET deadline_at=now()-interval '1 minute' WHERE id=$1",
+    [job.id],
+  );
+  expect((await plans.state(w.id)).jobs[0].status).toBe("failed");
+  expect(await jobs.prepareGeneration(job.id)).toBeNull();
+  expect(
+    (
+      await jobs.startGeneration(w.id, {
+        request_key: randomUUID(),
+        plan_version_id: plan.id,
+        input_version_id: null,
+      })
+    ).status,
+  ).toBe("queued");
 });

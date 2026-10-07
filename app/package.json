@@ -17,7 +17,8 @@
     "services:check": "tsx scripts/services-check.ts",
     "worker:check": "tsx scripts/worker-check.ts",
     "review:smoke": "tsx scripts/review-smoke.ts",
-    "sandbox:smoke": "tsx scripts/sandbox-smoke.ts"
+    "sandbox:smoke": "tsx scripts/sandbox-smoke.ts",
+    "storage:setup": "tsx scripts/storage-setup.ts"
   },
   "engines": {
     "node": ">=22"
@@ -35,6 +36,7 @@
     "@vercel/sandbox": "^3.5.1",
     "@xyflow/react": "12.12.0",
     "ai": "^7.0.130",
+    "fflate": "^0.8.3",
     "lucide-react": "^0.468.0",
     "next": "16.4.0",
     "pg": "^8.16.3",

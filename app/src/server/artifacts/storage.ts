@@ -26,6 +26,7 @@ export class LocalObjectStore implements ObjectStore {
 export class SupabaseObjectStore implements ObjectStore {
   readonly backend = "supabase" as const;
   private client;
+  private privacyCheck?: Promise<void>;
   constructor(
     private bucket = process.env.SUPABASE_ARTIFACT_BUCKET ||
       "meridian-artifacts",
@@ -42,7 +43,24 @@ export class SupabaseObjectStore implements ObjectStore {
       auth: { persistSession: false, autoRefreshToken: false },
     });
   }
+  private async ensurePrivate() {
+    if (!this.privacyCheck)
+      this.privacyCheck = this.client.storage
+        .getBucket(this.bucket)
+        .then(({ data, error }) => {
+          if (error || !data || data.public)
+            throw new Error(
+              "The configured artifact bucket must exist and be private.",
+            );
+        })
+        .catch((error) => {
+          this.privacyCheck = undefined;
+          throw error;
+        });
+    await this.privacyCheck;
+  }
   async write(key: string, bytes: Buffer, mediaType: string) {
+    await this.ensurePrivate();
     const { error } = await this.client.storage
       .from(this.bucket)
       .upload(safeKey(key), bytes, { contentType: mediaType, upsert: false });
@@ -52,6 +70,7 @@ export class SupabaseObjectStore implements ObjectStore {
       );
   }
   async read(key: string) {
+    await this.ensurePrivate();
     const { data, error } = await this.client.storage
       .from(this.bucket)
       .download(safeKey(key));
@@ -60,7 +79,10 @@ export class SupabaseObjectStore implements ObjectStore {
   }
 }
 export function objectStore(backend?: "local" | "supabase"): ObjectStore {
-  if (backend === "local")
+  if (
+    backend === "local" ||
+    (!backend && process.env.MERIDIAN_DATABASE === "local")
+  )
     return new LocalObjectStore(process.env.LOCAL_ARTIFACT_PATH);
   if (
     backend === "supabase" ||

@@ -283,6 +283,14 @@ export class PlanService {
     return this.db.transaction(async (tx) => {
       const w = await workflow(tx, workflowId, true),
         spec = await frozenSpec(tx, workflowId);
+      // Reading progress must also recover an expired slot if the worker is
+      // offline. This fences publication; Temporal still owns activity retries.
+      await tx.query(
+        `UPDATE workflow_jobs SET status=CASE WHEN status='cancel_requested' THEN 'cancelled' ELSE 'failed' END,
+          phase='expired',error_code='JOB_EXPIRED',error_message='Generation exceeded its time limit. Check the worker and start a new operation.',finished_at=now(),updated_at=now()
+        WHERE workflow_id=$1 AND kind='generation' AND status IN ('queued','running','cancel_requested') AND deadline_at<now()`,
+        [workflowId],
+      );
       const plans = (
         await tx.query(
           "SELECT * FROM implementation_plan_versions WHERE workflow_id=$1 ORDER BY version_number DESC LIMIT 20",

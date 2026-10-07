@@ -34,8 +34,8 @@ Boundaries may move to keep each PR coherent. PR #1 conventions are incorporated
 - [x] Anchored AI review and clarification; cancel cannot publish late results; simplification findings are suggestions only.
 - [x] Resolve/reject/reopen histories; atomic detail application; ordinary notes nonblocking; eligible deletion closure.
 - [x] Freeze structural checks, completed-review minimum, closed findings, acknowledged later changes; immutable handoff.
-- [ ] Engineer plan approvals and explicit revisions; immutable mandatory human methods.
-- [ ] Generated downloadable source from reusable skeleton and frozen requirements; real background progress/cancellation.
+- [x] Engineer plan approvals and explicit revisions; immutable mandatory human methods.
+- [x] Generated downloadable source from reusable skeleton and frozen requirements; real background progress/cancellation.
 - [ ] Locked independent expectations; revised suites preserve history; full-suite grading with errors/blockers distinguished.
 - [ ] Repair actual code, keep every attempt, reject regressions, preserve baseline, stop at three attempts or required human decisions.
 - [ ] Temporal durability and Sandbox isolation verified with live adapters.
@@ -59,6 +59,11 @@ Boundaries may move to keep each PR coherent. PR #1 conventions are incorporated
 - Live review continuation: two real OpenAI reviews completed on the synthetic workflow, with a saved customer answer, a manual outcome edit, recorded resolution, and a handoff acknowledgment for the later semantic edit. This verifies the review path only; generated agents, Gmail and full shipment evaluation remain unchecked above.
 
 - PR #3 review/handoff merged after required scaffold and app CI passed (PostgreSQL 17, worker bundle, four browser journeys). Live synthetic handoff is frozen after two review rounds.
-- Generation feature in progress: approved-plan revisions, mandatory-human guards, private artifact transport/integrity checks and exclusive/idempotent job lifecycle are implemented at the service layer. Thirty local tests pass; generation UI, code synthesis and runtime execution are not yet connected.
+- Generation feature in progress: approved-plan revisions, mandatory-human guards, private artifact transport/integrity checks and exclusive/idempotent job lifecycle are implemented at the service layer. This initial service checkpoint had 30 passing tests; see the later generation milestone below for current UI and live verification.
 - Vercel: dedicated `meridian-take-home` project linked using existing CLI access. A nonpersistent Node 24 sandbox ran successfully with denied network egress and no application keys, then stopped. This is infrastructure verification, not generated-agent execution.
 - Storage configuration: Supabase Postgres is live; private object storage needs the existing server secret key. A nonblocking request asked for it in `.env.local`. Local artifact storage supports continued development while that is pending.
+
+- Engineer interface: three live variants inspected in Chrome. Compact table selected because method/approval comparisons stay visible together; step requirements expand in place. Temporary picker and alternate variants removed.
+- Generation verification: 34 local tests and five production-browser journeys pass, including source checkpoint reuse after a validation outage, late-cancellation fencing, cross-workflow download denial, explicit approvals, immutable revisions and ZIP delivery. Live method suggestions succeeded. Live OpenAI → Temporal → Vercel Sandbox generation subsequently completed; its code version is visible in Chrome with download and Not yet evaluated. The initial failed attempt remains in history.
+
+- Live generation fixes: sandbox directory creation now creates the parent explicitly. Source generation uses an array of lines to avoid double-escaped line separators. Syntax validation rejects invalid source without publishing a valid version. Service tests cover expired-slot recovery when the worker is offline. Full agent execution/evaluation is still pending.
