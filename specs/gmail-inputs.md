@@ -1,0 +1,21 @@
+# Gmail capture and document interpretation
+
+## Entry points and behavior
+
+The engineer searches existing messages for a workflow, with ordinary Gmail search terms or a shipment reference. Results show subject, sender, received time, and pagination. The engineer explicitly selects messages and supplies the shipment reference used to label the saved packet. No mailbox watcher starts runs automatically.
+
+At this checkpoint search and capture are available through the workflow API and an operator command; dedicated selection/run controls are not yet implemented. The input selector in evaluation authoring lists successful captures. There are no role-specific permissions in this demo; its mailbox access must stay within the operator's local or access-protected deployment.
+
+Capture preserves the message text, envelope, and attachment identities, then downloads every attachment. It completes only after every selected message and attachment is available. A disconnected request or provider error can leave retained evidence, but cannot publish a partially captured packet. A retry creates a new capture. Existing workflow runs never re-query Gmail.
+
+## Document reading
+
+An approved Agent step may request specific documents from that run's saved packet. It receives the interpretation as JSON. The interpretation service can read PDF, PNG, JPEG, WebP, plain text, and CSV. Other formats remain captured but cannot be interpreted by this reader. The service reports unsupported, invalid, or oversized documents as errors; it never substitutes an empty successful extraction.
+
+The step cannot read a different run's uncaptured document, fetch an arbitrary URL, or access local paths. Code steps cannot request model interpretation. Human response requirements are unaffected. Interpretation is not itself a verified business result; locked evaluations still compare the workflow's final output against independent expectations.
+
+## Limits and exits
+
+A capture accepts 1–10 distinct email selections and a nonblank shipment reference of at most 200 characters. It supports up to 90 attachments, 25 MB per file, 50 MB of attachment bytes per packet, 150 KB of text per email, and 512 KB of combined message/metadata input. Capture has a four-minute deadline. Exceeding a limit leaves no runnable partial packet.
+
+One interpretation request may read up to 20 distinct captured documents and 20 MB total, with at most 200 KB per text file. It does not send email, modify Gmail, approve a human task, or alter expected test results. Neither capture nor interpretation automatically starts a workflow run.

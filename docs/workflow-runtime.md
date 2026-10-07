@@ -1,6 +1,6 @@
 # Workflow execution
 
-The trusted runtime runs the frozen graph against one immutable input bundle and code version. Its API creates a durable operation, exposes ordered step history, accepts a human response, and permits cancellation. Run controls in the engineer UI and Gmail capture are the next integration work; this feature is currently exercised through services/API and the live smoke command.
+The trusted runtime runs the frozen graph against one immutable input bundle and code version. Its API creates a durable operation, exposes ordered step history, accepts a human response, and permits cancellation. Run controls in the engineer UI are the next integration work. Gmail capture and document reading are implemented through the API; execution is currently exercised through services/API and the live smoke command.
 
 Temporal owns scheduling, parallel joins, active-time timers, and human waits. Postgres stores application progress and history. Each visit has a scheduling key and per-node visit number; a retry within that visit uses a fresh fencing token. Completed outputs are reused on duplicate delivery. An obsolete invocation cannot overwrite a completed, cancelled, or superseded attempt.
 
