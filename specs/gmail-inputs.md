@@ -14,6 +14,8 @@ An approved Agent step may request specific documents from that run's saved pack
 
 The step cannot read a different run's uncaptured document, fetch an arbitrary URL, or access local paths. Code steps cannot request model interpretation. Human response requirements are unaffected. Interpretation is not itself a verified business result; locked evaluations still compare the workflow's final output against independent expectations.
 
+Selecting an unsupported attachment is an implementation error that repair may address by correcting document selection. Repair cannot add reader capabilities, discard required evidence, or change the captured input. Invalid document bytes remain an input error requiring attention.
+
 ## Limits and exits
 
 A capture accepts 1–10 distinct email selections and a nonblank shipment reference of at most 200 characters. It supports up to 90 attachments, 25 MB per file, 50 MB of attachment bytes per packet, 150 KB of text per email, and 512 KB of combined message/metadata input. Capture has a four-minute deadline. Exceeding a limit leaves no runnable partial packet.
