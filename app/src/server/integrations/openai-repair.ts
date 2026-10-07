@@ -22,12 +22,13 @@ export async function repairProjectSources(
         prompt:
           prompt +
           "\nUse input_inventory to check whether the baseline omitted captured evidence before changing downstream validation. Expected totals do not authorize weakening an explicit frozen requirement; conflicting requirements and examples need an engineer decision, not a permissive matching rule.",
-        maxOutputTokens: 24000,
+        // This budget includes reasoning as well as the complete source response.
+        maxOutputTokens: 48000,
         maxRetries: 1,
         abortSignal: signal,
         providerOptions: {
           // Repair must reconcile source, locked requirements and evidence from
-          // several attempts. Keep the response cap, but allow more diagnosis.
+          // several attempts. Bound the response while allowing more diagnosis.
           openai: { reasoningEffort: "medium", store: false },
         },
       }),

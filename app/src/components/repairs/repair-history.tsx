@@ -45,7 +45,9 @@ export function RepairHistory({
                   {versionLabel(a.baseline_version_id)} →{" "}
                   {a.candidate_version_id
                     ? versionLabel(a.candidate_version_id)
-                    : "Generating candidate"}
+                    : a.status === "running"
+                      ? "Generating candidate"
+                      : "No candidate created"}
                 </p>
               </div>
               <span

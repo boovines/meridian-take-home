@@ -16,7 +16,7 @@ A new suite revision requests cancellation of active repair. New repair sessions
 
 Repair receives the complete document metadata inventory for the locked suite's captured inputs, separately from bounded trace-output previews. This lets it identify selection mistakes involving numeric or ambiguous filenames without copying email bodies into the inventory. Exact source, requirements, assertions, grades and inventory must fit the context budget; oversized required context stops for inspection rather than silently dropping evidence. Passing a finite suite does not prove every business rule: independent counterexamples and source inspection can require a new suite revision.
 
-Repair uses medium model reasoning effort within the existing 24,000-token response limit. Its diagnosis must reconcile more evidence than initial generation, including failed prior candidates. This is a quality/cost tradeoff, not an acceptance guarantee: incomplete model output still stops with a diagnostic, and every generated candidate still faces the same full-suite checks.
+Repair uses medium model reasoning effort with a 48,000-token response limit. The limit includes both reasoning and the complete source response; a live medium-effort attempt exhausted the earlier 24,000-token allowance without publishing partial code. Initial generation and document interpretation retain their separate settings. This is a quality/cost tradeoff, not an acceptance guarantee: incomplete model output still stops with a diagnostic, and every generated candidate still faces the same full-suite checks. See OpenAI's [reasoning-budget guidance](https://developers.openai.com/api/docs/guides/reasoning).
 
 ## Interface
 
