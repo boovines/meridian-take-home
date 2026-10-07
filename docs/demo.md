@@ -43,3 +43,9 @@ Only after checking every answer against an independent reference, add `--verifi
 An execution error means the case could not produce a valid answer; it is different from a completed result with incorrect counts. A report containing business failures can be the correct expected result. Never revise reference totals to hide a mismatch. Keep the frozen process and suite unchanged during repair, and show unresolved cases if the bounded session cannot fix them.
 
 Use [implementation status](implementation-status.md) for the latest measured outcomes, [runtime behavior](workflow-runtime.md) for limits and retries, and [bounded repair](bounded-repair.md) for acceptance rules.
+
+## Independent policy counterexamples
+
+The fictional PDFs and expectation manifest under `app/tests/fixtures/import-receiving/policy` supplement the supplied shipments. They test a supported packaging/manufacturing relationship and conflicting product, strength, and manufacturer evidence. All invoices contain the five required fields, so each negative case fails its batch while retaining a successful invoice. The corresponding README explains each independently chosen expectation. Filenames exposed to the reader should be neutral (`invoice.pdf`, `coa.pdf`); expected outcomes belong only in the locked evaluation case.
+
+These are workflow inputs and expected results, not matching code in the platform. Capture the PDFs as source artifacts, add full-workflow cases to an explicit suite revision, verify/lock that revision, and re-evaluate the retained baseline before repair. Preserve the original shipment cases and prior suite/results. The PDFs exercise generated document reading without depending on private intermediate step schemas. They are optional live benchmarks, not LLM calls in required CI.
