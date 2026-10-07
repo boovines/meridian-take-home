@@ -24,4 +24,6 @@ The initial feature is a visual whiteboard for process owners to map a workflow,
 
 ## Development status
 
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the lightweight PR workflow and [docs/verification.md](docs/verification.md) for the staged CI plan. Large, coherent milestone PRs are welcome; merge through a PR after required checks pass.
+
 No application dependencies or feature implementation have been chosen yet. After the decomposition interview, update `app/README.md` with setup and run commands, `docs/architecture.md` with the agreed design, and CI with real build and test checks. Keep secrets in local environment files, never in Git.
