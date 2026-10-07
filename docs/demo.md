@@ -17,6 +17,10 @@ From `app/`, `npm run demo:seed -- --create --incomplete` creates an intentional
 
 The complete example requirements are in `app/scripts/demo/import-receiving.ts`. They distinguish invoice field failures from missing batch certificates. A good missing two fields is one failed good with two details; a failed batch does not by itself increase failed-invoice or failed-good totals.
 
+The clarified example accepts a packaging-to-manufacturing batch relationship when the documents corroborate the same product, strength and manufacturer. Original identifiers and supporting evidence remain visible; a shared prefix or a CoC without an actual CoA is insufficient. These are customer requirements for the example. The harness generates and repairs the workflow's implementation; the shared runtime and grader contain no invoice-specific matching algorithm. Independently reviewed source observations and expected results belong in the workflow's locked evaluation suite, not in generated answers or platform conditionals.
+
+If a customer clarifies requirements after freeze, create a new workflow for this demo and preserve the earlier frozen process and evaluations. Post-handoff revision editing remains future scope. Keep the supplied reference totals fixed when evaluating the clarified process; do not overwrite historical suites to reflect new requirements.
+
 ## Engineer walkthrough
 
 1. Create an implementation plan. Request method suggestions, choose Agent for PDF interpretation and Code for deterministic validation/reporting, approve each choice, then approve the plan. Selecting the input packet already happens before execution; the trigger does not need an extra human approval merely because input selection was manual.
