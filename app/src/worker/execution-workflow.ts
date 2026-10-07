@@ -13,10 +13,16 @@ import { RuntimeEngine } from "../domain/runtime-engine";
 const io = proxyActivities<
   Pick<
     typeof activities,
-    "prepareExecution" | "projectExecution" | "readHumanResponse"
+    | "prepareExecution"
+    | "prepareCaseExecution"
+    | "answerScriptedHuman"
+    | "projectExecution"
+    | "readHumanResponse"
   >
 >({ startToCloseTimeout: "15 seconds", retry: { maximumAttempts: 5 } });
-const cleanup = proxyActivities<Pick<typeof activities, "endExecution">>({
+const cleanup = proxyActivities<
+  Pick<typeof activities, "endExecution" | "endCaseExecution">
+>({
   startToCloseTimeout: "15 seconds",
   retry: { initialInterval: "2 seconds", maximumInterval: "1 minute" },
 });
@@ -29,6 +35,16 @@ const steps = proxyActivities<Pick<typeof activities, "executeOccurrence">>({
 });
 export const humanAnswered = defineSignal<[string]>("humanAnswered");
 export async function executeWorkflow(jobId: string) {
+  return executeCaptured(jobId);
+}
+export async function executeEvaluationCase(runId: string) {
+  return executeCaptured("", runId);
+}
+async function executeCaptured(jobId: string, runId?: string) {
+  const finish = (result: Parameters<typeof cleanup.endExecution>[1]) =>
+    runId
+      ? cleanup.endCaseExecution(runId, result)
+      : cleanup.endExecution(jobId, result);
   const answered = new Set<string>();
   let changed = 0;
   setHandler(humanAnswered, (id) => {
@@ -38,11 +54,14 @@ export async function executeWorkflow(jobId: string) {
   let engine: RuntimeEngine | undefined;
   let limit = false;
   try {
-    const context = await io.prepareExecution(jobId);
+    const context = runId
+      ? await io.prepareCaseExecution(runId)
+      : await io.prepareExecution(jobId);
     if (!context) return;
     const scope = new CancellationScope();
     engine = new RuntimeEngine(context.run.id, context.definition, {
       now: () => Date.now(),
+      scriptedHuman: !!runId,
       changed: () => {
         changed++;
       },
@@ -63,12 +82,23 @@ export async function executeWorkflow(jobId: string) {
           category:
             type === "RUN_LIMIT" || type === "STEP_RETRY_LIMIT"
               ? "implementation"
-              : "infrastructure",
+              : type === "MISSING_HUMAN_FIXTURE"
+                ? "input"
+                : "infrastructure",
         };
       },
       project: (p) => io.projectExecution(context.run.id, p),
       step: (data, resume) => steps.executeOccurrence(data, resume),
       human: async (id, stopped) => {
+        if (runId) {
+          const response = await io.answerScriptedHuman(runId, id);
+          if (!response.ok)
+            throw ApplicationFailure.nonRetryable(
+              response.message,
+              "MISSING_HUMAN_FIXTURE",
+            );
+          return;
+        }
         if ((await io.readHumanResponse(id)).status === "answered") return;
         await condition(() => answered.has(id) || stopped());
       },
@@ -93,7 +123,7 @@ export async function executeWorkflow(jobId: string) {
       })();
       try {
         const result = await engine!.run();
-        await cleanup.endExecution(jobId, result);
+        await finish(result);
       } finally {
         finished = true;
         changed++;
@@ -110,7 +140,7 @@ export async function executeWorkflow(jobId: string) {
     if (projection && engine)
       projection.active_elapsed_ms = engine.activeElapsed();
     await CancellationScope.nonCancellable(() =>
-      cleanup.endExecution(jobId, {
+      finish({
         status,
         projection,
         error:
@@ -125,6 +155,6 @@ export async function executeWorkflow(jobId: string) {
               },
       }),
     );
-    if (!limit && !isCancellation(error)) throw error;
+    if (!runId && !limit && !isCancellation(error)) throw error;
   }
 }

@@ -51,4 +51,6 @@ export async function generateAgent(id: string): Promise<void> {
   }
 }
 
-export { executeWorkflow } from "./execution-workflow";
+export { executeWorkflow, executeEvaluationCase } from "./execution-workflow";
+
+export { evaluateSuite } from "./evaluation-workflow";

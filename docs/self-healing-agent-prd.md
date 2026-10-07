@@ -44,9 +44,9 @@ Fixed server-side step and active-time limits stop unbounded runs as Needs atten
 
 ## Tech Stack
 
-React/TypeScript and Next.js serve the web app and API; Supabase/Postgres stores durable metadata and object storage holds code, fixtures, source documents, and large traces. Gmail uses a scoped integration adapter; Composio remains a candidate. An agent harness such as OpenCode or an API-backed coding worker generates and repairs projects. These adapters are implementation choices, not committed providers.
+React/TypeScript and Next.js serve the web app and API; Supabase/Postgres stores durable metadata and object storage holds code, fixtures, source documents, and large traces. Gmail uses a scoped Composio integration adapter. An OpenAI-backed coding worker generates and repairs projects.
 
-A durable background executor handles generation, evaluation, repair, and runs. Temporal is a candidate from the original PRD, not a requirement; select the simplest executor that supports durable dispatch, cancellation, and recovery. Vercel may host the web app, while long-running work needs a separately validated execution arrangement. Generated code runs in isolation. A trusted runtime enforces routing, human gates, and limits; trusted grading and fixtures remain outside generated code's write authority.
+A durable background executor handles generation, evaluation, repair, and runs. Temporal is required by the assignment and is the selected durable executor for dispatch, cancellation, and recovery. Vercel may host the web app, while long-running work needs a separately validated execution arrangement. Generated code runs in Vercel Sandbox with denied network egress and no application credentials. A trusted runtime enforces routing, human gates, and limits; trusted grading and fixtures remain outside generated code's write authority.
 
 ## Data Model
 
@@ -54,7 +54,7 @@ A durable background executor handles generation, evaluation, repair, and runs. 
 
 `evaluation_runs` and `evaluation_case_results` bind code, suite, coverage, and results. `workflow_jobs` handles operation identity, status, progress, idempotency, and worker ownership. `repair_sessions` pins the plan and suite while tracking its accepted baseline; `repair_attempts` preserves each candidate and the evidence for accepting or rejecting it. Job completion does not mean tests passed.
 
-`artifacts` identifies immutable stored files; `input_bundles` seals a manifest of source messages and attachments so retries use identical inputs. `workflow_runs` stores code, bundle, limits, outcome, and retry ancestry. `step_executions` records each visit separately from the canvas node. `human_requests` belongs to one visit; `parallel_groups` and `parallel_branches` associate arrivals with a particular split occurrence, preventing a prior loop iteration from satisfying a new join.
+`artifacts` identifies immutable stored files; `input_bundles` seals a manifest of source messages and attachments so retries use identical inputs. `workflow_runs` stores code, bundle, limits, outcome, and retry ancestry. `step_executions` records each visit separately from the canvas node. `human_requests` belongs to one visit. Temporal associates arrivals with a particular split occurrence, preventing a prior loop iteration from satisfying a new join; separate SQL parallel-coordination tables are omitted.
 
 Ownership constraints, indexed parent lookups, idempotent scheduling, and short atomic mutations protect history and prevent duplicate work. Large bytes stay outside rows. Separate records are justified by independent lifecycles; immutable manifests and bounded per-step attempt details can remain JSON. Project/evaluator hashes come from their immutable artifacts. Case edits use revision checks and invalidate suite verification. Per-node visit numbers address human-response fixtures independently of parallel scheduling order. Detailed fields, constraints, and indexes live in the [engineering schema](../.plans/meridian-engineering-schema-spec.md) and [runtime schema](../.plans/meridian-runtime-schema-spec.md).
 
@@ -79,3 +79,7 @@ Proposed API contracts, not implemented routes. Background operations return a d
 | `POST /api/runs/:id/retry`; `POST /api/human-requests/:id/respond` | Start a linked fresh run or atomically record one human response and continuation. |
 
 The [architecture](architecture.md) and [verification plan](verification.md) define shared behavior and failure checks. Numeric limits, executor choice, and extending operation exclusivity to paused manual runs are recommended defaults to validate during implementation, not additional confirmed requirements. Deferred work remains in the [README](../README.md#future-work-outside-demo-scope).
+
+## Current implementation checkpoint
+
+The [generation](engineer-generation.md), [runtime](workflow-runtime.md), and [evaluation](trusted-evaluations.md) guides describe implemented behavior and routes. The evaluation screen supports full-workflow and JSON-output step checks, explicit verification, sealed suite revisions, full-suite execution, comparison details and visit traces. Arbitrary unit-test code and broad OCR benchmarks remain deferred. Evaluation currently starts explicitly; automatic evaluation of a selected suite after generation and the bounded repair loop are still pending. These limits do not change the acceptance target above.

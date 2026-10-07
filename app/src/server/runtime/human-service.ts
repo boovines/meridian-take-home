@@ -38,6 +38,12 @@ export class HumanService {
       }
       const run = await runById(tx, String(row.run_id)),
         job = await jobById(tx, run.job_id);
+      if (run.kind !== "manual")
+        throw new DomainError(
+          422,
+          "SCRIPTED_RESPONSE_REQUIRED",
+          "Evaluations use responses from their locked case, not interactive answers.",
+        );
       if (
         row.status !== "pending" ||
         finishedRuns.includes(run.status) ||

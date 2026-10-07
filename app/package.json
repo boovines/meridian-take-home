@@ -19,7 +19,8 @@
     "review:smoke": "tsx scripts/review-smoke.ts",
     "sandbox:smoke": "tsx scripts/sandbox-smoke.ts",
     "storage:setup": "tsx scripts/storage-setup.ts",
-    "runtime:smoke": "tsx scripts/runtime-smoke.ts"
+    "runtime:smoke": "tsx scripts/runtime-smoke.ts",
+    "evaluation:smoke": "tsx scripts/evaluation-smoke.ts"
   },
   "engines": {
     "node": ">=22"

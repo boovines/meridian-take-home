@@ -250,6 +250,31 @@ export class SuiteService {
       return record<EvaluationCase>(row);
     });
   }
+  async removeCase(
+    wid: string,
+    sid: string,
+    cid: string,
+    data: z.infer<typeof verifyInput>,
+  ) {
+    return this.db.transaction(async (tx) => {
+      await workflow(tx, wid, true);
+      draft(await suiteById(tx, wid, sid));
+      const current = (await suiteCases(tx, sid)).find((c) => c.id === cid);
+      if (!current)
+        throw new DomainError(
+          404,
+          "NOT_FOUND",
+          "Case not found in this suite.",
+        );
+      expectRevision(current, data.expected_revision);
+      await tx.query("DELETE FROM evaluation_cases WHERE id=$1", [cid]);
+      await tx.query(
+        "UPDATE evaluation_suite_versions SET revision=revision+1,updated_at=now() WHERE id=$1",
+        [sid],
+      );
+      return { removed: true };
+    });
+  }
   async verifyCase(
     wid: string,
     sid: string,
@@ -313,7 +338,11 @@ export class SuiteService {
     ).rows.map((r) => record<SuiteVersion>(r));
     const selected = sid ? await suiteById(this.db, wid, sid) : suites[0];
     return {
-      suites,
+      selected_suite_id: selected?.id || null,
+      suites:
+        selected && !suites.some((s) => s.id === selected.id)
+          ? [selected, ...suites]
+          : suites,
       cases: selected ? await suiteCases(this.db, selected.id) : [],
     };
   }

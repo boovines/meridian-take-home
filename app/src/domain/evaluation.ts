@@ -119,6 +119,8 @@ export interface AssertionResult {
   missing: boolean;
 }
 export interface EvaluationRun {
+  code_version_number?: number;
+  suite_version_number?: number;
   id: string;
   workflow_id: string;
   job_id: string;
@@ -132,6 +134,7 @@ export interface EvaluationRun {
   created_at: string;
 }
 export interface CaseResult {
+  workflow_run_id?: string | null;
   id: string;
   workflow_id: string;
   evaluation_run_id: string;

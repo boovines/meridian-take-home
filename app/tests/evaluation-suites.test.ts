@@ -91,6 +91,18 @@ it("requires verified expectations, rejects stale edits, and preserves locked su
     assertions: data.assertions,
   });
   expect(revised.cases[0].id).not.toBe(c.id);
+  await expect(
+    suites.removeCase(f.w.id, s.id, c.id, { expected_revision: c.revision }),
+  ).rejects.toMatchObject({ code: "SUITE_LOCKED" });
+  await expect(
+    suites.removeCase(f.w.id, revision.id, revised.cases[0].id, {
+      expected_revision: 0,
+    }),
+  ).rejects.toMatchObject({ code: "STALE_EDIT" });
+  await suites.removeCase(f.w.id, revision.id, revised.cases[0].id, {
+    expected_revision: revised.cases[0].revision,
+  });
+  expect((await suites.state(f.w.id, revision.id)).cases).toHaveLength(0);
   const old = await suites.state(f.w.id, s.id);
   expect(old.cases[0].verified_at).not.toBeNull();
   expect(old.suites.find((x) => x.id === s.id)?.state).toBe("locked");

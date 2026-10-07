@@ -5,6 +5,7 @@ import type { ScheduleStep, RuntimeProjection } from "../domain/runtime";
 import { getDatabase } from "../server/database";
 import { RunService } from "../server/runtime/run-service";
 import { StepService } from "../server/runtime/step-service";
+import { answerScriptedHuman as scriptedAnswer } from "../server/evaluations/scripted-human";
 import { HumanService } from "../server/runtime/human-service";
 import { invokeInSandbox } from "../server/integrations/sandbox-step";
 import { reasonForStep } from "../server/integrations/openai-step";
@@ -46,4 +47,17 @@ export async function executeOccurrence(data: ScheduleStep, resume = false) {
   } finally {
     clearInterval(timer);
   }
+}
+
+export async function prepareCaseExecution(id: string) {
+  return new RunService(await getDatabase()).prepareCase(id);
+}
+export async function endCaseExecution(
+  id: string,
+  result: Parameters<RunService["finish"]>[1],
+) {
+  return new RunService(await getDatabase()).finishCase(id, result);
+}
+export async function answerScriptedHuman(runId: string, id: string) {
+  return scriptedAnswer(await getDatabase(), runId, id);
 }

@@ -40,7 +40,7 @@ CREATE INDEX evaluations_by_versions ON evaluation_runs(implementation_version_i
 CREATE TABLE evaluation_case_results (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),workflow_id uuid NOT NULL,evaluation_run_id uuid NOT NULL,suite_version_id uuid NOT NULL,case_id uuid NOT NULL,
  status text NOT NULL DEFAULT 'queued' CHECK(status IN ('queued','running','finished')),outcome text CHECK(outcome IN ('passed','failed','error','not_run')),
- actual_output jsonb,check_results jsonb NOT NULL DEFAULT '[]' CHECK(jsonb_typeof(check_results)='array'),
+ attempt_token uuid,invocation_count integer NOT NULL DEFAULT 0 CHECK(invocation_count>=0),actual_output jsonb,check_results jsonb NOT NULL DEFAULT '[]' CHECK(jsonb_typeof(check_results)='array'),
  failure_category text,failure_code text,failure_message text,started_at timestamptz,finished_at timestamptz,created_at timestamptz NOT NULL DEFAULT now(),
  UNIQUE(workflow_id,id),UNIQUE(evaluation_run_id,case_id),
  FOREIGN KEY(workflow_id,evaluation_run_id) REFERENCES evaluation_runs(workflow_id,id),

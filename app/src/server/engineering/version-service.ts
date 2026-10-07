@@ -36,20 +36,25 @@ export class VersionService {
       ...Object.keys(current.project.files),
       ...Object.keys(parent?.project.files || {}),
     ]);
-    const changes = [...paths]
-      .sort()
-      .map((path) => ({
-        path,
-        status: !(path in current.project.files)
-          ? "removed"
-          : !(path in (parent?.project.files || {}))
-            ? "added"
-            : current.project.files[path] === parent!.project.files[path]
-              ? "unchanged"
-              : "modified",
-        before: parent?.project.files[path] ?? null,
-      }));
-    return { ...current, changes };
+    const changes = [...paths].sort().map((path) => ({
+      path,
+      status: !(path in current.project.files)
+        ? "removed"
+        : !(path in (parent?.project.files || {}))
+          ? "added"
+          : current.project.files[path] === parent!.project.files[path]
+            ? "unchanged"
+            : "modified",
+      before: parent?.project.files[path] ?? null,
+    }));
+    const evaluation =
+      (
+        await this.db.query(
+          "SELECT e.id,e.status,e.verdict,s.version_number AS suite_number FROM evaluation_runs e JOIN evaluation_suite_versions s ON s.id=e.suite_version_id WHERE e.workflow_id=$1 AND e.implementation_version_id=$2 ORDER BY e.created_at DESC,e.id DESC LIMIT 1",
+          [workflowId, versionId],
+        )
+      ).rows[0] || null;
+    return { ...current, changes, evaluation };
   }
   async download(workflowId: string, versionId: string) {
     const { project, version } = await this.load(workflowId, versionId);

@@ -15,6 +15,12 @@ export interface EngineeringState {
   jobs: WorkflowJob[];
 }
 export interface VersionDetail {
+  evaluation: {
+    id: string;
+    status: string;
+    verdict: string | null;
+    suite_number: number;
+  } | null;
   version: ImplementationVersion;
   project: Project;
   changes: { path: string; status: string; before: string | null }[];

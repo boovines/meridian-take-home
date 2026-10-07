@@ -6,6 +6,31 @@ import type { Database } from "../database";
 import { workflow } from "../workflows/store";
 export class BundleService {
   constructor(private db: Database) {}
+  async list(workflowId: string) {
+    await workflow(this.db, workflowId);
+    return (
+      await this.db.query(
+        "SELECT id,source_kind,shipment_reference,created_at FROM input_bundles WHERE workflow_id=$1 ORDER BY created_at DESC,id DESC LIMIT 50",
+        [workflowId],
+      )
+    ).rows;
+  }
+  async read(workflowId: string, id: string) {
+    await workflow(this.db, workflowId);
+    const row = (
+      await this.db.query(
+        "SELECT * FROM input_bundles WHERE workflow_id=$1 AND id=$2",
+        [workflowId, id],
+      )
+    ).rows[0];
+    if (!row)
+      throw new DomainError(
+        404,
+        "NOT_FOUND",
+        "Captured input not found on this workflow.",
+      );
+    return row;
+  }
   async create(workflowId: string, raw: z.infer<typeof bundleInput>) {
     const data = bundleInput.parse(raw);
     const bytes = JSON.stringify(data.manifest);

@@ -23,8 +23,9 @@ The interview decisions in `.plans/` and revised PRDs refine that scope. Explici
 2. AI review and frozen handoff: anchored discussion, clarification, resolution history, immutable snapshot and guards; shared Temporal worker infrastructure.
 3. Engineer plan and code generation: approved plans, inspectable versioned code, generation activities, isolated Sandbox execution.
 4. Trusted runtime: captured inputs, visit history, isolated step execution, Temporal routing/human waits and recovery.
-5. Trusted evaluations and bounded repair: versioned cases, result coverage, three attempts, regression-safe baseline, cancellation.
-6. Gmail and complete demonstration: captured real inputs, document extraction, human steps/loops/parallelism, report preview, complete demo evidence.
+5. Trusted evaluations: versioned cases, fixed expectations, result coverage, trace inspection and cancellation.
+6. Bounded repair: three attempts, preserved candidate history and regression-safe baseline.
+7. Gmail and complete demonstration: captured real inputs, document extraction, human steps/loops/parallelism, report preview, complete demo evidence.
 
 Boundaries may move to keep each PR coherent. PR #1 conventions are incorporated before implementation. No direct main pushes.
 
@@ -37,7 +38,7 @@ Boundaries may move to keep each PR coherent. PR #1 conventions are incorporated
 - [x] Freeze structural checks, completed-review minimum, closed findings, acknowledged later changes; immutable handoff.
 - [x] Engineer plan approvals and explicit revisions; immutable mandatory human methods.
 - [x] Generated downloadable source from reusable skeleton and frozen requirements; real background progress/cancellation.
-- [ ] Locked independent expectations; revised suites preserve history; full-suite grading with errors/blockers distinguished.
+- [x] Locked independent expectations; revised suites preserve history; full-suite grading with errors/blockers distinguished.
 - [ ] Repair actual code, keep every attempt, reject regressions, preserve baseline, stop at three attempts or required human decisions.
 - [ ] Temporal durability and Sandbox isolation verified with live adapters.
 - [ ] Gmail/Composio ingestion captures immutable messages/documents; verify all provided shipment ground truth, excluding mismatched-invoice scoring.
@@ -72,3 +73,8 @@ Boundaries may move to keep each PR coherent. PR #1 conventions are incorporated
 - PR #4 generation merged after both required CI checks passed at its final head.
 - Runtime service milestone: migration 007 adds immutable captured inputs, runs, visits and human requests. Temporal owns per-occurrence fork/join state; no parallel coordination tables or competing SQL scheduler were added. Service/domain tests now total 47 and worker bundling passes. Runtime UI, suites and repair remain pending.
 - Live runtime recovery: synthetic fixture code executed in Vercel Sandbox, paused at a mandatory approval, then resumed after worker restart. The response was saved while the worker was offline and delivered through the durable outbox. Run `8f8debcc-95ce-4baa-a2f6-ec0b73de3111` finished all three steps. This verifies the basic live execution/recovery path, not Gmail or shipment accuracy.
+
+- PR #5 runtime merged with PostgreSQL 17 and all five browser journeys passing.
+- Evaluation milestone: migration 008, versioned/verified suites, isolated step cases and full workflow cases, scripted human visits, fixed-answer grading and retained history are implemented. An actual Temporal/Sandbox evaluation (`46b57172-cfd8-4b70-bacf-f8aca9731a55`) completed with one pass, one deliberate assertion failure and one missing-fixture execution error; its aggregate remained inconclusive. This synthetic check does not establish shipment accuracy.
+- Evaluation UI: three live variants inspected in Chrome. Inspector split selected because the case list and expected/actual evidence stay visible together. Picker and unused variants removed. Generation's source view now reports the latest evaluation separately from syntax validation.
+- Evaluation verification: 57 local service/domain tests, all six production-browser journeys, lint, typecheck, production build and workflow bundling pass. The new browser journey creates/verifies/locks a case, inspects a failed result and trace, corrects a new suite, observes a pass, and confirms the earlier failure remains unchanged. Required CI discovers these tests automatically.

@@ -1,0 +1,93 @@
+import { heartbeat, cancellationSignal } from "@temporalio/activity";
+import { getDatabase } from "../server/database";
+import { DomainError } from "../domain/canvas";
+import type { RuntimeError } from "../domain/runtime";
+import { EvaluationService } from "../server/evaluations/evaluation-service";
+import { EvaluationExecutionService } from "../server/evaluations/execution-service";
+import { validateInSandbox } from "../server/integrations/sandbox-project";
+import { invokeInSandbox } from "../server/integrations/sandbox-step";
+import { reasonForStep } from "../server/integrations/openai-step";
+export async function prepareEvaluation(id: string) {
+  const context = await new EvaluationService(await getDatabase()).prepare(id);
+  return context
+    ? {
+        evaluation_id: context.evaluation.id,
+        deadline_at: context.deadline_at,
+        result_ids: context.results.map((r) => r.id),
+      }
+    : null;
+}
+export async function beginEvaluationCase(id: string) {
+  return new EvaluationService(await getDatabase()).beginCase(id);
+}
+export async function scoreWorkflowCase(id: string) {
+  return new EvaluationExecutionService(await getDatabase()).workflow(id);
+}
+export async function endEvaluation(
+  id: string,
+  error?: RuntimeError,
+  cancelled = false,
+) {
+  return new EvaluationService(await getDatabase()).finish(
+    id,
+    error,
+    cancelled,
+  );
+}
+export async function checkEvaluationBuild(
+  id: string,
+): Promise<{ ok: true } | { ok: false; error: RuntimeError }> {
+  const pulse = setInterval(() => heartbeat(), 5000);
+  try {
+    heartbeat();
+    await new EvaluationExecutionService(await getDatabase()).build(
+      id,
+      validateInSandbox,
+      AbortSignal.any([cancellationSignal(), AbortSignal.timeout(70000)]),
+    );
+    return { ok: true };
+  } catch (error) {
+    if (cancellationSignal().aborted) throw error;
+    return {
+      ok: false,
+      error: {
+        code:
+          error instanceof DomainError ? error.code : "BUILD_CHECK_UNAVAILABLE",
+        message:
+          error instanceof DomainError
+            ? error.message
+            : "The isolated build check could not run.",
+        category:
+          error instanceof DomainError && error.code === "PROJECT_BUILD_FAILED"
+            ? "implementation"
+            : "infrastructure",
+      },
+    };
+  } finally {
+    clearInterval(pulse);
+  }
+}
+export async function evaluateStepCase(id: string) {
+  const pulse = setInterval(() => heartbeat(), 5000);
+  try {
+    heartbeat();
+    await new EvaluationExecutionService(await getDatabase()).step(
+      id,
+      { invoke: invokeInSandbox, reason: reasonForStep },
+      AbortSignal.any([cancellationSignal(), AbortSignal.timeout(150000)]),
+    );
+  } finally {
+    clearInterval(pulse);
+  }
+}
+
+export async function failEvaluationCase(id: string) {
+  return new EvaluationService(await getDatabase()).recordCase(id, {
+    error: {
+      code: "CASE_EXECUTION_ERROR",
+      message:
+        "This case's worker could not finish. Other independent cases can still run.",
+      category: "infrastructure",
+    },
+  });
+}
