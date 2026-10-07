@@ -157,6 +157,14 @@ it("rejects regression by assertion identity, keeps rejected code, and repairs f
     failed_goods: 1,
   });
   expect(second.attempt.baseline_evaluation_id).toBe(initial.evaluation.id);
+  const context = await repairs.generationContext(second.attempt.id);
+  expect(context.evaluation.id).toBe(initial.evaluation.id);
+  expect(context.previous_attempts[0].candidate_results[0]).toMatchObject({
+    outcome: "failed",
+    check_results: expect.arrayContaining([
+      expect.objectContaining({ key: "shipment", passed: false, actual: "WRONG" }),
+    ]),
+  });
   const parent = (
     await db.query(
       "SELECT parent_version_id FROM implementation_versions WHERE id=$1",

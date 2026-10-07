@@ -302,6 +302,28 @@ export class RepairService {
       session.workflow_id,
       session.plan_version_id,
     );
+    const previous = (
+      await this.db.query(
+        "SELECT attempt_number,diagnosis,status,decision_reason,error_message,evaluation_run_id FROM repair_attempts WHERE session_id=$1 AND attempt_number<$2 ORDER BY attempt_number",
+        [session.id, attempt.attempt_number],
+      )
+    ).rows;
+    // At most two earlier attempts exist. Keep their failed checks/errors as
+    // evidence while the immutable baseline remains the only source to repair.
+    const previousAttempts = await Promise.all(previous.map(async (prior) => ({
+      ...prior,
+      candidate_results: prior.evaluation_run_id
+        ? (await resultsByEvaluation(this.db, String(prior.evaluation_run_id)))
+            .map((result) => ({
+              case_id: result.case_id,
+              outcome: result.outcome,
+              check_results: result.check_results,
+              failure_code: result.failure_code,
+              failure_message: result.failure_message,
+              failure_category: result.failure_category,
+            }))
+        : [],
+    })));
     return {
       attempt,
       session,
@@ -316,16 +338,11 @@ export class RepairService {
       cases: await suiteCases(this.db, session.suite_version_id),
       traces: (
         await this.db.query(
-          "SELECT s.node_id,s.node_visit_number,s.status,s.output_data,s.failure_code,s.failure_message FROM step_executions s JOIN workflow_runs r ON r.id=s.run_id JOIN evaluation_case_results c ON c.id=r.evaluation_case_result_id WHERE c.evaluation_run_id=$1 ORDER BY s.started_at,s.id LIMIT 300",
+          "SELECT c.case_id,s.id AS occurrence_id,s.run_id,s.node_id,s.node_visit_number,s.status,s.output_data,s.failure_code,s.failure_message FROM step_executions s JOIN workflow_runs r ON r.id=s.run_id JOIN evaluation_case_results c ON c.id=r.evaluation_case_result_id WHERE c.evaluation_run_id=$1 ORDER BY s.started_at,s.id LIMIT 300",
           [attempt.baseline_evaluation_id],
         )
       ).rows,
-      previous_attempts: (
-        await this.db.query(
-          "SELECT attempt_number,diagnosis,status,decision_reason,error_message FROM repair_attempts WHERE session_id=$1 AND attempt_number<$2 ORDER BY attempt_number",
-          [session.id, attempt.attempt_number],
-        )
-      ).rows,
+      previous_attempts: previousAttempts,
     };
   }
   async publishCandidate(
