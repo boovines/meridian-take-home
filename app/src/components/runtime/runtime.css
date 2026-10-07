@@ -1,0 +1,25 @@
+.run-trace {
+  margin-top: 16px;
+}
+.run-trace > details {
+  border-top: 1px solid var(--line);
+  padding: 14px 0;
+  margin: 0;
+}
+.run-trace h4 {
+  font-size: 12px;
+  margin: 16px 0 8px;
+}
+.run-trace summary {
+  cursor: pointer;
+}
+.run-trace pre {
+  background: var(--paper);
+  padding: 12px;
+  font-size: 12px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 260px;
+  overflow: auto;
+}

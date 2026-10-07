@@ -104,6 +104,7 @@ export interface WorkflowJob {
   plan_version_id: string;
   input_version_id: string | null;
   source_request: Record<string, unknown>;
+  suite_version_id: string | null;
   executor_ref: string;
   deadline_at: string;
   error_code: string | null;

@@ -15,3 +15,12 @@ export async function POST(
     201,
   );
 }
+
+export async function GET(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  return respond(async () =>
+    new BundleService(await getDatabase()).list(parseId((await params).id)),
+  );
+}

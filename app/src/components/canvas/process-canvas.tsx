@@ -109,11 +109,17 @@ function FlowCanvas({
   const [positions, setPositions] = useState<
     Record<string, { revision: number; position: { x: number; y: number } }>
   >({});
+  // React Flow's controlled nodes must retain measured dimensions across board
+  // refreshes. These are browser layout state, not persisted process attributes.
+  const [measurements, setMeasurements] = useState<
+    Record<string, { width: number; height: number }>
+  >({});
   const nodes = useMemo(
     () =>
       board.nodes.map((n) => ({
         id: n.id,
         type: "process" as const,
+        measured: measurements[n.id],
         position:
           positions[n.id]?.revision === n.revision
             ? positions[n.id].position
@@ -125,9 +131,22 @@ function FlowCanvas({
         },
         selected: n.id === selected,
       })),
-    [board.nodes, positions, selected, findingCounts, onOpenReviews],
+    [board.nodes, positions, measurements, selected, findingCounts, onOpenReviews],
   );
   const onNodesChange: OnNodesChange<ProcessNode> = (changes) => {
+    const dimensions = changes.filter((c) => c.type === "dimensions");
+    if (dimensions.length)
+      setMeasurements((current) => {
+        let next = current;
+        for (const c of dimensions) {
+          if (
+            c.dimensions &&
+            (current[c.id]?.width !== c.dimensions.width ||
+              current[c.id]?.height !== c.dimensions.height)
+          ) next = { ...next, [c.id]: c.dimensions };
+        }
+        return next;
+      });
     const updates = changes.filter((c) => c.type === "position");
     if (updates.length)
       setPositions((current) => {

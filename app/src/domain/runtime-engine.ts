@@ -8,6 +8,7 @@ import type {
 
 export interface RuntimePorts {
   now(): number;
+  scriptedHuman?: boolean;
   rethrow?(error: unknown): void;
   describeFailure?(error: unknown): RuntimeError;
   step(data: ScheduleStep, resume?: boolean): Promise<StepReply>;
@@ -145,12 +146,12 @@ export class RuntimeEngine {
         if (this.failure) return;
         let result = await this.ports.step(data);
         if (result.kind === "human") {
-          this.change(0, 1);
+          if (!this.ports.scriptedHuman) this.change(0, 1);
           await this.ports.project(this.projection());
           try {
             await this.ports.human(result.request_id, () => !!this.failure);
           } finally {
-            this.change(0, -1);
+            if (!this.ports.scriptedHuman) this.change(0, -1);
           }
           await this.ports.project(this.projection());
           if (this.failure) return;

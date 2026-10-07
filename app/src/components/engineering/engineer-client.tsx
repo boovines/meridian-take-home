@@ -5,6 +5,7 @@ import Workspace from "../shell/workspace";
 import { api, errorMessage } from "@/lib/api";
 import type { EngineeringState } from "./types";
 import { ImplementationPanel } from "./implementation-panel";
+import { EvaluationPanel } from "../evaluations/evaluation-panel";
 import { AgentPanel } from "./agent-panel";
 import "./engineer.css";
 export function EngineerClient({ id }: { id: string }) {
@@ -171,18 +172,11 @@ export function EngineerClient({ id }: { id: string }) {
             generating={activeJob?.kind === "generation"}
           />
         ) : (
-          <div className="engineer-empty">
-            <span className="eyebrow">Trusted evaluation</span>
-            <h2>Generated code still needs evidence.</h2>
-            <p>
-              Evaluation will compare a selected code version with a verified,
-              locked suite. Syntax validation alone does not establish
-              correctness.
-            </p>
-            <p className="field-help">
-              Evaluation and repair are the next implementation milestone.
-            </p>
-          </div>
+          <EvaluationPanel
+            state={state}
+            operationActive={!!activeJob}
+            onOperationStarted={load}
+          />
         )}
         {!!state?.jobs.length && (
           <details className="operation-history">

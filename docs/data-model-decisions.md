@@ -263,3 +263,20 @@ Temporal owns parallel coordination, so the conditional `parallel_groups`/`paral
 Unique run/scheduling keys and run/node/visit keys serve idempotency and ordered-history queries. Runs use workflow/time and job indexes. Pending human requests and undelivered answers use partial indexes matching their polling predicates. Outputs are bounded to 128 KB; the run stores its outcome step reference rather than duplicating that payload. Runtime is limited to 100 scheduled attempts, so a selected run's full trace is bounded. Longer-term retention and production workload sizing remain future work.
 
 Live restart recovery and local behavior checks are recorded in the [runtime guide](workflow-runtime.md). These establish the chosen executor boundary, not production traffic capacity. Evaluation-case relationships will be added with the evaluation migration; no placeholder FK points at nonexistent suite tables.
+
+## Implementation checkpoint: trusted evaluations
+
+Migration 008 implements four independent lifecycles:
+
+| Table | Why it exists separately | Integrity and access path |
+| --- | --- | --- |
+| `evaluation_suite_versions` | Locks a verified set of expectations and gives corrections a new identity. A code version can be checked against multiple historical suites. | Workflow/version and request-key uniqueness; one draft per workflow; locked parent immutability. |
+| `evaluation_cases` | Cases are independently authored, verified, and revision-checked before the suite is sealed. | Suite/case-key uniqueness; same-workflow bundle/node references; edits clear verification. Assertions remain bounded case-owned JSON because they are edited and graded together. |
+| `evaluation_runs` | Records one execution of an exact code/suite pairing, distinct from the background job and its transport status. Repair can later create several runs within its operation. | Job/run-key idempotency; workflow/time history and code/suite indexes. Terminal evidence is immutable. |
+| `evaluation_case_results` | Independent cases can pass, fail, error, or remain unrun. Separate rows support incremental progress and complete coverage. | Unique evaluation/case; composite suite membership foreign keys; all rows are created before execution. A mutable invocation token fences retries, and completed results are immutable. |
+
+Full-workflow results point to one ordinary runtime execution, constrained to their exact code and captured input. A dedicated case-run scheduler was not introduced. Step cases directly invoke the same isolated implementation contract. Their assertion definitions and grades stay in the trusted host; generated code receives only its input/context. Completed run outputs are bounded and retained for diagnosis.
+
+Suite verification and locking use the existing short workflow lock. Calls to the model or sandbox occur outside database transactions. Reads return the latest 20 suite/evaluation histories, at most 50 cases, and selected bounded detail. The input selector lists metadata for at most 50 captured bundles and loads full contents only for inspection. Pagination/retention beyond these demo bounds is future work; this is not an unlimited-scale claim.
+
+The SQL layer enforces ownership, membership, and sealed/terminal immutability. Controlled services enforce approval, complete coverage, trusted grading, and transitions. Direct anonymous REST access remains denied. The hosted app still requires access protection; workflow ownership is not a substitute for authentication.

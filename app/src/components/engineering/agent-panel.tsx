@@ -91,7 +91,11 @@ export function AgentPanel({
               ))}
             </select>
           </label>
-          <span className="status-pill">Not yet evaluated</span>
+          <span className="status-pill">
+            {ready && detail.evaluation
+              ? `${detail.evaluation.verdict || detail.evaluation.status} · suite v${detail.evaluation.suite_number}`
+              : "Not yet evaluated"}
+          </span>
         </div>
         <a
           className="button-link"
@@ -111,7 +115,10 @@ export function AgentPanel({
         <>
           <p className="field-help">{detail.project.generator.summary}</p>
           <p className="field-help">
-            {buildLabel}. Business behavior has not been evaluated.
+            {buildLabel}.{" "}
+            {detail.evaluation
+              ? "See Evaluation for the latest expected-versus-actual results."
+              : "Business behavior has not been evaluated."}
           </p>
           {job?.progress.diagnostic !== undefined && (
             <details>

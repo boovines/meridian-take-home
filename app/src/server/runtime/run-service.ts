@@ -136,12 +136,20 @@ export class RunService {
       return { job, run };
     });
   }
-  async prepare(jobId: string) {
+  async prepareCase(runId: string) {
+    const run = await runById(this.db, runId);
+    return this.prepare(run.job_id, runId);
+  }
+  async prepare(jobId: string, caseRunId?: string) {
     return this.db.transaction(async (tx) => {
       let job = await jobById(tx, jobId);
       await workflow(tx, job.workflow_id, true);
       job = await jobById(tx, jobId);
-      if (job.kind !== "execution")
+      if (
+        caseRunId
+          ? !["evaluation", "repair"].includes(job.kind)
+          : job.kind !== "execution"
+      )
         throw new DomainError(
           422,
           "INVALID_JOB",
@@ -157,17 +165,27 @@ export class RunService {
         );
       const row = (
         await tx.query(
-          "SELECT * FROM workflow_runs WHERE job_id=$1 AND kind='manual'",
-          [jobId],
+          caseRunId
+            ? "SELECT * FROM workflow_runs WHERE job_id=$1 AND id=$2 AND kind='evaluation'"
+            : "SELECT * FROM workflow_runs WHERE job_id=$1 AND kind='manual'",
+          caseRunId ? [jobId, caseRunId] : [jobId],
         )
       ).rows[0];
+      if (!row)
+        throw new DomainError(
+          404,
+          "NOT_FOUND",
+          "Run not found in this operation.",
+        );
       const run = runRecord(row);
+      if (finishedRuns.includes(run.status)) return null;
       const spec = await frozenSpec(tx, job.workflow_id),
         steps = await planSteps(tx, job.plan_version_id);
-      await tx.query(
-        "UPDATE workflow_jobs SET status='running',phase='executing',started_at=coalesce(started_at,now()),updated_at=now() WHERE id=$1",
-        [jobId],
-      );
+      if (!caseRunId)
+        await tx.query(
+          "UPDATE workflow_jobs SET status='running',phase='executing',started_at=coalesce(started_at,now()),updated_at=now() WHERE id=$1",
+          [jobId],
+        );
       await tx.query(
         "UPDATE workflow_runs SET status='running',started_at=coalesce(started_at,now()),updated_at=now() WHERE id=$1",
         [run.id],
@@ -195,7 +213,7 @@ export class RunService {
         `UPDATE workflow_runs SET status=$2,progress_sequence=$3,active_elapsed_ms=$4,active_since=$5,updated_at=now() WHERE id=$1 AND progress_sequence<$3 RETURNING id`,
         [id, p.status, p.sequence, p.active_elapsed_ms, p.active_since],
       );
-      if (updated.rows.length)
+      if (updated.rows.length && run.kind === "manual")
         await tx.query(
           "UPDATE workflow_jobs SET status=$2,phase=$3,progress=$4,updated_at=now() WHERE id=$1",
           [
@@ -209,6 +227,10 @@ export class RunService {
         );
     });
   }
+  async finishCase(runId: string, result: Parameters<RunService["finish"]>[1]) {
+    const run = await runById(this.db, runId);
+    return this.finish(run.job_id, result, runId);
+  }
   async finish(
     jobId: string,
     result: {
@@ -217,6 +239,7 @@ export class RunService {
       result_step_id?: string | null;
       projection?: RuntimeProjection;
     },
+    caseRunId?: string,
   ) {
     return this.db.transaction(async (tx) => {
       let job = await jobById(tx, jobId);
@@ -224,8 +247,10 @@ export class RunService {
       job = await jobById(tx, jobId);
       const row = (
         await tx.query(
-          "SELECT * FROM workflow_runs WHERE job_id=$1 AND kind='manual'",
-          [jobId],
+          caseRunId
+            ? "SELECT * FROM workflow_runs WHERE job_id=$1 AND id=$2 AND kind='evaluation'"
+            : "SELECT * FROM workflow_runs WHERE job_id=$1 AND kind='manual'",
+          caseRunId ? [jobId, caseRunId] : [jobId],
         )
       ).rows[0];
       if (!row || finishedRuns.includes(String(row.status))) return;
@@ -291,20 +316,21 @@ export class RunService {
           elapsed,
         ],
       );
-      await tx.query(
-        "UPDATE workflow_jobs SET status=$2,phase=$3,error_code=$4,error_message=$5,finished_at=now(),updated_at=now() WHERE id=$1",
-        [
-          jobId,
-          status === "completed"
-            ? "succeeded"
-            : status === "cancelled"
-              ? "cancelled"
-              : "failed",
-          status,
-          result.error?.code || null,
-          result.error?.message || null,
-        ],
-      );
+      if (!caseRunId)
+        await tx.query(
+          "UPDATE workflow_jobs SET status=$2,phase=$3,error_code=$4,error_message=$5,finished_at=now(),updated_at=now() WHERE id=$1",
+          [
+            jobId,
+            status === "completed"
+              ? "succeeded"
+              : status === "cancelled"
+                ? "cancelled"
+                : "failed",
+            status,
+            result.error?.code || null,
+            result.error?.message || null,
+          ],
+        );
     });
   }
   async state(workflowId: string, runId?: string) {
