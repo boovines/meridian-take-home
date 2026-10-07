@@ -72,9 +72,10 @@ The first command bundles workflows without credentials and runs in CI. The last
 | `src/server/engineering` | Versioned plans, generation lifecycle, project assembly and source/download inspection |
 | `src/server/evaluations` | Verified suites, trusted grading, case execution and result history |
 | `src/server/repairs` | Bounded sessions, candidate ancestry, generation checkpoints and acceptance decisions |
-| `src/server/runtime` | Captured input bundles, run/visit history, isolated step contracts and human responses |
+| `src/server/inputs` | Capture existing Gmail messages and attachment evidence into immutable input bundles |
+| `src/server/runtime` | Run/visit history, run-scoped document access, isolated step contracts and human responses |
 | `src/server/artifacts` | Immutable file records, integrity checks and local/private Supabase storage |
-| `src/server/integrations` | OpenAI, Temporal and Vercel Sandbox adapters |
+| `src/server/integrations` | Composio Gmail, OpenAI, Temporal and Vercel Sandbox adapters |
 | `src/server/database.ts`, `src/server/http.ts` | Database and HTTP infrastructure |
 | `src/worker` | Temporal workflow definitions, activities and worker entry point |
 | `migrations` | Ordered SQL migrations; existing applied migrations are not rewritten |
@@ -86,7 +87,7 @@ Keep shared modules small and named for their responsibility. Split growing feat
 
 ## Implementation plans and generated projects
 
-After freeze, open the engineer workspace, create a plan, request advisory method suggestions, approve each choice, and approve the plan. Generate agent starts a durable Temporal job; the app shows phase and cancellation while retaining existing versions. OpenAI writes coordinated Node 24 modules from the frozen spec and chosen methods. Complete source is retained even if its syntax check fails. Vercel Sandbox checks syntax with denied network egress; this is not a business evaluation. Inspect files and before/after source, download a ZIP, or create an explicit plan revision. Runtime services execute approved steps and locked evaluations; bounded repair is implemented and Gmail capture remains in progress.
+After freeze, open the engineer workspace, create a plan, request advisory method suggestions, approve each choice, and approve the plan. Generate agent starts a durable Temporal job; the app shows phase and cancellation while retaining existing versions. OpenAI writes coordinated Node 24 modules from the frozen spec and chosen methods. Complete source is retained even if its syntax check fails. Vercel Sandbox checks syntax with denied network egress; this is not a business evaluation. Inspect files and before/after source, download a ZIP, or create an explicit plan revision. Runtime services execute approved steps and locked evaluations; bounded repair is implemented and Gmail capture is available through the API; run controls remain in progress.
 
 The worker reconciles queued jobs every five seconds using stable Temporal workflow IDs. Project bytes checkpoint generation across activity retries; SQL guards fence cancelled/expired publication. Each generation has at most two activity attempts, a 40-minute Temporal deadline and a 45-minute application expiry. Model generation is bounded to 15 minutes per activity; sandbox validation to one minute. The model defaults to `gpt-5.4-mini`, configurable with `OPENAI_ENGINEERING_MODEL`.
 
@@ -98,7 +99,7 @@ For Vercel Sandbox development, link the dedicated project with Vercel CLI and o
 
 ## Runtime verification
 
-The [runtime guide](../docs/workflow-runtime.md) explains routing, human waits, limits, history and live recovery verification. Runtime APIs are implemented; dedicated run controls and Gmail capture are still pending. Generated code only executes inside Vercel Sandbox. The worker owns all scheduling, and SQL records progress without a second scheduler.
+The [runtime guide](../docs/workflow-runtime.md) explains routing, human waits, limits, history and live recovery verification. Runtime APIs are implemented; dedicated run controls are still pending; Gmail capture is available through the API. Generated code only executes inside Vercel Sandbox. The worker owns all scheduling, and SQL records progress without a second scheduler.
 
 ## Evaluation verification
 
@@ -111,3 +112,15 @@ Required CI includes suite locking/revision checks, full result coverage, late-a
 The [repair guide](../docs/bounded-repair.md) explains the three-attempt loop, baseline decisions and fixed scope. Choose Repair and rerun from an eligible evaluation; inspect candidates and their evaluations in Repair history. Suite corrections require explicit new verification and a fresh baseline evaluation. Runtime/model work stays on the Temporal worker, with generated execution isolated in Vercel Sandbox.
 
 `npm run repair:smoke -- --live` is an optional synthetic live check using OpenAI, Temporal, Supabase and Sandbox. It consumes live resources and is separate from required CI fixtures. It does not retrieve or send email.
+
+## Gmail capture
+
+Set `COMPOSIO_API_KEY` and `COMPOSIO_GMAIL_CONNECTED_ACCOUNT_ID` for the existing read-only connection. The adapter resolves its connected-account user and pins the verified Gmail tool version. Only search, message fetch, and attachment fetch are exposed. It never sends mail or updates labels.
+
+`GET /api/workflows/:id/gmail/messages?query=...` returns 25 messages per page. `POST /api/workflows/:id/gmail/capture` takes `message_ids` and `shipment_reference`, saving all attachments before publishing an input bundle. Capture is a bounded foreground request (four minutes), not another scheduler. Large packets may require a future durable capture job; a failed capture does not become runnable. See [capture behavior and limits](../docs/gmail-inputs.md).
+
+```sh
+npm run gmail:smoke -- --live --message <message-id> --shipment <reference> --pdf <invoice-filename>
+```
+
+This optional live check creates a workflow, captures one supplied message, and asks OpenAI to read the chosen PDF. It uses real mailbox data and credits; keep its output and captured artifacts private. Required CI uses sanitized fixtures for capture completeness, immutable inputs, run ownership, safe attachment downloads, and approved document interpretation. No live credentials are needed by CI.

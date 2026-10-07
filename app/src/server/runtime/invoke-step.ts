@@ -2,6 +2,7 @@ import { DomainError } from "../../domain/canvas";
 import type { Method } from "../../domain/engineering";
 import { stepResult, type Project } from "../../domain/project";
 import type { Json, RuntimeError } from "../../domain/runtime";
+import type { ReasoningDocument } from "./documents";
 export interface StepAdapters {
   invoke(
     project: Project,
@@ -9,7 +10,12 @@ export interface StepAdapters {
     context: Record<string, Json>,
     signal: AbortSignal,
   ): Promise<unknown>;
-  reason(instructions: string, data: Json, signal: AbortSignal): Promise<Json>;
+  reason(
+    instructions: string,
+    data: Json,
+    signal: AbortSignal,
+    documents?: ReasoningDocument[],
+  ): Promise<Json>;
 }
 export async function invokeApprovedStep(
   project: Project,
@@ -18,6 +24,7 @@ export async function invokeApprovedStep(
   context: Record<string, Json>,
   adapters: StepAdapters,
   signal: AbortSignal,
+  readDocuments?: (ids: string[]) => Promise<ReasoningDocument[]>,
 ) {
   signal.throwIfAborted();
   if (method === "human" && !Object.hasOwn(context, "human_response"))
@@ -36,10 +43,21 @@ export async function invokeApprovedStep(
         "METHOD_VIOLATION",
         "Only an approved Agent step can request model reasoning.",
       );
+    if (result.document_ids.length && !readDocuments)
+      throw new DomainError(
+        422,
+        "DOCUMENT_ACCESS_DENIED",
+        "No captured document reader is available.",
+      );
+    const documents = readDocuments
+      ? await readDocuments(result.document_ids)
+      : [];
+    signal.throwIfAborted();
     const tool_result = await adapters.reason(
       result.instructions,
       result.data,
       signal,
+      documents,
     );
     result = stepResult.parse(
       await adapters.invoke(
@@ -74,13 +92,20 @@ export function invocationFailure(error: unknown): RuntimeError {
     "STEP_OUTPUT_TOO_LARGE",
     "STEP_INPUT_TOO_LARGE",
     "AGENT_CONTEXT_TOO_LARGE",
+    "DOCUMENT_ACCESS_DENIED",
+    "DOCUMENT_CONTEXT_TOO_LARGE",
   ];
   const routeCode =
     /^(INVALID_ROUTES|AMBIGUOUS_ROUTE|NO_MATCHING_ROUTE|INVALID_OUTCOME):/.exec(
       message,
     )?.[1];
   const category =
-    known && error.code === "HUMAN_RESPONSE_REQUIRED"
+    known &&
+    [
+      "HUMAN_RESPONSE_REQUIRED",
+      "UNSUPPORTED_DOCUMENT",
+      "INVALID_DOCUMENT",
+    ].includes(error.code)
       ? "input"
       : routeCode ||
           (known && implementationCodes.includes(error.code)) ||

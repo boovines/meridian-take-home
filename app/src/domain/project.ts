@@ -52,6 +52,7 @@ export const stepResult = z.discriminatedUnion("kind", [
       kind: z.literal("reason"),
       instructions: z.string().min(1).max(20000),
       data: z.json(),
+      document_ids: z.array(uuid).max(20).default([]),
     })
     .strict(),
   z

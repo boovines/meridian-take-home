@@ -23,10 +23,13 @@ import {
   invocationFailure,
   type StepAdapters,
 } from "./invoke-step";
+import { documentsForRun } from "./documents";
+import { ArtifactService } from "../artifacts/service";
 export class StepService {
   constructor(
     private db: Database,
     private versions = new VersionService(db),
+    private artifacts = new ArtifactService(db),
   ) {}
   private async prepare(data: ScheduleStep, resume: boolean) {
     return this.db.transaction(async (tx) => {
@@ -250,6 +253,7 @@ export class StepService {
         context,
         adapters,
         signal,
+        (ids) => documentsForRun(this.db, run.id, ids, this.artifacts),
       );
       const routes = selectRoutes(
         node,
