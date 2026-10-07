@@ -42,7 +42,7 @@ Mutable nodes and connections have independent rows and optimistic revisions. Im
 
 ## Verification and development
 
-From `app/`, run `npm run lint`, `npm run typecheck`, `npm test`, `npm run worker:check`, `npm run build`, and `npm run test:browser`. Install the browser once with `npx playwright install chromium`. GitHub Actions runs these checks, using PostgreSQL 17 for persistence tests and isolated local storage for browser journeys. Live scripts are opt-in and consume configured provider resources.
+From `app/`, run `npm run lint`, `npm run typecheck`, `npm test`, `npm run worker:check`, `npm run build`, and `npm run test:browser`. Install the browser once with `npx playwright install chromium`. GitHub Actions runs these checks on ordinary and stacked PRs, with the full test suite on both PGlite and PostgreSQL 17 and isolated local storage for browser journeys. Separate check results and downloadable test reports identify failures; the required `app` gate requires every application check to pass. Live scripts are opt-in and consume configured provider resources.
 
 Follow [CONTRIBUTING.md](CONTRIBUTING.md): feature branches, focused PRs, actual verification, and passing required checks before merge. Never commit credentials, mailbox content, or real shipment documents. The [evidence log](docs/implementation-status.md) distinguishes implemented behavior, verified integrations, and remaining limitations.
 

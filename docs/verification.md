@@ -2,7 +2,20 @@
 
 ## Current checks
 
-The `scaffold` CI job checks required repository files and whitespace errors. The required `app` job runs lint, typecheck, a production build, Temporal bundling, service/domain tests against PostgreSQL, and seven browser journeys using sanitized fixtures. Live provider checks remain separate.
+CI runs on every pull request, including stacked PRs targeting another feature branch, as well as pushes to `main` and manual dispatches. It tests the PR's combined merge checkout, so dependent changes are exercised together before merging.
+
+| Check | Coverage |
+| --- | --- |
+| `scaffold` | Required repository files and whitespace errors |
+| Static checks and worker bundle | ESLint, TypeScript, and Temporal workflow bundling |
+| Test suite (pglite) | Every `tests/**/*.test.ts` test using isolated in-memory persistence, including local Temporal cancellation tests |
+| Test suite (postgres) | The same complete suite against PostgreSQL 17, including migrations and transactional service behavior |
+| Production build and browser journeys | Next.js production build and every `tests/browser` journey using sanitized fixtures and isolated local persistence |
+| `app` | Required aggregate gate; succeeds only when static checks, both test matrix entries, and browser checks succeed |
+
+The existing required check names (`scaffold` and `app`) remain unchanged. A failed, cancelled, or skipped application check cannot produce a passing `app` gate. Independent checks continue when another fails, and both database entries run without matrix fail-fast cancellation. Vitest JUnit results and Playwright results/failure traces are downloadable CI artifacts retained for seven days.
+
+The added PGlite run covers the local development adapter as well as the PostgreSQL adapter already covered in CI. Both discover the entire existing suite rather than a fixed list of test files; new behavioral tests join CI automatically. This covers cases such as immutable frozen specs, stale-edit rejection, and repair regression guards. There is no artificial coverage-percentage target or additional live-service test job. Real document extraction, provider availability and supplied-shipment accuracy still require separate live verification.
 
 The required suite also exercises actual Temporal worker cancellation using the [official testing SDK](https://docs.temporal.io/develop/typescript/best-practices/testing-suite) and a temporary local server. It cancels execution, evaluation and repair while an activity is still acknowledging cancellation, then verifies cleanup and the absence of failed workflow tasks. Database fixtures and workflow bundling alone cannot establish this behavior.
 
