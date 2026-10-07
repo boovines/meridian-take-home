@@ -1,42 +1,50 @@
-# Meridian Take-Home
+# Meridian Studio
 
-A workspace for the Meridian whiteboard feature. This is the pre-implementation scaffold; the product and technical scope can still change after decomposition.
+A process owner maps a workflow, resolves anchored AI findings, and freezes a handoff. An engineer approves how its steps are implemented, generates inspectable code, evaluates it against fixed expectations, and starts bounded repair sessions. The import-receiving example reads captured Gmail documents and previews a shipment report.
+
+Start with [app setup](app/README.md), the [demo walkthrough](docs/demo.md), the [technical handoff](docs/handoff.md), and [verified implementation status](docs/implementation-status.md). Live checks and fixture tests are reported separately.
+
+## Run
+
+Use Node 24. From `app/`, run `npm ci`, configure `.env.local` using `.env.example`, and apply remote migrations with `npm run db:migrate`. Run `npm run dev` and `npm run worker` in separate terminals. The worker uses Temporal Cloud; generated code runs in Vercel Sandbox. See the app README for Supabase TLS, private artifact storage, provider setup, and local fixture development.
+
+The demo binds to localhost. Hosting requires a persistent worker, shared private artifact storage, and access protection; team/role permissions are outside scope. Reports are previews and Gmail access is read-only.
 
 ## Repository layout
 
 ```text
-app/                 React application and feature code
-  src/               Application source
-  tests/             Behavior-focused tests
-  README.md          App setup and run instructions
+app/
+  src/app/           Pages and thin HTTP endpoints
+  src/components/    UI grouped by canvas, review, engineering, evaluation, repair, runtime
+  src/domain/        Typed contracts and pure validation/routing/grading rules
+  src/server/        Transactional feature services and separate provider adapters
+  src/worker/        Deterministic Temporal workflows and I/O activities
+  migrations/        Ordered executable database schema
+  tests/             Service/domain tests, browser journeys, sanitized fixtures
+  scripts/           Operator commands and explicit live service checks
+    demo/            Example business requirements, draft seeding, suite import
+  README.md          Setup, commands, module map, integration details
 
-docs/                Product, architecture, and verification notes
-scripts/             Local setup and demo helpers
-.github/workflows/   Continuous integration
-.runtime/            Local/generated data (ignored)
+docs/                Product requirements, architecture, feature guides and evidence
+specs/               Implemented functional behavior
+.plans/              Detailed interview decisions and original schema proposals
+.github/workflows/   Required CI without live model/Gmail credentials
+.runtime/            Ignored inputs, artifacts, databases and local investigation
 ```
 
-This follows the organization of my ASWE-4156 miniproject: an isolated application directory, a root README, dedicated docs and scripts, and CI at the repository root. The course project's Java service, data, and assignment files are intentionally not copied.
+Application files follow feature boundaries. API handlers validate requests and delegate; services own transactions; provider adapters own network calls. Temporal owns execution scheduling. The example's shipment rules are requirements for generated code, not special cases built into the reusable runtime. The full [file map](app/README.md#file-map) explains each folder.
 
-## Product scope
+## Design and data model
 
-The demo lets process owners map a workflow, clarify it through AI review, and freeze a spec for implementation. Engineers approve implementation methods, inspect generated code, evaluate it against trusted expectations, and initiate bounded repair sessions. Start with the revised [Whiteboard PRD](docs/whiteboard-prd.md) and [Self-Healing Agent PRD](docs/self-healing-agent-prd.md), which consolidate the product and schema decisions. The [original Google Docs PRDs](https://docs.google.com/document/d/1ARjmPNDBDeczJDOFiMdOHB7r4_Z6-9CQCb2Mm7PHjiA/edit?usp=sharing) remain unchanged because the current account has view-only access. The [business-requirements interview checkpoint](.plans/meridian-business-requirements-spec.md) retains the detailed decision record.
+The revised [Whiteboard PRD](docs/whiteboard-prd.md) and [Self-Healing Agent PRD](docs/self-healing-agent-prd.md) retain product decisions. [Architecture and diagrams](docs/architecture.md) describe boundaries and invariants. The [data-model decision audit](docs/data-model-decisions.md) explains table boundaries, keys, indexes and alternatives; `app/migrations` is the executable schema. Earlier `.plans` proposals include conditional tables that were intentionally omitted once Temporal became the scheduling authority.
 
-The [entity-model checkpoint](.plans/meridian-entity-model-spec.md) recommends the records needed to support those requirements. The [canvas schema proposal](.plans/meridian-canvas-schema-spec.md) defines the first four tables, their fields, constraints, indexes, and mutation rules; it has not been applied as a migration.
+Mutable nodes and connections have independent rows and optimistic revisions. Immutable snapshots, input manifests and generated artifacts retain the exact context used by reviews, runs and evaluations. The frozen process, approved plan and locked expectations cannot be rewritten by a repair agent. Each repair session retains every candidate and only advances its baseline after full-suite regression checks.
 
-The [review schema proposal](.plans/meridian-review-schema-spec.md) adds review runs, typed discussion threads, messages, and anchors, including atomic suggestion application and the freeze gate.
+## Verification and development
 
-The [engineering schema proposal](.plans/meridian-engineering-schema-spec.md) defines approved plan/code/test versions, evaluation results, background operations, and bounded repair history.
+From `app/`, run `npm run lint`, `npm run typecheck`, `npm test`, `npm run worker:check`, `npm run build`, and `npm run test:browser`. Install the browser once with `npx playwright install chromium`. GitHub Actions runs these checks, using PostgreSQL 17 for persistence tests and isolated local storage for browser journeys. Live scripts are opt-in and consume configured provider resources.
 
-The [runtime schema proposal](.plans/meridian-runtime-schema-spec.md) completes execution history, human responses, parallel joins, input bundles, artifacts, and bounded loops. Start with the [consolidated architecture and diagrams](docs/architecture.md) for the overall design.
-
-## Development status
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the PR workflow and staged verification. Work on feature branches, report actual checks, and merge through reviewed milestone PRs.
-
-The [data-model decision audit](docs/data-model-decisions.md) explains all 25 reference tables, field groups, alternatives, integrity rules, and query/index choices. It also records corrections from the audit and distinguishes the application records from executor-dependent coordination storage. Read this alongside the schema specs before translating them into migrations.
-
-The main requirements/schema interview is complete. The design is documented; migrations, runtime services, and application features have not been implemented or tested. Infrastructure choices and numeric runtime limits remain engineering defaults to validate. Update `app/README.md` and CI with actual setup/build/test commands as implementation begins. Keep secrets in local environment files, never in Git.
+Follow [CONTRIBUTING.md](CONTRIBUTING.md): feature branches, focused PRs, actual verification, and passing required checks before merge. Never commit credentials, mailbox content, or real shipment documents. The [evidence log](docs/implementation-status.md) distinguishes implemented behavior, verified integrations, and remaining limitations.
 
 ## Future work (outside demo scope)
 

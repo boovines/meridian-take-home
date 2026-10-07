@@ -81,7 +81,8 @@ The first command bundles workflows without credentials and runs in CI. The last
 | `migrations` | Ordered SQL migrations; existing applied migrations are not rewritten |
 | `tests`, `tests/browser`, `tests/fixtures` | Business/persistence tests, browser journeys and sanitized fixtures |
 | `scripts` | Explicit operator commands and live smoke checks |
-| `../.runtime` | Ignored runtime databases, certificates and future generated projects |
+| `scripts/demo` | Example process requirements, draft seeding and operator-supplied suite import |
+| `../.runtime` | Ignored runtime databases, certificates, captured inputs and generated artifacts |
 
 Keep shared modules small and named for their responsibility. Split growing feature modules when another responsibility appears; do not add empty architectural folders or a catch-all utilities file.
 
