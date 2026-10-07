@@ -17,6 +17,7 @@ import { JobService } from "../src/server/engineering/job-service";
 import { VersionService } from "../src/server/engineering/version-service";
 import { EvaluationExecutionService } from "../src/server/evaluations/execution-service";
 import { RunService } from "../src/server/runtime/run-service";
+import { BundleService } from "../src/server/runtime/bundle-service";
 import { StepService } from "../src/server/runtime/step-service";
 import { RuntimeEngine } from "../src/domain/runtime-engine";
 import { changedStepSources, inputInventory, repairPrompt } from "../src/server/repairs/evidence";
@@ -75,9 +76,19 @@ async function record(jobId: string, evaluationId: string, actual: Json) {
   }
   await evals.finish(jobId, undefined, false, evaluationId);
 }
-async function prepared(withWorkflowCase = false) {
+async function prepared(withWorkflowCase = false, withDocument = false) {
   const f = await runtimeFixture(db, artifacts, ["trigger", "outcome"]);
   await f.runs.finish(f.job.id, { status: "cancelled" });
+  if (withDocument) {
+    const document = await artifacts.create(f.w.id, "source_document", "source.txt", "text/plain", Buffer.from("Independent source evidence"));
+    f.bundle = await new BundleService(db).create(f.w.id, {
+      source_kind: "fixture", shipment_reference: "SYNTHETIC-001",
+      manifest: {
+        input: { shipment: "SYNTHETIC-001", documents: [{ artifact_id: document.id, name: document.display_name, media_type: document.media_type, byte_size: document.byte_size }] },
+        artifacts: [{ artifact_id: document.id, name: document.display_name, message_id: null }], message_ids: [],
+      },
+    });
+  }
   const suite = await suites.create(f.w.id, {
     request_key: randomUUID(),
     name: "Locked counting expectations",
@@ -166,6 +177,25 @@ async function prepared(withWorkflowCase = false) {
   await repairs.prepare(started.job.id);
   return { f, suite, initial, ...started };
 }
+it("records inspected locked-case source hashes with the published candidate", async () => {
+  const { job } = await prepared(true, true);
+  const attempt = await repairs.beginAttempt(job.id, 1);
+  let inspectedId = "";
+  await generation.run(attempt.id, {
+    ...generator,
+    generate: async (context, baseline, signal, previousSources, readDocument) => {
+      inspectedId = String(context.input_inventory[0].documents[0].artifact_id);
+      const document = await readDocument(inspectedId);
+      expect(document.bytes.toString()).toBe("Independent source evidence");
+      await expect(readDocument(randomUUID())).rejects.toMatchObject({ code: "DOCUMENT_ACCESS_DENIED" });
+      return generator.generate(context);
+    },
+  }, AbortSignal.timeout(10000));
+  const saved = (await db.query("SELECT metadata FROM artifacts WHERE metadata->>'repair_attempt_id'=$1", [attempt.id])).rows[0];
+  const source = (await db.query("SELECT content_hash FROM artifacts WHERE id=$1", [inspectedId])).rows[0];
+  expect(saved.metadata).toMatchObject({ inspected_documents: [{ artifact_id: inspectedId, content_hash: source.content_hash }] });
+  await repairs.finish(job.id, "cancelled", "Document evidence verified.");
+});
 it("publishes a focused repair while preserving every untouched step", async () => {
   const { f, job } = await prepared();
   const attempt = await repairs.beginAttempt(job.id, 1);
@@ -238,16 +268,18 @@ it("supplies only locked-suite input inventory and keeps numeric filenames outsi
       documents: [],
     },
   ]);
+  const documentId = randomUUID();
   const inventory = inputInventory([
     {
       id: f.bundle.id,
       shipment_reference: "SYNTHETIC-001",
       manifest: {
+        artifacts: [{ artifact_id: documentId }],
         input: {
           messages: [{ text: "private email body" }],
           documents: [
             {
-              artifact_id: randomUUID(),
+              artifact_id: documentId,
               name: "180-465.pdf",
               media_type: "application/pdf",
               byte_size: 123,

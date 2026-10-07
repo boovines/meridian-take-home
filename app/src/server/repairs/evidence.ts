@@ -32,14 +32,16 @@ export function inputInventory(bundles: Record<string, unknown>[]) {
   return bundles.map((bundle) => {
     const manifest = bundle.manifest as {
       input?: { documents?: unknown };
+      artifacts?: { artifact_id: string }[];
     } | null;
     const documents = manifest?.input?.documents;
+    const captured = new Set(manifest?.artifacts?.map((a) => a.artifact_id));
     return {
       input_bundle_id: bundle.id,
       shipment_reference: bundle.shipment_reference,
       documents: Array.isArray(documents)
         ? documents
-            .filter((d) => d && typeof d === "object")
+            .filter((d) => d && typeof d === "object" && captured.has(d.artifact_id))
             .map((d) => ({
               artifact_id: d.artifact_id,
               name: d.name,

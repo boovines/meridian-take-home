@@ -79,7 +79,7 @@ The first command bundles workflows without credentials and runs in CI. The last
 | `src/server/reviews` | Transactional review, discussion and freeze behavior |
 | `src/server/engineering` | Versioned plans, generation lifecycle, project assembly and source/download inspection |
 | `src/server/evaluations` | Verified suites, trusted grading, case execution and result history |
-| `src/server/repairs` | Bounded sessions, candidate ancestry, diagnostic evidence projection, focused source patches, generation checkpoints and acceptance decisions |
+| `src/server/repairs` | Bounded sessions, candidate ancestry, diagnostic evidence projection, locked-case document access, focused source patches, generation checkpoints and acceptance decisions |
 | `src/server/inputs` | Capture existing Gmail messages and attachment evidence into immutable input bundles |
 | `src/server/runtime` | Run/visit history, run-scoped document access, isolated step contracts and human responses |
 | `src/server/artifacts` | Immutable file records, integrity checks and local/private Supabase storage |
