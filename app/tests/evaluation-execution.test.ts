@@ -189,6 +189,10 @@ it("records a full suite with independent passes, assertion failures and executi
     ).toBe("running");
   }
   await evals.finish(job.id);
+  const manual = await new RunService(db).state(f.w.id, undefined, "manual");
+  expect(manual.runs).toHaveLength(1);
+  expect(manual.runs[0].id).toBe(f.run.id);
+  expect((await new RunService(db).state(f.w.id)).runs.length).toBeGreaterThan(1);
   const state = await evals.state(f.w.id, evaluation.id);
   expect(state.runs[0]).toMatchObject({
     status: "completed",

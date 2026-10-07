@@ -25,3 +25,9 @@ A branch failure stops new downstream scheduling and prevents an incomplete merg
 Each run records 100 scheduled attempts and a 900-second active-time limit. Human-only waiting is excluded; a running parallel sibling keeps the clock active. Limits produce Needs attention. A successful business report may contain failed goods: successful execution is separate from successful business validation or evaluation.
 
 Retry creates a fresh run with the original code and inputs, linked to the finished run. It never imports previous approvals or resumes halfway. Report sending, mutable in-run documents and arbitrary external actions are unsupported. Locked evaluation cases and repair sessions are not implemented by this feature.
+
+## Manual run workspace
+
+In the engineer workspace, Agent contains Code and Run workflow views. Run workflow presents implementation/input selection beside the current result and human requests, with a manual-run history. Capture from Gmail expands search, selection and a required shipment reference. Capture alone does not run the process.
+
+Start run requires a code version and captured input and is disabled during the workflow's active operation. Human prompts appear per visit, accept text or explicit approval/rejection, and retain unsent text on errors. Completed runs expose the whole result and a plain-text, unsent report preview when supplied by the outcome. Retry same inputs preserves the previous run and starts a new one with fresh human responses. Evaluation case runs do not populate manual history.

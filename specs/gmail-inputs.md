@@ -4,7 +4,7 @@
 
 The engineer searches existing messages for a workflow, with ordinary Gmail search terms or a shipment reference. Results show subject, sender, received time, and pagination. The engineer explicitly selects messages and supplies the shipment reference used to label the saved packet. No mailbox watcher starts runs automatically.
 
-At this checkpoint search and capture are available through the workflow API and an operator command; dedicated selection/run controls are not yet implemented. The input selector in evaluation authoring lists successful captures. There are no role-specific permissions in this demo; its mailbox access must stay within the operator's local or access-protected deployment.
+Search and capture are available under Agent → Run workflow → Capture from Gmail, through the workflow API, and through an operator command. The input selector in evaluation authoring lists successful captures. There are no role-specific permissions in this demo; its mailbox access must stay within the operator's local or access-protected deployment.
 
 Capture preserves the message text, envelope, and attachment identities, then downloads every attachment. It completes only after every selected message and attachment is available. A disconnected request or provider error can leave retained evidence, but cannot publish a partially captured packet. A retry creates a new capture. Existing workflow runs never re-query Gmail.
 

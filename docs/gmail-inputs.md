@@ -4,6 +4,6 @@ An engineer searches the configured shipment mailbox, chooses existing emails, a
 
 The capture preserves each email's text and envelope plus every attachment. A finished capture is a fixed input packet: retries and evaluations use its saved bytes even if the mailbox later changes. If any attachment fails to download, no partial packet becomes runnable. Retrying capture creates a separate packet.
 
-The capture API and operator smoke check are implemented; the email selection and run screen is the next feature. Existing captured inputs are available to the evaluation case editor. Workflow steps may ask to interpret supported captured documents; unreadable or unsupported requested files stop that step with an error.
+Open Agent → Run workflow → Capture from Gmail to search and select emails. Existing captured inputs are also available to the evaluation case editor. Workflow steps may ask to interpret supported captured documents; unreadable or unsupported requested files stop that step with an error.
 
 The [functional specification](../specs/gmail-inputs.md) covers limits and failure behavior. Setup and live verification commands are in the app README.
