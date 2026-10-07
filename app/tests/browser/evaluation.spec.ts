@@ -114,6 +114,46 @@ test("verifies a suite, runs comparisons, and preserves results when expectation
     fullPage: true,
   });
   await page
+    .getByRole("button", { name: "Repair and rerun", exact: true })
+    .click();
+  await expect(
+    page.getByRole("region", { name: "Repair attempt history" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      "The three-attempt limit was reached. Inspect the remaining failures before starting another session.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(page.locator(".repair-attempt")).toHaveCount(3);
+  await page
+    .getByRole("button", { name: "Inspect code v2", exact: true })
+    .click();
+  await expect(
+    page
+      .getByRole("combobox", { name: "Code version", exact: true })
+      .locator("option:checked"),
+  ).toHaveText(/^v2 ·/);
+  await expect(
+    page.getByRole("link", { name: "Download project", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Evaluation", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Repair history", exact: true })
+    .click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator(".repair-sidebar")).toBeVisible();
+  expect(
+    await page
+      .locator(".repair-sidebar")
+      .evaluate((el) => el.getBoundingClientRect().width),
+  ).toBeLessThanOrEqual(390);
+  await page.screenshot({
+    path: testInfo.outputPath("repair-history-narrow.png"),
+    fullPage: true,
+  });
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page
     .getByRole("button", { name: "Test cases · 1", exact: true })
     .click();
   await page
@@ -133,6 +173,14 @@ test("verifies a suite, runs comparisons, and preserves results when expectation
   await page
     .getByRole("button", { name: "Lock verified suite", exact: true })
     .click();
+  const initialCode = await page
+    .getByRole("combobox", { name: "Code to evaluate", exact: true })
+    .locator("option")
+    .filter({ hasText: /^v1 ·/ })
+    .getAttribute("value");
+  await page
+    .getByRole("combobox", { name: "Code to evaluate", exact: true })
+    .selectOption(initialCode!);
   await page
     .getByRole("button", { name: "Run full suite", exact: true })
     .click();

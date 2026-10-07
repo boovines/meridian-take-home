@@ -83,3 +83,7 @@ The [architecture](architecture.md) and [verification plan](verification.md) def
 ## Current implementation checkpoint
 
 The [generation](engineer-generation.md), [runtime](workflow-runtime.md), and [evaluation](trusted-evaluations.md) guides describe implemented behavior and routes. The evaluation screen supports full-workflow and JSON-output step checks, explicit verification, sealed suite revisions, full-suite execution, comparison details and visit traces. Arbitrary unit-test code and broad OCR benchmarks remain deferred. Evaluation currently starts explicitly; automatic evaluation of a selected suite after generation and the bounded repair loop are still pending. These limits do not change the acceptance target above.
+
+### Bounded repair implementation checkpoint
+
+Repair is now implemented with a three-attempt limit and a recorded two-hour session deadline. Every candidate uses the same approved plan and locked suite; regression checks compare assertion identities. Candidate history and the retained baseline are distinct. The Evaluation tab includes a baseline sidebar, attempt diagnoses, acceptance reasons and links to code/evaluations. The executable schema is migration 009 and the implemented contract is in `specs/bounded-repair.md`. Live synthetic repair passed; Gmail/PDF ground-truth verification remains pending.

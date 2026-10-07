@@ -101,3 +101,18 @@ export async function startEvaluationWorkflow(id: string) {
     if (!(error instanceof WorkflowExecutionAlreadyStartedError)) throw error;
   }
 }
+
+export async function startRepairWorkflow(id: string) {
+  try {
+    await (
+      await temporalClient()
+    ).workflow.start("repairImplementation", {
+      workflowId: `job-${id}`,
+      taskQueue: temporalConfig().taskQueue,
+      args: [id],
+      workflowIdReusePolicy: "REJECT_DUPLICATE",
+    });
+  } catch (error) {
+    if (!(error instanceof WorkflowExecutionAlreadyStartedError)) throw error;
+  }
+}

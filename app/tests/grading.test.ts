@@ -48,6 +48,7 @@ function result(
 ) {
   return {
     case_id: id,
+    suite_version_id: "suite",
     status: "finished",
     outcome,
     check_results: passes.map((passed, i) => ({
@@ -72,26 +73,51 @@ it("never reports incomplete, errored, blocked or empty evaluations as a pass", 
 });
 it("rejects a same-count regression and accepts only a full non-regressing candidate", () => {
   const baseline = [result("a", [true, false], "failed"), result("b", [true])];
+  const expected = baseline.map((r) => ({
+    id: r.case_id,
+    suite_version_id: "suite",
+    assertions: r.check_results.map((a) => ({
+      key: a.key,
+      label: a.label,
+      path: [],
+      expected: true,
+    })),
+  }));
   expect(
     regressionDecision(
       baseline,
       [result("a", [false, true], "failed"), result("b", [true])],
-      2,
+      expected,
     ).accepted,
   ).toBe(false);
   expect(
     regressionDecision(
       baseline,
       [result("a", [true, true]), result("b", [], "error")],
-      2,
+      expected,
     ).accepted,
   ).toBe(false);
   expect(
     regressionDecision(
       baseline,
       [result("a", [true, true]), result("b", [true])],
-      2,
+      expected,
     ).accepted,
   ).toBe(true);
-  expect(regressionDecision(baseline, baseline, 2).accepted).toBe(true);
+  expect(regressionDecision(baseline, baseline, expected).accepted).toBe(true);
+  const passing = [result("a", [true, true]), result("b", [true])];
+  expect(
+    regressionDecision(
+      baseline,
+      passing.map((r) => ({ ...r, suite_version_id: "other" })),
+      expected,
+    ).accepted,
+  ).toBe(false);
+  expect(
+    regressionDecision(baseline, [passing[0], passing[0]], expected).accepted,
+  ).toBe(false);
+  expect(
+    regressionDecision(baseline, [result("a", [true]), passing[1]], expected)
+      .accepted,
+  ).toBe(false);
 });

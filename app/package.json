@@ -20,7 +20,8 @@
     "sandbox:smoke": "tsx scripts/sandbox-smoke.ts",
     "storage:setup": "tsx scripts/storage-setup.ts",
     "runtime:smoke": "tsx scripts/runtime-smoke.ts",
-    "evaluation:smoke": "tsx scripts/evaluation-smoke.ts"
+    "evaluation:smoke": "tsx scripts/evaluation-smoke.ts",
+    "repair:smoke": "tsx scripts/repair-smoke.ts"
   },
   "engines": {
     "node": ">=22"

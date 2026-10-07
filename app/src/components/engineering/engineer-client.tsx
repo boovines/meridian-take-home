@@ -14,7 +14,8 @@ export function EngineerClient({ id }: { id: string }) {
     [busy, setBusy] = useState(false),
     [action, setAction] = useState(""),
     [tab, setTab] = useState("Implementation"),
-    [selectedPlan, setSelectedPlan] = useState("");
+    [selectedPlan, setSelectedPlan] = useState(""),
+    [selectedCode, setSelectedCode] = useState("");
   const load = useCallback(
     async () =>
       setState(await api<EngineeringState>(`/api/workflows/${id}/engineering`)),
@@ -163,6 +164,8 @@ export function EngineerClient({ id }: { id: string }) {
           />
         ) : tab === "Agent" ? (
           <AgentPanel
+            key={selectedCode}
+            initialVersionId={selectedCode}
             workflowId={id}
             versions={state.versions}
             jobs={state.jobs}
@@ -176,6 +179,10 @@ export function EngineerClient({ id }: { id: string }) {
             state={state}
             operationActive={!!activeJob}
             onOperationStarted={load}
+            onInspectCode={(id) => {
+              setSelectedCode(id);
+              setTab("Agent");
+            }}
           />
         )}
         {!!state?.jobs.length && (

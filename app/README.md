@@ -64,13 +64,14 @@ The first command bundles workflows without credentials and runs in CI. The last
 | Location | Responsibility |
 | --- | --- |
 | `src/app/api/workflows` | Request validation and delegation; no orchestration or model prompts |
-| `src/components/canvas`, `src/components/reviews`, `src/components/engineering`, `src/components/evaluations`, `src/components/runtime` | Feature UI and browser state |
+| `src/components/canvas`, `src/components/reviews`, `src/components/engineering`, `src/components/evaluations`, `src/components/repairs`, `src/components/runtime` | Feature UI and browser state |
 | `src/domain` | Typed contracts and pure graph/business rules |
 | `src/server/canvas` | Targeted, revision-checked canvas mutations |
 | `src/server/workflows/store.ts` | Shared workflow locking and graph reads |
 | `src/server/reviews` | Transactional review, discussion and freeze behavior |
 | `src/server/engineering` | Versioned plans, generation lifecycle, project assembly and source/download inspection |
 | `src/server/evaluations` | Verified suites, trusted grading, case execution and result history |
+| `src/server/repairs` | Bounded sessions, candidate ancestry, generation checkpoints and acceptance decisions |
 | `src/server/runtime` | Captured input bundles, run/visit history, isolated step contracts and human responses |
 | `src/server/artifacts` | Immutable file records, integrity checks and local/private Supabase storage |
 | `src/server/integrations` | OpenAI, Temporal and Vercel Sandbox adapters |
@@ -85,7 +86,7 @@ Keep shared modules small and named for their responsibility. Split growing feat
 
 ## Implementation plans and generated projects
 
-After freeze, open the engineer workspace, create a plan, request advisory method suggestions, approve each choice, and approve the plan. Generate agent starts a durable Temporal job; the app shows phase and cancellation while retaining existing versions. OpenAI writes coordinated Node 24 modules from the frozen spec and chosen methods. Complete source is retained even if its syntax check fails. Vercel Sandbox checks syntax with denied network egress; this is not a business evaluation. Inspect files and before/after source, download a ZIP, or create an explicit plan revision. Runtime services execute approved steps and locked evaluations; repair and Gmail capture remain in progress.
+After freeze, open the engineer workspace, create a plan, request advisory method suggestions, approve each choice, and approve the plan. Generate agent starts a durable Temporal job; the app shows phase and cancellation while retaining existing versions. OpenAI writes coordinated Node 24 modules from the frozen spec and chosen methods. Complete source is retained even if its syntax check fails. Vercel Sandbox checks syntax with denied network egress; this is not a business evaluation. Inspect files and before/after source, download a ZIP, or create an explicit plan revision. Runtime services execute approved steps and locked evaluations; bounded repair is implemented and Gmail capture remains in progress.
 
 The worker reconciles queued jobs every five seconds using stable Temporal workflow IDs. Project bytes checkpoint generation across activity retries; SQL guards fence cancelled/expired publication. Each generation has at most two activity attempts, a 40-minute Temporal deadline and a 45-minute application expiry. Model generation is bounded to 15 minutes per activity; sandbox validation to one minute. The model defaults to `gpt-5.4-mini`, configurable with `OPENAI_ENGINEERING_MODEL`.
 
@@ -104,3 +105,9 @@ The [runtime guide](../docs/workflow-runtime.md) explains routing, human waits, 
 The [evaluation guide](../docs/trusted-evaluations.md) describes authoring, verification, suite revisions and the results inspector. Apply migration 008 and restart the worker before evaluating. `npm run evaluation:smoke -- --live` creates a synthetic three-case suite and uses real Temporal child workflows and Vercel Sandbox. It expects one pass, one deliberate assertion failure, and one missing-human-fixture error: a completed, inconclusive evaluation. It does not verify Gmail or shipment accuracy.
 
 Required CI includes suite locking/revision checks, full result coverage, late-attempt fencing, cancellation, fixed input ownership, and a browser journey that corrects expectations in a new suite while preserving earlier results. The guarded local fixture executor uses the engineering fixture flags; it never executes source and is labeled in the results view. Full live suites have a four-hour deadline in addition to per-case runtime limits. Expected values remain outside generated code's sandbox.
+
+## Bounded repair
+
+The [repair guide](../docs/bounded-repair.md) explains the three-attempt loop, baseline decisions and fixed scope. Choose Repair and rerun from an eligible evaluation; inspect candidates and their evaluations in Repair history. Suite corrections require explicit new verification and a fresh baseline evaluation. Runtime/model work stays on the Temporal worker, with generated execution isolated in Vercel Sandbox.
+
+`npm run repair:smoke -- --live` is an optional synthetic live check using OpenAI, Temporal, Supabase and Sandbox. It consumes live resources and is separate from required CI fixtures. It does not retrieve or send email.

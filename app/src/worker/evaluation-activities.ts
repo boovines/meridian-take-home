@@ -7,8 +7,11 @@ import { EvaluationExecutionService } from "../server/evaluations/execution-serv
 import { validateInSandbox } from "../server/integrations/sandbox-project";
 import { invokeInSandbox } from "../server/integrations/sandbox-step";
 import { reasonForStep } from "../server/integrations/openai-step";
-export async function prepareEvaluation(id: string) {
-  const context = await new EvaluationService(await getDatabase()).prepare(id);
+export async function prepareEvaluation(id: string, evaluationId?: string) {
+  const context = await new EvaluationService(await getDatabase()).prepare(
+    id,
+    evaluationId,
+  );
   return context
     ? {
         evaluation_id: context.evaluation.id,
@@ -27,11 +30,13 @@ export async function endEvaluation(
   id: string,
   error?: RuntimeError,
   cancelled = false,
+  evaluationId?: string,
 ) {
   return new EvaluationService(await getDatabase()).finish(
     id,
     error,
     cancelled,
+    evaluationId,
   );
 }
 export async function checkEvaluationBuild(
