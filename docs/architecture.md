@@ -1,6 +1,6 @@
 # Architecture
 
-Architecture and design contracts · October 7, 2026. Canvas authoring, review/freeze, implementation plans/generation, and runtime services are implemented. Evaluation/repair and Gmail sections remain planned. See `implementation-status.md` for verified progress and `app/migrations` for executable schema.
+Architecture and design contracts · October 7, 2026. Canvas authoring, review/freeze, implementation plans/generation, runtime, evaluations and bounded repair are implemented. Gmail ingestion and the complete shipment demonstration remain in progress. See `implementation-status.md` for verified progress and `app/migrations` for executable schema.
 
 Start with the revised [Whiteboard PRD](whiteboard-prd.md) and [Self-Healing Agent PRD](self-healing-agent-prd.md). Detailed fields and constraints are in the [canvas](../.plans/meridian-canvas-schema-spec.md), [review](../.plans/meridian-review-schema-spec.md), [engineering](../.plans/meridian-engineering-schema-spec.md), and [runtime](../.plans/meridian-runtime-schema-spec.md) specs.
 

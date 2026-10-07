@@ -13,6 +13,6 @@ Correct an expected answer by creating a suite revision. Earlier expectations an
 
 The operation banner allows cancellation. The Agent tab also shows the latest evaluation status for its selected version. Full-workflow human actions use scripted responses for each visit; automated tests do not wait for a person. Reports are captured without sending email.
 
-Gmail capture, automatic first evaluation after generation, and bounded repair remain pending. Current fixtures verify the interface and grading flow, not shipment accuracy.
+Bounded repair is implemented; see `bounded-repair.md`. Gmail capture and automatic first evaluation after generation remain pending. Current fixtures verify the interface and grading flow, not shipment accuracy.
 
 See the [functional specification](../specs/trusted-evaluations.md) for validation rules, lifecycle details, and limits.
