@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -8,6 +8,7 @@ import {
   Handle,
   Position,
   MarkerType,
+  useReactFlow,
   type Node,
   type NodeProps,
   type OnNodesChange,
@@ -69,6 +70,18 @@ function FlowCanvas({
   onConnect,
   onMove,
 }: Props) {
+  const frame=useRef<HTMLDivElement>(null);
+  const {fitView}=useReactFlow();
+  useEffect(()=>{
+    if(!frame.current)return;
+    let animationFrame=0;
+    const observer=new ResizeObserver(()=>{
+      cancelAnimationFrame(animationFrame);
+      animationFrame=requestAnimationFrame(()=>{void fitView({padding:.25,maxZoom:1});});
+    });
+    observer.observe(frame.current);
+    return()=>{observer.disconnect();cancelAnimationFrame(animationFrame);};
+  },[fitView]);
   const [positions, setPositions] = useState<
     Record<string, { revision: number; position: { x: number; y: number } }>
   >({});
@@ -100,7 +113,7 @@ function FlowCanvas({
       });
   };
   return (
-    <ReactFlow<ProcessNode>
+    <div ref={frame} style={{width:'100%',height:'100%'}}><ReactFlow<ProcessNode>
       nodes={nodes}
       edges={board.connections.map((c) => ({
         id: c.id,
@@ -125,6 +138,7 @@ function FlowCanvas({
       nodesConnectable={!locked}
       deleteKeyCode={null}
       fitView
+      fitViewOptions={{padding:.25,maxZoom:1}}
       minZoom={0.25}
       maxZoom={1.5}
       defaultViewport={{ x: 80, y: 60, zoom: 1 }}
@@ -132,7 +146,7 @@ function FlowCanvas({
     >
       <Background gap={22} size={1} />
       <Controls showInteractive={false} />
-    </ReactFlow>
+    </ReactFlow></div>
   );
 }
 export function ProcessCanvas(props: Props) {
