@@ -18,7 +18,8 @@
     "worker:check": "tsx scripts/worker-check.ts",
     "review:smoke": "tsx scripts/review-smoke.ts",
     "sandbox:smoke": "tsx scripts/sandbox-smoke.ts",
-    "storage:setup": "tsx scripts/storage-setup.ts"
+    "storage:setup": "tsx scripts/storage-setup.ts",
+    "runtime:smoke": "tsx scripts/runtime-smoke.ts"
   },
   "engines": {
     "node": ">=22"

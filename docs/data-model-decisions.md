@@ -253,3 +253,13 @@ Migrations 003–004 implement `review_runs`, `discussion_threads`, `discussion_
 Live editing remains relational. Review input and frozen handoff use immutable JSON snapshots because their whole-document identity matters more than per-node mutation; this duplication preserves the exact content judged or approved. Large historical snapshots are excluded from routine review-list responses. Workflow-scoped indexes support comment reads and recent-run lists. Model calls occur outside database transactions, and cancelled/stale results are rejected when publishing. Temporal owns execution; no SQL lease queue was introduced.
 
 The executable schema and behavior take precedence over earlier proposed field names. The implemented flow and its limits are traced in `../specs/review-handoff.md`.
+
+## Implementation checkpoint: runtime
+
+Migration 007 implements `input_bundles`, `workflow_runs`, `step_executions`, and `human_requests`. Immutable bundle JSON is read as one captured aggregate; mutable per-visit records remain relational. Same-workflow and same-run foreign keys prevent history from crossing ownership boundaries. Controlled mutations additionally validate each input-output reference against a completed visit in the same run. Sealed manifests and terminal history have database immutability guards.
+
+Temporal owns parallel coordination, so the conditional `parallel_groups`/`parallel_branches` tables were omitted. `branch_ref` identifies a split occurrence and entry connection for diagnostics. This avoids another scheduler while preserving distinct loop visits. Step attempt tokens fence stale publication; they do not claim SQL work or duplicate Temporal's retry policy. An answered human row doubles as a durable signal-delivery intent, so saving the response cannot lose its continuation during an app/worker outage.
+
+Unique run/scheduling keys and run/node/visit keys serve idempotency and ordered-history queries. Runs use workflow/time and job indexes. Pending human requests and undelivered answers use partial indexes matching their polling predicates. Outputs are bounded to 128 KB; the run stores its outcome step reference rather than duplicating that payload. Runtime is limited to 100 scheduled attempts, so a selected run's full trace is bounded. Longer-term retention and production workload sizing remain future work.
+
+Live restart recovery and local behavior checks are recorded in the [runtime guide](workflow-runtime.md). These establish the chosen executor boundary, not production traffic capacity. Evaluation-case relationships will be added with the evaluation migration; no placeholder FK points at nonexistent suite tables.

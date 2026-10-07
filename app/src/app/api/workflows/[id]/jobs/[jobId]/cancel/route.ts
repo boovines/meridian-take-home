@@ -2,7 +2,7 @@ import { z } from "zod";
 import { body, parseId, respond } from "@/server/http";
 import { getDatabase } from "@/server/database";
 import { JobService } from "@/server/engineering/job-service";
-import { dispatchGeneration } from "@/server/engineering/dispatch";
+import { dispatchOperation } from "@/server/workflows/dispatch";
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string; jobId: string }> },
@@ -14,7 +14,7 @@ export async function POST(
       parseId(p.id),
       parseId(p.jobId),
     );
-    await dispatchGeneration(job);
+    await dispatchOperation(job);
     return job;
   });
 }

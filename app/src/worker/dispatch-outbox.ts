@@ -1,6 +1,7 @@
 import type { Database } from "../server/database";
 import type { WorkflowJob } from "../domain/engineering";
-import { dispatchGeneration } from "../server/engineering/dispatch";
+import { dispatchOperation } from "../server/workflows/dispatch";
+import { deliverHumanAnswers } from "../server/runtime/dispatch";
 import { JobService } from "../server/engineering/job-service";
 import { ReviewService } from "../server/reviews/review-service";
 import { startReviewWorkflow } from "../server/integrations/temporal";
@@ -20,10 +21,11 @@ export async function deliverOutbox(db: Database) {
     });
   }
   const jobs = await db.query(
-    "SELECT * FROM workflow_jobs WHERE kind='generation' AND status IN ('queued','cancel_requested') ORDER BY created_at,id LIMIT 20",
+    "SELECT * FROM workflow_jobs WHERE kind IN ('generation','execution') AND status IN ('queued','cancel_requested') ORDER BY created_at,id LIMIT 20",
   );
   for (const row of jobs.rows)
-    await dispatchGeneration(row as unknown as WorkflowJob);
+    await dispatchOperation(row as unknown as WorkflowJob);
+  await deliverHumanAnswers(db);
   const reviews = await db.query(
     "SELECT id,deadline_at FROM review_runs WHERE status='queued' ORDER BY created_at LIMIT 20",
   );

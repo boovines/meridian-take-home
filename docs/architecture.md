@@ -1,6 +1,6 @@
 # Architecture
 
-Architecture and design contracts · October 7, 2026. Canvas authoring and draft review/freeze are implemented; engineering and runtime sections remain planned. See `implementation-status.md` for verified progress and `app/migrations` for executable schema.
+Architecture and design contracts · October 7, 2026. Canvas authoring, review/freeze, implementation plans/generation, and runtime services are implemented. Evaluation/repair and Gmail sections remain planned. See `implementation-status.md` for verified progress and `app/migrations` for executable schema.
 
 Start with the revised [Whiteboard PRD](whiteboard-prd.md) and [Self-Healing Agent PRD](self-healing-agent-prd.md). Detailed fields and constraints are in the [canvas](../.plans/meridian-canvas-schema-spec.md), [review](../.plans/meridian-review-schema-spec.md), [engineering](../.plans/meridian-engineering-schema-spec.md), and [runtime](../.plans/meridian-runtime-schema-spec.md) specs.
 
@@ -53,7 +53,7 @@ Use same-workflow composite foreign keys on owned relationships and same-run key
 
 ## Data relationships
 
-These diagrams show selected relationships, not every column or foreign key. Full definitions and nullability remain in the schema specs. Temporal is the selected scheduling authority. Runtime group/branch rows in the diagram describe inspection/history projections, not a second scheduler. Omit custom database worker leases; derive progress from Temporal-owned transitions. The [decision audit](data-model-decisions.md) explains this boundary and the alternatives.
+These diagrams show selected relationships, not every column or foreign key. Full definitions and nullability remain in the schema specs. Temporal is the selected scheduling authority. Runtime split/join state lives in Temporal. Step records expose stable branch references for inspection; no separate parallel-group/branch tables are implemented. Omit custom database worker leases; derive progress from Temporal-owned transitions. The [decision audit](data-model-decisions.md) explains this boundary and the alternatives.
 
 ```mermaid
 erDiagram
@@ -95,12 +95,9 @@ erDiagram
     evaluation_case_results o|--o| workflow_runs : workflow_case
     workflow_runs ||--o{ step_executions : visits
     step_executions ||--o| human_requests : awaits
-    step_executions ||--o| parallel_groups : forks
-    parallel_groups ||--|{ parallel_branches : expects
-    parallel_branches o|--o{ step_executions : contains
 ```
 
-Artifacts are immutable file metadata referenced by code versions, suites, input manifests, and traces. Manifests validate artifact existence, readiness, and ownership before sealing; JSON references do not have automatic foreign-key protection. `node_id` is a definition identity; `step_execution_id` is one visit. Each parallel group belongs to one split visit so arrivals cannot leak across loop iterations.
+Artifacts are immutable file metadata referenced by code versions, suites, input manifests, and traces. Manifests validate artifact existence, readiness, and ownership before sealing; JSON references do not have automatic foreign-key protection. `node_id` is a definition identity; `step_execution_id` is one visit. Each Temporal join belongs to one split visit so arrivals cannot leak across loop iterations. Step branch references include the split scheduling key and entry connection.
 
 ## Operations that must be atomic
 

@@ -22,8 +22,9 @@ The interview decisions in `.plans/` and revised PRDs refine that scope. Explici
 1. Persisted whiteboard and app foundation: workflows, nodes, connections, optimistic concurrency, canvas interactions, CI.
 2. AI review and frozen handoff: anchored discussion, clarification, resolution history, immutable snapshot and guards; shared Temporal worker infrastructure.
 3. Engineer plan and code generation: approved plans, inspectable versioned code, generation activities, isolated Sandbox execution.
-4. Trusted evaluations and bounded repair: versioned cases, result coverage, three attempts, regression-safe baseline, cancellation.
-5. Gmail and complete demonstration: captured real inputs, document extraction, human steps/loops/parallelism, report preview, complete demo evidence.
+4. Trusted runtime: captured inputs, visit history, isolated step execution, Temporal routing/human waits and recovery.
+5. Trusted evaluations and bounded repair: versioned cases, result coverage, three attempts, regression-safe baseline, cancellation.
+6. Gmail and complete demonstration: captured real inputs, document extraction, human steps/loops/parallelism, report preview, complete demo evidence.
 
 Boundaries may move to keep each PR coherent. PR #1 conventions are incorporated before implementation. No direct main pushes.
 
@@ -67,3 +68,7 @@ Boundaries may move to keep each PR coherent. PR #1 conventions are incorporated
 - Generation verification: 35 local tests and five production-browser journeys pass, including source checkpoint reuse after a validation outage, late-cancellation fencing, cross-workflow download denial, explicit approvals, immutable revisions and ZIP delivery. Live method suggestions succeeded. Live OpenAI → Temporal → Vercel Sandbox generation subsequently completed; its code version is visible in Chrome with download and Not yet evaluated. The initial failed attempt remains in history.
 
 - Live generation fixes: sandbox directory creation now creates the parent explicitly. Source generation uses an array of lines to avoid double-escaped line separators. Complete source is preserved as a version before syntax validation; a failing or incomplete check remains separate from code existence and never counts as correctness. Service tests cover expired-slot recovery when the worker is offline. Full agent execution/evaluation is still pending.
+
+- PR #4 generation merged after both required CI checks passed at its final head.
+- Runtime service milestone: migration 007 adds immutable captured inputs, runs, visits and human requests. Temporal owns per-occurrence fork/join state; no parallel coordination tables or competing SQL scheduler were added. Service/domain tests now total 47 and worker bundling passes. Runtime UI, suites and repair remain pending.
+- Live runtime recovery: synthetic fixture code executed in Vercel Sandbox, paused at a mandatory approval, then resumed after worker restart. The response was saved while the worker was offline and delivered through the durable outbox. Run `8f8debcc-95ce-4baa-a2f6-ec0b73de3111` finished all three steps. This verifies the basic live execution/recovery path, not Gmail or shipment accuracy.

@@ -39,9 +39,7 @@ export async function startReviewWorkflow(id: string) {
 }
 export async function cancelReviewWorkflow(id: string) {
   try {
-    await (
-      await temporalClient()
-    ).workflow
+    await (await temporalClient()).workflow
       .getHandle(reviewWorkflowId(id))
       .cancel();
   } catch (e) {
@@ -69,5 +67,22 @@ export async function cancelGenerationWorkflow(id: string) {
     await (await temporalClient()).workflow.getHandle(`job-${id}`).cancel();
   } catch (error) {
     if (!(error instanceof WorkflowNotFoundError)) throw error;
+  }
+}
+
+// Human pauses have no absolute execution timeout. Active time is bounded by
+// the workflow's durable timer; the queued application's deadline is separate.
+export async function startExecutionWorkflow(id: string) {
+  try {
+    await (
+      await temporalClient()
+    ).workflow.start("executeWorkflow", {
+      workflowId: `job-${id}`,
+      taskQueue: temporalConfig().taskQueue,
+      args: [id],
+      workflowIdReusePolicy: "REJECT_DUPLICATE",
+    });
+  } catch (error) {
+    if (!(error instanceof WorkflowExecutionAlreadyStartedError)) throw error;
   }
 }
