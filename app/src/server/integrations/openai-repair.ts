@@ -26,7 +26,9 @@ export async function repairProjectSources(
         maxRetries: 1,
         abortSignal: signal,
         providerOptions: {
-          openai: { reasoningEffort: "low", store: false },
+          // Repair must reconcile source, locked requirements and evidence from
+          // several attempts. Keep the response cap, but allow more diagnosis.
+          openai: { reasoningEffort: "medium", store: false },
         },
       }),
     "Code repair",
