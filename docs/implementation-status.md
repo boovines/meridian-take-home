@@ -244,3 +244,23 @@ The first successful live comparison used one complete source-inspected invoice,
 The first new-policy evaluation (`44afbdd2-ac6a-4607-a11f-670fbfe90c06`) completed **24/24 cases and 207/207 assertions passing**, using unchanged v17 and locked suite v5. The recorded policy starts a separate confirmation sequence; previous passes are excluded. All 34 accepted model responses have distinct provider response IDs. Model usage was approximately $0.9677, plus a $0.3190 unresolved reservation; attribution uses request timestamps within the evaluation interval. Wall time was about 41 minutes including connection interruptions. Provider-internal parsing freshness remains unknown.
 
 Round two (`f3920765-29e0-46bd-b9d4-bbe775e14434`) started with identical configuration at 16:07:46 UTC. This remains one of three required passes. These independent evaluations measure repeatability without rewriting the earlier repair attempt or promoting v17; the retained repair baseline remains v12. LlamaCloud comparison remains paused. Combined-stack validation passed 179 local tests with one PostgreSQL-only skip, and all PR 47 CI jobs passed, including PostgreSQL and production browser journeys.
+
+
+### Completed independent repeatability measurement — October 8, 16:52 UTC
+
+Under the recorded heartbeat/preflight policy, unchanged v17 and locked suite v5 passed all three consecutive fresh evaluations:
+
+| Round | Evaluation | Cases | Assertions | Wall time | Model estimate |
+| --- | --- | --- | --- | --- | --- |
+| 1 | `44afbdd2-ac6a-4607-a11f-670fbfe90c06` | 24/24 | 207/207 | 41.0 min | $0.9677 |
+| 2 | `f3920765-29e0-46bd-b9d4-bbe775e14434` | 24/24 | 207/207 | 21.6 min | $0.8093 |
+| 3 | `53d2e944-8a85-43a3-9c9c-7664a17891b9` | 24/24 | 207/207 | 21.3 min | $0.8074 |
+
+The first round additionally retains an unresolved $0.3190 call reservation. Costs are estimates, not invoices. Each round has 34 audited request/response pairs; all 34 request payloads match across rounds, 22 response-payload groups vary, and all 102 settled provider response IDs are distinct. Returned model names match `gpt-5.4-2026-03-05`. The application does not reuse extraction answers; provider-internal parsing freshness is unknown.
+
+Read-only database comparison confirms all original 20 cases/161 assertions, input references and human-response fixtures are unchanged. Artifact integrity checks reconfirm the v17 validator matches the v12 source used in twelve successful fixed-input replays; only the CoA reader module changed. These results establish the requested locked-suite demo threshold, not unseen-data accuracy or source-citation correctness. The known ungraded citation defect and every earlier failed/inconclusive result remain documented. The earlier repair session still retains v12; the independent measurement does not retroactively promote it. No further full-suite experiment is planned.
+
+
+### Final v17 report verification — October 8
+
+Chrome started manual run `af569501-47b1-4756-b864-0863fdb46c59` with v17 and the original Gmail input bundle for 020-07721814. It completed all five visits and showed the expected seven totals: invoices 3 processed / 3 successful / 0 failed, goods 0 failed, batches 4 processed / 3 successful / 1 failed. The unsent preview identifies invoice 180/26-27/457, batch 3OP26004A, as lacking a CoA or supported relationship. The result was verified both in the UI and persisted output. This manual demonstration does not count as another full-suite pass.
