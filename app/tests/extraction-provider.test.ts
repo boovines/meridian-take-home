@@ -91,6 +91,9 @@ it("pins configuration, disables response caching, preserves provenance, retries
     },
   });
   expect(calls.filter((c) => c.path === "/api/v2/extract")).toHaveLength(1);
+  const sent = calls.find(c => c.path === "/api/v2/extract")?.body as { configuration: { data_schema: Record<string, unknown> } };
+  expect(sent.configuration.data_schema.$defs).toBeUndefined();
+  expect(sent.configuration.data_schema).toMatchObject({ properties: { data: request.output_schema } });
   expect(calls.at(-1)).toMatchObject({
     method: "DELETE",
     path: "/api/v1/beta/files/dfl-fixture",
@@ -107,6 +110,42 @@ it("keeps failed provider work an error and attempts cancellation/cleanup", asyn
     }),
   ).rejects.toMatchObject({ code: "EXTRACTION_PROVIDER_ERROR" });
   expect(calls.some((c) => c.path.endsWith("/cancel"))).toBe(true);
+});
+it("accepts opaque UUID identities from live-style file and job responses and cleans up", async () => {
+  const fileId = randomUUID(), jobId = randomUUID();
+  const { calls, transport } = fixtureFetch();
+  const fetcher: typeof fetch = async (input, init) => {
+    const response = await transport(input, init);
+    const path = new URL(String(input)).pathname;
+    if (path === "/api/v1/beta/files") return Response.json({ id: fileId });
+    if (path === "/api/v2/extract") return Response.json({ id: jobId });
+    return response;
+  };
+  const result = await llamaExtract(request, await pdf(), AbortSignal.timeout(3000), {
+    fetch: fetcher, api_key: "fixture", project_id: "fixture", poll_ms: 1,
+  });
+  expect(result.metadata).toMatchObject({ file_id: fileId, job_id: jobId });
+  expect(calls.find(c => c.path === "/api/v2/extract")?.body).toMatchObject({ file_input: fileId });
+  expect(calls.at(-1)).toMatchObject({ method: "DELETE", path: `/api/v1/beta/files/${fileId}` });
+});
+it.each(["../files/other", "id?project_id=other", "id#fragment", ""])("rejects unsafe provider identity %s before further requests", async id => {
+  const calls: string[] = [];
+  const transport: typeof fetch = async input => {
+    calls.push(new URL(String(input)).pathname);
+    return Response.json({ id });
+  };
+  await expect(llamaExtract(request, await pdf(), AbortSignal.timeout(3000), {
+    fetch: transport, api_key: "fixture", project_id: "fixture", poll_ms: 1,
+  })).rejects.toMatchObject({ code: "EXTRACTION_PROVIDER_ERROR" });
+  expect(calls).toEqual(["/api/v1/beta/files"]);
+});
+it("rejects oversized instructions plus context before uploading instead of silently truncating", async () => {
+  let calls = 0;
+  const transport: typeof fetch = async () => { calls++; throw new Error("Unexpected upload"); };
+  await expect(llamaExtract({ ...request, data: { text: "x".repeat(10000) } }, await pdf(), AbortSignal.timeout(3000), {
+    fetch: transport, api_key: "fixture", project_id: "fixture",
+  })).rejects.toMatchObject({ code: "EXTRACTION_CONTEXT_TOO_LARGE" });
+  expect(calls).toBe(0);
 });
 it("does not retry uncertain job creation, and cleans up after cancellation", async () => {
   const controller = new AbortController();

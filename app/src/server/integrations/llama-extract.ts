@@ -13,6 +13,10 @@ import type { ReasoningDocument } from "../runtime/documents";
 import { configuredInferenceBudget } from "./inference-budget";
 
 const origin = "https://api.cloud.llamaindex.ai";
+// Provider IDs are opaque: live uploads may return UUIDs, not the prefixed
+// examples in the guide. Still reject path/query characters before URL use.
+const providerId = (value: unknown): value is string =>
+  typeof value === "string" && /^[a-zA-Z0-9_-]{1,200}$/.test(value);
 export const llamaExtractConfiguration = {
   provider: "llamacloud",
   tier: "agentic",
@@ -82,6 +86,17 @@ export async function llamaExtract(
   const schema = z.toJSONSchema(extractionEnvelope) as Record<string, unknown>;
   (schema.properties as Record<string, unknown>).data = request.output_schema;
   delete schema.$schema;
+  // z.json() generated recursive definitions for the original data property.
+  // The concrete request schema replaced that property; these unused definitions
+  // are unsupported by Extract and must not be sent with the concrete envelope.
+  delete schema.$defs;
+  const systemPrompt = `${extractionInstructions}\nTask: ${request.instructions}\nContext: ${JSON.stringify(request.data)}\nCritical paths: ${JSON.stringify(request.critical_paths)}\nThe uploaded PDF concatenates captured sources. In fields.evidence use original artifact IDs and original source_page, not combined page numbers. Exact map: ${JSON.stringify(pageMap)}`;
+  if (systemPrompt.length > 10000)
+    throw new DomainError(
+      422,
+      "EXTRACTION_CONTEXT_TOO_LARGE",
+      "LlamaCloud extraction instructions and context exceed 10,000 characters. Reduce the requested scope explicitly; no context was truncated or uploaded.",
+    );
   const configuration = {
     ...llamaExtractConfiguration,
     provider: undefined,
@@ -89,7 +104,7 @@ export async function llamaExtract(
     cite_sources: true,
     confidence_scores: false,
     extraction_target: "per_doc",
-    system_prompt: `${extractionInstructions}\nTask: ${request.instructions}\nContext: ${JSON.stringify(request.data)}\nCritical paths: ${JSON.stringify(request.critical_paths)}\nThe uploaded PDF concatenates captured sources. In fields.evidence use original artifact IDs and original source_page, not combined page numbers. Exact map: ${JSON.stringify(pageMap)}`,
+    system_prompt: systemPrompt,
   };
   const requestHash = createHash("sha256")
     .update(
@@ -159,7 +174,7 @@ export async function llamaExtract(
     const upload = await (
       await api("/api/v1/beta/files", { method: "POST", body: form })
     ).json();
-    if (typeof upload.id !== "string" || !/^dfl-[a-zA-Z0-9-]+$/.test(upload.id))
+    if (!providerId(upload.id))
       throw new DomainError(
         503,
         "EXTRACTION_PROVIDER_ERROR",
@@ -174,8 +189,7 @@ export async function llamaExtract(
       })
     ).json();
     if (
-      typeof started.id !== "string" ||
-      !/^ext-[a-zA-Z0-9-]+$/.test(started.id)
+      !providerId(started.id)
     )
       throw new DomainError(
         503,
