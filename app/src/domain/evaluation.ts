@@ -65,7 +65,6 @@ export const caseInput = z
         ? !c.input_bundle_id || c.node_id !== null || c.input_data !== null
         : !c.node_id ||
           !c.input_data ||
-          c.input_bundle_id !== null ||
           c.human_responses.length > 0
     )
       ctx.addIssue({

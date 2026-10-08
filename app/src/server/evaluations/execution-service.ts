@@ -1,3 +1,5 @@
+import { BundleService } from "../runtime/bundle-service";
+import { documentsForBundle } from "../runtime/documents";
 import { randomUUID } from "node:crypto";
 import { workflow } from "../workflows/store";
 import { DomainError } from "../../domain/errors";
@@ -112,14 +114,32 @@ export class EvaluationExecutionService {
       const method = (await planSteps(this.db, job.plan_version_id)).find(
         (s) => s.node_id === c.node_id,
       )!.selected_method;
+      const inputContext = { ...c.input_data } as Record<string, Json>;
+      if (c.input_bundle_id) {
+        const bundle = await new BundleService(this.db).read(
+          result.workflow_id,
+          c.input_bundle_id,
+        );
+        // Match full runs; fixture context cannot substitute different captured input.
+        inputContext.input = (bundle.manifest as { input: Json }).input;
+      }
       const output = await invokeApprovedStep(
         project,
         c.node_id,
         method,
-        c.input_data as Record<string, Json>,
+        inputContext,
         adapters,
         signal,
-        undefined,
+        c.input_bundle_id
+          ? (ids) =>
+              documentsForBundle(
+                this.db,
+                result.workflow_id,
+                c.input_bundle_id!,
+                ids,
+                this.artifacts,
+              )
+          : undefined,
         new ExecutionAuditService(this.db, this.artifacts).recorder(
           result.workflow_id,
           { case_result_id: id },

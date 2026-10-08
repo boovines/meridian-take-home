@@ -15,10 +15,38 @@ export async function documentsForRun(
   artifacts = new ArtifactService(db),
 ): Promise<ReasoningDocument[]> {
   if (!ids.length) return [];
+  const run = (
+    await db.query(
+      "SELECT workflow_id,input_bundle_id FROM workflow_runs WHERE id=$1",
+      [runId],
+    )
+  ).rows[0];
+  if (!run)
+    throw new DomainError(
+      422,
+      "DOCUMENT_ACCESS_DENIED",
+      "Captured run not found.",
+    );
+  return documentsForBundle(
+    db,
+    String(run.workflow_id),
+    String(run.input_bundle_id),
+    ids,
+    artifacts,
+  );
+}
+export async function documentsForBundle(
+  db: Database,
+  workflowId: string,
+  bundleId: string,
+  ids: string[],
+  artifacts = new ArtifactService(db),
+): Promise<ReasoningDocument[]> {
+  if (!ids.length) return [];
   const row = (
     await db.query(
-      "SELECT r.workflow_id,b.manifest FROM workflow_runs r JOIN input_bundles b ON b.id=r.input_bundle_id AND b.workflow_id=r.workflow_id WHERE r.id=$1",
-      [runId],
+      "SELECT workflow_id,manifest FROM input_bundles WHERE workflow_id=$1 AND id=$2",
+      [workflowId, bundleId],
     )
   ).rows[0];
   const manifest = row?.manifest as
@@ -34,7 +62,7 @@ export async function documentsForRun(
     throw new DomainError(
       422,
       "DOCUMENT_ACCESS_DENIED",
-      "Reasoning may read up to 20 distinct documents captured for this run.",
+      "Reasoning may read up to 20 distinct documents captured for this input bundle.",
     );
   const result: ReasoningDocument[] = [];
   let total = 0;

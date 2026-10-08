@@ -71,3 +71,13 @@ Migration 010 adds `execution_audit_events`, scoped to either one workflow step 
 The same audit records are available to the repair agent through a bounded read-only tool. Full payloads stay stored; a tool response over 48 KB is explicitly shortened, and JSON paths select smaller subtrees. Audits never modify assertions or determine acceptance. Event payloads are capped at 2 MB and each host invocation at six events; current execution produces at most five. Two infrastructure invocations per visit remain the existing limit. Failure to persist the audit is an infrastructure error, not a generated-code defect.
 
 Read-only APIs: `GET /api/workflows/:id/audit-events?step_execution_id=...` (or `case_result_id=...`) lists one invocation owner's events; `GET /api/workflows/:id/audit-events/:eventId` retrieves an owned, integrity-checked payload. The UI preserves the existing trace layout with expandable audit details. Source bytes remain in captured artifacts rather than being copied into every event.
+
+## Evidence-aware extraction
+
+An approved Agent can request structured extraction for decision-relevant document fields. The generated implementation defines the output shape and which scalar fields need evidence; the platform contains no shipment-specific field names or matching rules. Each field retains its printed value, normalized value, status, source artifact/page, supporting quote or box when found, and explanation when missing or uncertain.
+
+The host checks schema conformance, field coverage, normalized-value consistency, captured-document membership, actual PDF page bounds, and bounding-box bounds. A bare null cannot establish absence. Unresolved or unreadable evidence stops execution before business validation and appears as an extraction error; it does not silently count as a failed good or missing document. Raw responses and bounded field issues remain in Execution audit. Structurally valid citations are still model claims: these checks do not establish that a quote is true or the model found every record. Independently verified cases remain necessary.
+
+The first provider uses the existing OpenAI document interpreter. Existing implementations keep their earlier reasoning contract until regenerated or repaired to request extraction; this addition does not retroactively improve historical versions. Automatic reinspection and alternate-provider comparison are not part of this checkpoint.
+
+Extraction output schemas must use synchronous validation. Asynchronous schemas are rejected before a provider call, alongside references and regular expressions, so a validation Promise cannot bypass the output contract.

@@ -43,6 +43,16 @@ Use sanitized fixtures and deterministic external-service substitutes for requir
 
 Record exact commands and meaningful manual walkthrough results in each PR. Review expected evaluation answers independently of generated implementation.
 
+## Live repeatability protocol
+
+Repeatability is separate from a successful evaluation or repair acceptance. Freeze the implementation artifact, approved plan, suite, captured inputs, model and settings before repetitions. Do not repair during the measurement. Record per-case correctness, assertion results, execution errors and changes across runs; a stable wrong answer is still wrong. For record-presence assertions, compare the scored predicate rather than treating irrelevant changes elsewhere in the returned array as a regression.
+
+Start with one complete repeat of the supplied suite. Budget permitting, repeat the full suite again; otherwise disclose the coverage reduction and use explicitly labeled diagnostic reruns of unstable cases plus a passing control. Never present an adaptively selected subset as a held-out set or full-suite pass. Replay saved intermediate outputs through deterministic steps to distinguish extraction variability from downstream behavior without paying for another model call. Any substitutions used to localize a failure belong to a separate diagnostic result, not the trusted evaluation record.
+
+For another SOP, author its requirements and expected fixtures before generation, approve methods, generate once, and evaluate that fixed implementation repeatedly. Record who verified expectations and whether human responses were scripted. Simple text fixtures do not establish PDF extraction quality, and repeated execution of one artifact does not establish repeatability of the entire generation/repair trajectory. The [October 8 evidence](implementation-status.md#repeatability-measurement--october-8) demonstrates why a single perfect shipment evaluation cannot establish durable accuracy.
+
+Estimate API spend before starting and meter actual response usage. Prefer fewer controlled runs and isolated replays to unbounded repair sessions. Keep successful historical results while making later contradictory evidence visible. A future repeatability acceptance gate should require repeated checks on vulnerable steps and an independent full-suite confirmation before describing a candidate as stable; that gate is not currently implemented.
+
 ## Detailed acceptance checks
 
 These are the acceptance scenarios for the consolidated design. See [implementation status](implementation-status.md) for measured test counts and live outcomes; this checklist does not itself establish that every scenario passed.
