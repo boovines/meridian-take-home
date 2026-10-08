@@ -37,7 +37,8 @@ export function fixtureReplyRewrite(
 ): import("../../src/domain/review-reply").ReplyRewrite {
   return {
     outcome: "updated",
-    explanation: "Updated the referenced block instructions from your answer.",
+    explanation:
+      "I suggest incorporating your answer into the referenced block instructions. Review the changes below.",
     updates: context.targets.map((node) => ({
       node_id: node.id,
       instructions: `${node.instructions}\n${context.answer}`,

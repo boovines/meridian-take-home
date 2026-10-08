@@ -153,7 +153,7 @@ export class ReplyService {
       throw new DomainError(
         422,
         "INVALID_REPLY_UPDATE",
-        "The reply update was invalid. No reply or block changes were saved; retry or edit the block directly.",
+        "The reply update was invalid. No reply or proposal was saved; retry or edit the block directly.",
       );
     const result = parsed.data;
     signal.throwIfAborted();
@@ -177,30 +177,26 @@ export class ReplyService {
         throw new DomainError(
           409,
           "STALE_REPLY_UPDATE",
-          "The board or discussion changed while incorporating your reply. Your text is preserved; retry against the latest saved context.",
+          "The board or discussion changed while preparing your proposal. Your text is preserved; retry against the latest saved context.",
         );
-      const applied = [];
-      for (const update of result.updates) {
+      const edits = result.updates.flatMap((update) => {
         const node = context.targets.find((n) => n.id === update.node_id)!;
-        if (node.instructions === update.instructions) continue;
-        await tx.query(
-          "UPDATE nodes SET instructions=$2,revision=revision+1,updated_at=now() WHERE id=$1",
-          [node.id, update.instructions],
-        );
-        applied.push({
-          node_id: node.id,
-          before: { instructions: node.instructions, revision: node.revision },
-          after: {
-            instructions: update.instructions,
-            revision: node.revision + 1,
-          },
-        });
-      }
-      if (applied.length)
-        await tx.query(
-          "UPDATE workflows SET content_revision=content_revision+1,updated_at=now() WHERE id=$1",
-          [workflowId],
-        );
+        return node.instructions === update.instructions
+          ? []
+          : [
+              {
+                node_id: node.id,
+                before: {
+                  instructions: node.instructions,
+                  revision: node.revision,
+                },
+                after: {
+                  instructions: update.instructions,
+                  revision: node.revision + 1,
+                },
+              },
+            ];
+      });
       const message = await appendMessage(tx, thread, {
         author: "customer",
         body: data.body,
@@ -208,26 +204,27 @@ export class ReplyService {
         requestKey: data.request_key,
       });
       await appendMessage(tx, thread, {
-        author: "system",
-        body: applied.length
+        author: "ai",
+        parent: message.id,
+        body: edits.length
           ? result.explanation
           : result.outcome === "updated"
             ? "The block instructions already contain this clarification; no changes were needed."
             : result.explanation,
-        requestKey: `${data.request_key}:incorporation`,
+        requestKey: `${data.request_key}:proposal`,
         event: {
-          action: "reply_incorporated",
+          action: "reply_proposed",
           reply_message_id: message.id,
-          outcome: applied.length
+          outcome: edits.length
             ? "updated"
             : result.outcome === "updated"
               ? "no_change"
               : result.outcome,
-          applied,
+          content_revision: w.content_revision,
+          edits,
         },
       });
-      // This finding's original suggestion predates the answer and must not be
-      // offered as a replacement for the freshly incorporated instructions.
+      // Supersede the original suggestion with the answer-informed proposal.
       await tx.query(
         "UPDATE discussion_threads SET proposed_node_id=NULL,proposed_node_revision=NULL,proposed_patch=NULL WHERE id=$1",
         [threadId],

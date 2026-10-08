@@ -69,3 +69,58 @@ export const replyIncorporationEvent = z.object({
     }),
   ),
 });
+
+export const replyProposalEvent = z.object({
+  action: z.literal("reply_proposed"),
+  reply_message_id: uuid,
+  outcome: z.enum(["updated", "no_change", "manual_change"]),
+  content_revision: z.number().int().nonnegative(),
+  edits: replyIncorporationEvent.shape.applied,
+});
+export const replyProposalDecision = z
+  .object({
+    decision: z.enum(["accept", "reject"]),
+    expected_revision: z.number().int().positive(),
+    request_key: uuid,
+  })
+  .strict();
+export const replyProposalDecisionEvent = z.object({
+  action: z.literal("reply_proposal_decided"),
+  proposal_message_id: uuid,
+  decision: z.enum(["accept", "reject"]),
+});
+
+export function proposalStatus(
+  message: DiscussionMessage,
+  messages: DiscussionMessage[],
+  board: Board,
+  thread: DiscussionThread,
+) {
+  const proposal = replyProposalEvent.safeParse(message.event_data);
+  if (!proposal.success || !proposal.data.edits.length) return "none";
+  const decision = messages
+    .map((m) => replyProposalDecisionEvent.safeParse(m.event_data))
+    .find((d) => d.success && d.data.proposal_message_id === message.id);
+  if (decision?.success)
+    return decision.data.decision === "accept" ? "accepted" : "rejected";
+  if (
+    messages.some(
+      (m) =>
+        m.thread_id === thread.id &&
+        m.message_number > message.message_number &&
+        m.event_data?.action === "reply_proposed",
+    )
+  )
+    return "superseded";
+  if (thread.status !== "open") return "closed";
+  if (
+    board.workflow.content_revision !== proposal.data.content_revision ||
+    proposal.data.edits.some(
+      (edit) =>
+        board.nodes.find((n) => n.id === edit.node_id)?.revision !==
+        edit.before.revision,
+    )
+  )
+    return "stale";
+  return "pending";
+}
