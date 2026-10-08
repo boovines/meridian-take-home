@@ -79,11 +79,11 @@ The first command bundles workflows without credentials and runs in CI. The last
 | `src/server/reviews` | Transactional review, discussion and freeze behavior |
 | `src/server/engineering` | Versioned plans, generation lifecycle, project assembly and source/download inspection |
 | `src/server/evaluations` | Verified suites, trusted grading, case execution and result history |
-| `src/server/repairs` | Bounded sessions, candidate ancestry, diagnostic evidence projection, locked-case document access, focused source patches, generation checkpoints and acceptance decisions |
+| `src/server/repairs` | Bounded sessions, candidate ancestry, diagnostic evidence projection, bounded recorded-input replay, focused source patches, generation checkpoints and three-run confirmation |
 | `src/server/inputs` | Capture existing Gmail messages and attachment evidence into immutable input bundles |
 | `src/server/runtime` | Run/visit history, immutable interaction audit, run-scoped document access, isolated step contracts and human responses |
 | `src/server/artifacts` | Immutable file records, integrity checks and local/private Supabase storage |
-| `src/server/integrations` | Composio Gmail, OpenAI, Temporal and Vercel Sandbox adapters |
+| `src/server/integrations` | Composio Gmail, OpenAI/LlamaCloud, Temporal, Vercel Sandbox and metered inference adapters |
 | `src/server/database.ts`, `src/server/http.ts` | Database and HTTP infrastructure |
 | `src/worker` | Temporal workflow definitions, activities and worker entry point |
 | `migrations` | Ordered SQL migrations; existing applied migrations are not rewritten |

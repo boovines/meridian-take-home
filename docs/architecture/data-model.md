@@ -1,6 +1,6 @@
 # Data model decisions and justification
 
-Audit date: October 7, 2026. Scope: the agreed take-home features, with growth considered but no claimed production capacity. This document explains the implemented tables, important field groups, relationships, and alternatives. Migrations 001–009 are the source of truth for exact fields and constraints; the earlier schema specifications preserve planning context. The migrations run against Supabase and PostgreSQL in CI. No production load test has been run.
+Audit date: October 8, 2026. Scope: the agreed take-home features, with growth considered but no claimed production capacity. This document explains the implemented tables, important field groups, relationships, and alternatives. Migrations 001–013 are the source of truth for exact fields and constraints; the earlier schema specifications preserve planning context. The migrations run against Supabase and PostgreSQL in CI. No production load test has been run.
 
 ## Audit conclusion
 
@@ -16,7 +16,7 @@ The main domain boundaries are justified by independently edited or versioned re
 | Model/settings sufficient to explain review behavior | Add `reviewer_version`, identifying the deployed prompt/application revision. | The same model can produce different review behavior with a changed prompt. This is provenance, not guaranteed reproducibility. |
 | Custom leases and parallel coordination implicitly required | Temporal owns scheduling and per-occurrence fork/join state; omit SQL coordination tables and leases. | The database stores inspection history and idempotent dispatch intents without becoming a second scheduler. |
 
-The executable schema has **24 application tables**: four canvas, four review, ten engineering/evaluation, and six runtime/artifact tables. The two proposed parallel coordination tables were intentionally omitted because Temporal owns that state. The count follows record lifecycles; it is not a scalability target or a count of services.
+The executable schema has **26 application tables**: four canvas, four review, twelve engineering/evaluation/repair, and six runtime/artifact tables. The two proposed parallel coordination tables were intentionally omitted because Temporal owns that state. The count follows record lifecycles; it is not a scalability target or a count of services.
 
 ## How a table earns its place
 

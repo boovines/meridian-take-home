@@ -2,7 +2,7 @@
 
 Updated as features land. An unchecked item is not complete, even if supporting code exists.
 
-**Current accuracy evidence, October 8:** the unchanged v10 implementation reran the same locked suite with **14/20 cases and 149/161 assertions passing**, after the earlier 20/20 pass. Six supplied shipment cases changed from pass to fail. The previous successful evaluation remains valid history, but does not establish repeatable shipment accuracy. Two newly generated, small synthetic SOPs each passed six cases in three consecutive evaluations. See the dated evidence below and the [repeatability protocol](verification.md#live-repeatability-protocol).
+**Current accuracy evidence, October 8:** shipment repeatability remains unconfirmed. Historical v10 passed 20/20, then 14/20 unchanged. On the expanded fixed suite, v10 passed **14/24 (189/207 assertions)**; v11 improved to **20/24 (199/207)** but was rejected for a lost previously passing source check. A subsequent repair is in progress. Small synthetic returns and purchasing SOPs each completed three consecutive six-case passes; a new returns UI journey also passed 6/6 three times. These text-input successes do not establish PDF extraction reliability. See the dated evidence below and the [repeatability protocol](verification.md#live-repeatability-protocol).
 
 ## Authoritative context
 
@@ -155,3 +155,24 @@ All model calls in this measurement requested `gpt-5.4`; metered responses resol
 The host now supports a generated, workflow-specific extraction schema with field-level raw/normalized values, source references and found/absent/unresolved/unreadable dispositions. Fixture tests reject bare-null omissions, unavailable source pages, mismatched normalized values and unresolved evidence before generated postprocessing. Isolated Agent evaluation cases can use immutable document bundles; fixture input cannot override the captured input. Old generated versions retain their earlier behavior until repaired or regenerated.
 
 Validation: 133 tests passed, one local Temporal integration test skipped; lint, TypeScript, documentation navigation, Temporal workflow bundling and production build passed. These are local fixture/build results, not a shipment accuracy improvement. The live baseline was re-read from persistence: latest v10 evaluation remains 14/20. No paid inference was used for this boundary change. LlamaCloud read-only discovery returned HTTP 401; provider comparison is pending a valid credential.
+
+### Expanded diagnostics and customer journey — October 8, morning
+
+Suite v5 preserves all 20 earlier cases and all 161 assertions, adding four isolated invoice-extraction cases with 46 source-inspected checks. Codex visually inspected the original PDFs before fixing those labels; this is recorded operator/source verification, not independent human review. Manufacturer, product, strength, batch and selected missing-field checks use explicit equality, substring or array membership as appropriate. A substring pass does not establish complete field correctness. The label manifest is fixed before live execution.
+
+Pinned configuration uses `gpt-5.4-2026-03-05`, OpenAI extraction and the bounded reinspection setting. Existing v10/v11 generated readers still request the legacy `reason` operation, so these results do not establish live benefit from the new `extract` evidence contract or reinspection adapter. LlamaCloud's read-only project discovery returned 401; no documents were uploaded there and no comparison winner is claimed.
+
+| Full evaluation | Code / suite | Cases | Assertions | Outcome |
+| --- | --- | --- | --- | --- |
+| `cd0ea59e-6e8d-418c-8224-d96003c2866c` | v10 / v5 | 14/24 | 189/207 | Completed, no execution errors; baseline |
+| `6929ed97-08dc-4c59-91ee-de09b759c6a8` | v11 / v5 | 20/24 | 199/207 | Rejected: a previously passing source-product check regressed |
+
+The first candidate strengthened invoice-manufacturer extraction but did not resolve all product/strength matching errors. Its higher aggregate score did not override assertion-level regression protection. The next attempt stopped before its model call because required diagnostic context exceeded the size limit. The retained implementation stayed v10. A generic evidence projection now groups audit metadata and, only when necessary, omits explicitly marked passing actual values while preserving locked expectations, failed actual values, source and allowed audit IDs. The private reproduction fits in 383,200 bytes. A new explicit repair session retains the rejected candidate's history with the exact same baseline; its final outcome is recorded separately below.
+
+Four saved shipment intermediate inputs were each replayed three times through their same deterministic generated validator in Vercel Sandbox. All twelve output hashes matched their recorded outputs. These are recorded intermediates validated under the existing generated response schema, not a claim that the newer field-evidence contract verified every source fact. Replays establish consistency for the examined fixed inputs, not fresh extraction correctness.
+
+A separate four-block returns workflow (`54c0ff8f-3b20-432e-af9b-fe41e4a812f7`) was authored through Chrome and completed two real AI reviews. Findings led to explicit instructions for the inclusive day-30 boundary, malformed versus merely incomplete input, and unchanged request identifiers. All findings were resolved with recorded decisions before freezing. The engineer approved Agent for interpretation and Code for the other steps, then generated v1 through the UI. Its six fixed policy cases were copied unchanged and locked before generation.
+
+Three evaluations explicitly started in Chrome—`ca35778c-8399-48d7-a1c9-49fcb280aa14`, `025ce313-f8f5-4320-9a6b-a0cd29fd4b14`, and `a94088c6-52ab-4b57-9a88-2354304d9435`—each passed **6/6 cases and 30/30 assertions** with identical code, suite and recorded configuration. The final decision output and frozen clarification history were inspected in the UI. This is a completed live product journey for a small fictional SOP; it required no repair because its first implementation passed. Shipment history supplies the demonstrated failure/repair path. Neither set is held-out validation.
+
+Combined validation after the context fix: **148 tests passed, one PostgreSQL-only test skipped locally**, plus lint, typecheck, production build, Temporal workflow bundling and documentation navigation. PostgreSQL and browser CI results are reported against the final open stack. No PR was merged.
