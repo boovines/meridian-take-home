@@ -16,6 +16,8 @@ npm run dev
 
 The app opens at `http://127.0.0.1:3000`. Set the Supabase database fields in `.env.local`, including the password. For verified TLS, download the project CA from Supabase's Database Settings and set `SUPABASE_DB_SSL_ROOT_CERT` to its absolute file path. Alternatively set `DATABASE_URL` with `sslmode=verify-full` and `sslrootcert`. Never commit credentials. Migrations run explicitly for remote databases.
 
+Each web or worker process opens at most four PostgreSQL connections. Transactions apply server-side limits of ten seconds per statement and thirty seconds idle, so a disconnected process cannot indefinitely hold a workflow lock. Broken connections are discarded, and a failed rollback preserves the original operation error. Supabase's transaction pooler can be selected with `SUPABASE_DB_PORT=6543`; `DATABASE_URL`, when supplied, takes precedence. Pool sizing still needs to account for the number of deployed processes.
+
 To develop without a remote database, use `MERIDIAN_DATABASE=local npm run dev`. This stores a PGlite database in the ignored `../.runtime/database` directory and applies migrations automatically. This is a development fallback; it is not the production datastore. The service tests run against PostgreSQL in GitHub Actions.
 
 The current server binds to localhost. Do not expose a hosted deployment without access protection; organization permissions are outside demo scope, but the demo must not expose shipment data or unrestricted writes publicly. Supabase REST access to the app tables is denied by RLS; all app queries use the server connection.

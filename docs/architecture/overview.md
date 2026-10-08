@@ -36,6 +36,8 @@ The return to generation is conditional on an explicitly started repair session 
 
 The web/API can deploy to Vercel. Temporal Cloud owns orchestration; its worker runs as a separate persistent Node process. Vercel Sandbox is selected for generated execution. Supabase Postgres stores application state and immutable evidence; direct server connections verify TLS with the project CA. OpenAI performs review and generation, and Composio supplies read-only Gmail retrieval. Database transactions never span model calls or generated execution. The app README documents the implemented module boundaries.
 
+PostgreSQL connections are bounded per process. Server-side statement and idle-transaction deadlines release abandoned locks; the database adapter discards failed connections rather than returning them to the pool. This protects subsequent operations after a dropped connection, but does not turn an interrupted evaluation into a successful one. Its recorded error remains visible and a new evaluation establishes fresh evidence.
+
 ## Version and ownership boundaries
 
 | Record | Mutation rule |

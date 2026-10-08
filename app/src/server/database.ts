@@ -22,9 +22,13 @@ export async function createDatabase(
   if (url) {
     const pool = new Pool({
       connectionString: url,
-      max: 8,
+      max: 4,
       connectionTimeoutMillis: 10000,
       query_timeout: 15000,
+    });
+    // pg removes failed idle clients; keep its error event from crashing the host.
+    pool.on("error", () => {
+      console.warn("An idle database connection closed; the pool will reconnect.");
     });
     return {
       query: (sql, values) => pool.query(sql, values),
@@ -33,21 +37,40 @@ export async function createDatabase(
       },
       async transaction(fn) {
         const client: PoolClient = await pool.connect();
+        let connectionError: Error | undefined;
+        let discard = false;
+        const onError = (error: Error) => {
+          connectionError = error;
+        };
+        client.on("error", onError);
         try {
-          await client.query("BEGIN");
+          // Server-side limits survive a disconnected client and release its locks.
+          // All model/network work belongs outside these short transactions.
+          await client.query(
+            "BEGIN; SET LOCAL statement_timeout = '10s'; SET LOCAL idle_in_transaction_session_timeout = '30s'",
+          );
           const result = await fn({
             query: (sql, values) => client.query(sql, values),
             exec: async (sql) => {
               await client.query(sql);
             },
           });
+          if (connectionError) throw connectionError;
           await client.query("COMMIT");
           return result;
         } catch (error) {
-          await client.query("ROLLBACK");
+          discard = Boolean(connectionError);
+          if (!discard) {
+            try {
+              await client.query("ROLLBACK");
+            } catch {
+              discard = true;
+            }
+          }
           throw error;
         } finally {
-          client.release();
+          client.removeListener("error", onError);
+          client.release(discard || Boolean(connectionError));
         }
       },
       close: () => pool.end(),
