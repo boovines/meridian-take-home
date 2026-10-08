@@ -9,7 +9,7 @@ import { VersionService } from "../engineering/version-service";
 import { RepairService } from "./service";
 import { changedStepSources, type PreviousSourceEvidence } from "./evidence";
 import { completeRepairSources } from "./patch";
-import { RepairDocumentReader, type ReadRepairDocument } from "./documents";
+import { repairDocumentBudget, RepairDocumentReader, type ReadRepairDocument } from "./documents";
 export type RepairContext = Awaited<
   ReturnType<RepairService["generationContext"]>
 >;
@@ -84,6 +84,7 @@ export class RepairGenerationService {
         new Set(context.input_inventory.flatMap((bundle) => bundle.documents.map((d) => String(d.artifact_id)))),
         this.artifacts,
         signal,
+        repairDocumentBudget(this.db, attemptId, claimed.token),
       );
       const generated = repairSources.parse(
         await adapter.generate(context, baseline, signal, previousSources, documents.read),
