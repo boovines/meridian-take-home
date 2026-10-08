@@ -10,6 +10,7 @@ import {
 } from "@temporalio/worker";
 import { cancellationSignal, heartbeat } from "@temporalio/activity";
 import { nodeInput } from "../src/domain/canvas";
+import { RUNTIME_HEARTBEAT_POLICY } from "../src/domain/runtime";
 
 let env: TestWorkflowEnvironment;
 let workflowBundle: WorkflowBundle;
@@ -121,3 +122,66 @@ it.each([
   },
   20000,
 );
+
+it("survives a brief heartbeat-delivery gap without repeating the business invocation", async () => {
+  const taskQueue = `heartbeat-gap-${randomUUID()}`;
+  const trigger = {
+    ...nodeInput.parse({ type: "trigger", title: "Start" }),
+    id: randomUUID(),
+  };
+  const outcome = {
+    ...nodeInput.parse({ type: "outcome", title: "Done" }),
+    id: randomUUID(),
+  };
+  const edge = {
+    id: randomUUID(),
+    source_node_id: trigger.id,
+    target_node_id: outcome.id,
+  };
+  const calls: string[] = [];
+  const ended: string[] = [];
+  const worker = await Worker.create({
+    connection: env.nativeConnection,
+    taskQueue,
+    workflowBundle,
+    maxHeartbeatThrottleInterval: RUNTIME_HEARTBEAT_POLICY.max_throttle_ms,
+    activities: {
+      prepareExecution: async () => ({
+        run: { id: randomUUID() },
+        definition: {
+          board: { nodes: [trigger, outcome], connections: [edge] },
+          methods: { [trigger.id]: "code", [outcome.id]: "code" },
+          limits: { step_attempts: 100, active_ms: 900000 },
+        },
+      }),
+      projectExecution: async () => {},
+      executeOccurrence: async (data: { node_id: string }) => {
+        calls.push(data.node_id);
+        heartbeat();
+        if (data.node_id === trigger.id) {
+          // Model a gap in delivered heartbeats; no cloud, sleep, or paid call.
+          await delay(30000, undefined, { signal: cancellationSignal() });
+          heartbeat();
+        }
+        return {
+          kind: "complete",
+          step_id: randomUUID(),
+          connection_ids: data.node_id === trigger.id ? [edge.id] : [],
+        };
+      },
+      endExecution: async (_id: string, result: { status: string }) => {
+        ended.push(result.status);
+      },
+    },
+  });
+  await worker.runUntil(async () => {
+    const handle = await env.client.workflow.start("executeWorkflow", {
+      workflowId: randomUUID(),
+      taskQueue,
+      args: [randomUUID()],
+    });
+    await handle.result();
+  });
+  expect(ended).toEqual(["completed"]);
+  expect(calls).toEqual([trigger.id, outcome.id]);
+}, 75000);

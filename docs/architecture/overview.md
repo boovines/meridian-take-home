@@ -123,7 +123,7 @@ Artifacts are immutable file metadata referenced by code versions and captured i
 | Parallel arrival | Record a branch's result once; schedule one merge only after all required arrivals from the same split occurrence. |
 | Repair decision | Store attempt decision and change baseline together, using full-suite evidence and a current worker token. |
 
-Unique request/scheduling keys prevent duplicate logical actions. Worker fencing prevents an old worker from publishing after a replacement or cancellation. The transport may deliver work more than once; the design must not assume exactly-once delivery. Queued jobs/reviews and undelivered human responses serve as durable dispatch intents. The outbox loop retries Temporal starts/signals using stable identities; no additional queue table is needed.
+Unique request/scheduling keys prevent duplicate logical actions. Worker fencing prevents an old worker from publishing after a replacement or cancellation. Runtime activities heartbeat every five seconds with a 60-second liveness allowance and bounded SDK throttling; their processing and retry deadlines remain separate. The transport may deliver work more than once; the design must not assume exactly-once delivery. Queued jobs/reviews and undelivered human responses serve as durable dispatch intents. The outbox loop retries Temporal starts/signals using stable identities; no additional queue table is needed.
 
 ## Efficiency and scope
 

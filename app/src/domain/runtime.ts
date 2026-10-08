@@ -5,6 +5,13 @@ import type { Method } from "./engineering";
 
 export type Json = z.infer<ReturnType<typeof z.json>>;
 export const DEMO_LIMITS = { step_attempts: 100, active_ms: 900_000 } as const;
+// Liveness tolerance is separate from the bounded operation deadline.
+export const RUNTIME_HEARTBEAT_POLICY = {
+  version: 1,
+  interval_ms: 5_000,
+  timeout_ms: 60_000,
+  max_throttle_ms: 5_000,
+} as const;
 export const bundleInput = z
   .object({
     source_kind: z.enum(["fixture", "gmail"]),

@@ -1,7 +1,7 @@
 import { heartbeat, cancellationSignal } from "@temporalio/activity";
 import { getDatabase } from "../server/database";
 import { DomainError } from "../domain/errors";
-import type { RuntimeError } from "../domain/runtime";
+import { RUNTIME_HEARTBEAT_POLICY, type RuntimeError } from "../domain/runtime";
 import { EvaluationService } from "../server/evaluations/evaluation-service";
 import { EvaluationExecutionService } from "../server/evaluations/execution-service";
 import { validateInSandbox } from "../server/integrations/sandbox-project";
@@ -46,7 +46,10 @@ export async function endEvaluation(
 export async function checkEvaluationBuild(
   id: string,
 ): Promise<{ ok: true } | { ok: false; error: RuntimeError }> {
-  const pulse = setInterval(() => heartbeat(), 5000);
+  const pulse = setInterval(
+    () => heartbeat(),
+    RUNTIME_HEARTBEAT_POLICY.interval_ms,
+  );
   try {
     heartbeat();
     await new EvaluationExecutionService(await getDatabase()).build(
@@ -86,7 +89,10 @@ export async function checkEvaluationBuild(
   }
 }
 export async function evaluateStepCase(id: string) {
-  const pulse = setInterval(() => heartbeat(), 5000);
+  const pulse = setInterval(
+    () => heartbeat(),
+    RUNTIME_HEARTBEAT_POLICY.interval_ms,
+  );
   try {
     heartbeat();
     await new EvaluationExecutionService(await getDatabase()).step(

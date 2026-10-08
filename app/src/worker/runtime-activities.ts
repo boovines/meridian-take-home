@@ -2,6 +2,7 @@ import { cancellationSignal, heartbeat } from "@temporalio/activity";
 import { ApplicationFailure } from "@temporalio/common";
 import { DomainError } from "../domain/errors";
 import type { ScheduleStep, RuntimeProjection } from "../domain/runtime";
+import { RUNTIME_HEARTBEAT_POLICY } from "../domain/runtime";
 import { getDatabase } from "../server/database";
 import { RunService } from "../server/runtime/run-service";
 import { StepService } from "../server/runtime/step-service";
@@ -29,7 +30,10 @@ export async function readHumanResponse(id: string) {
   return new HumanService(await getDatabase()).response(id);
 }
 export async function executeOccurrence(data: ScheduleStep, resume = false) {
-  const timer = setInterval(() => heartbeat(), 5000);
+  const timer = setInterval(
+    () => heartbeat(),
+    RUNTIME_HEARTBEAT_POLICY.interval_ms,
+  );
   try {
     heartbeat();
     return await new StepService(await getDatabase()).execute(

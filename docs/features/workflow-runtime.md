@@ -50,6 +50,8 @@ Generated code reports matching outgoing connection IDs. The trusted service rej
 
 ### Failures and limits
 
+Runtime and evaluation activities tolerate a 60-second gap in delivered heartbeats. They emit every five seconds, and the worker caps heartbeat throttling at five seconds. This gives brief connectivity interruptions room to recover without repeating business work. The 150-second invocation abort, three-minute activity deadline, seven-minute total retry deadline, two-attempt allowance and run limits remain unchanged. Cancellation still uses heartbeat delivery; a disconnected worker may take longer to observe it, while database fencing rejects late publication.
+
 A branch failure stops new downstream scheduling and prevents an incomplete merge. Already-running independent steps can retain their output. Pending human requests that no longer lead to completion are cancelled. Explicit cancellation fences late output and stops isolated invocations; completed history remains.
 
 Each run records 100 scheduled attempts and a 900-second active-time limit. Human-only waiting is excluded; a running parallel sibling keeps the clock active. Limits produce Needs attention. A successful business report may contain failed goods: successful execution is separate from successful business validation or evaluation.
