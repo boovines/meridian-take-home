@@ -1,10 +1,5 @@
-import {
-  DomainError,
-  type Board,
-  type Workflow,
-  type CanvasNode,
-  type Connection,
-} from "../../domain/canvas";
+import { DomainError } from "../../domain/errors";
+import type { Board, Workflow, CanvasNode, Connection } from "../../domain/canvas";
 import type { Queryable } from "../database";
 
 // pg returns bigint as text; revisions are restricted to JavaScript's safe range.

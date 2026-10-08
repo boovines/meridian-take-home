@@ -1,7 +1,7 @@
 import { generateText, Output } from "ai";
 import { openai } from "@ai-sdk/openai";
 import type { Board } from "../../domain/canvas";
-import { DomainError } from "../../domain/canvas";
+import { DomainError } from "../../domain/errors";
 import { planRecommendations, type PlanStep } from "../../domain/engineering";
 import { generatedSources, type Project } from "../../domain/project";
 import { moduleContract } from "../engineering/project";

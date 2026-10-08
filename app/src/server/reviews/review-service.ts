@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import type { z } from "zod";
-import { DomainError, type Board } from "../../domain/canvas";
+import { DomainError } from "../../domain/errors";
+import type { Board } from "../../domain/canvas";
 import {
   reviewerOutput,
   detailPatch,

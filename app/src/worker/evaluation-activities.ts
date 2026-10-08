@@ -1,6 +1,6 @@
 import { heartbeat, cancellationSignal } from "@temporalio/activity";
 import { getDatabase } from "../server/database";
-import { DomainError } from "../domain/canvas";
+import { DomainError } from "../domain/errors";
 import type { RuntimeError } from "../domain/runtime";
 import { EvaluationService } from "../server/evaluations/evaluation-service";
 import { EvaluationExecutionService } from "../server/evaluations/execution-service";

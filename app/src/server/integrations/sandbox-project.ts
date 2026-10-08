@@ -1,6 +1,6 @@
 import { Sandbox } from "@vercel/sandbox";
 import { Writable } from "node:stream";
-import { DomainError } from "../../domain/canvas";
+import { DomainError } from "../../domain/errors";
 import type { Project } from "../../domain/project";
 import { validateProject } from "../engineering/project";
 

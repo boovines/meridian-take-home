@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { DomainError } from "./errors";
+import { uuid, revisionSchema } from "./validation";
 
 export const nodeTypes = [
   "trigger",
@@ -19,12 +21,6 @@ export const nodeLabels: Record<NodeType, string> = {
   outcome: "Outcome",
 };
 export type NodeType = (typeof nodeTypes)[number];
-export const uuid = z.uuid();
-export const revisionSchema = z
-  .number()
-  .int()
-  .positive()
-  .max(Number.MAX_SAFE_INTEGER);
 export const workflowInput = z
   .object({
     name: z.string().trim().min(1).max(200),
@@ -45,17 +41,21 @@ export const nodeInput = z
   .strict();
 // Zod 4 preserves nested defaults inside partial(). A PATCH must never populate
 // an omitted field: doing so resets positions/instructions during unrelated edits.
-export const nodePatch = z.object({
-  type:nodeInput.shape.type.optional(),
-  title:nodeInput.shape.title.removeDefault().optional(),
-  instructions:nodeInput.shape.instructions.removeDefault().optional(),
-  config:nodeInput.shape.config.removeDefault().optional(),
-  x:nodeInput.shape.x.removeDefault().optional(),
-  y:nodeInput.shape.y.removeDefault().optional(),
-  split_mode:nodeInput.shape.split_mode.removeDefault().optional(),
-  join_for_split_id:nodeInput.shape.join_for_split_id.removeDefault().optional(),
-  expected_revision:revisionSchema,
-}).strict();
+export const nodePatch = z
+  .object({
+    type: nodeInput.shape.type.optional(),
+    title: nodeInput.shape.title.removeDefault().optional(),
+    instructions: nodeInput.shape.instructions.removeDefault().optional(),
+    config: nodeInput.shape.config.removeDefault().optional(),
+    x: nodeInput.shape.x.removeDefault().optional(),
+    y: nodeInput.shape.y.removeDefault().optional(),
+    split_mode: nodeInput.shape.split_mode.removeDefault().optional(),
+    join_for_split_id: nodeInput.shape.join_for_split_id
+      .removeDefault()
+      .optional(),
+    expected_revision: revisionSchema,
+  })
+  .strict();
 export const connectionInput = z
   .object({
     source_node_id: uuid,
@@ -64,17 +64,26 @@ export const connectionInput = z
     is_default: z.boolean().default(false),
   })
   .strict();
-export const connectionPatch = z.object({
-  source_node_id:uuid.optional(),target_node_id:uuid.optional(),
-  condition_text:connectionInput.shape.condition_text.removeDefault().optional(),
-  is_default:connectionInput.shape.is_default.removeDefault().optional(),
-  expected_revision:revisionSchema,
-}).strict();
-export const workflowPatch = z.object({
-  name:workflowInput.shape.name.optional(),
-  desired_outcome:workflowInput.shape.desired_outcome.removeDefault().optional(),
-  expected_revision:revisionSchema,
-}).strict();
+export const connectionPatch = z
+  .object({
+    source_node_id: uuid.optional(),
+    target_node_id: uuid.optional(),
+    condition_text: connectionInput.shape.condition_text
+      .removeDefault()
+      .optional(),
+    is_default: connectionInput.shape.is_default.removeDefault().optional(),
+    expected_revision: revisionSchema,
+  })
+  .strict();
+export const workflowPatch = z
+  .object({
+    name: workflowInput.shape.name.optional(),
+    desired_outcome: workflowInput.shape.desired_outcome
+      .removeDefault()
+      .optional(),
+    expected_revision: revisionSchema,
+  })
+  .strict();
 
 export interface Workflow {
   id: string;
@@ -101,17 +110,6 @@ export interface Board {
   workflow: Workflow;
   nodes: CanvasNode[];
   connections: Connection[];
-}
-
-export class DomainError extends Error {
-  constructor(
-    public status: number,
-    public code: string,
-    message: string,
-    public details?: unknown,
-  ) {
-    super(message);
-  }
 }
 
 export function validateDraftConnection(

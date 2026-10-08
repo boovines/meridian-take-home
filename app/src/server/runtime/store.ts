@@ -1,4 +1,4 @@
-import { DomainError } from "../../domain/canvas";
+import { DomainError } from "../../domain/errors";
 import type { RunRecord, StepRecord } from "../../domain/runtime";
 import type { Queryable } from "../database";
 export const finishedRuns = [

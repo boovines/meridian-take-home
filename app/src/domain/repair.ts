@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { uuid } from "./canvas";
+import { uuid } from "./validation";
 import type { EvaluationRun, CaseResult } from "./evaluation";
 import { generatedSources } from "./project";
 export const startRepairInput = z

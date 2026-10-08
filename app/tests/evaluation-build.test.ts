@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { MockActivityEnvironment } from "@temporalio/testing";
-import { DomainError } from "../src/domain/canvas";
+import { DomainError } from "../src/domain/errors";
 import { EvaluationExecutionService } from "../src/server/evaluations/execution-service";
 import { checkEvaluationBuild } from "../src/worker/evaluation-activities";
 

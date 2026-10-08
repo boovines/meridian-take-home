@@ -3,7 +3,7 @@ import { ApplicationFailure } from "@temporalio/common";
 import { getDatabase } from "../server/database";
 import { ReviewService } from "../server/reviews/review-service";
 import { reviewWithOpenAI } from "../server/integrations/openai-reviewer";
-import { DomainError } from "../domain/canvas";
+import { DomainError } from "../domain/errors";
 export async function performReview(id: string) {
   const reviews = new ReviewService(await getDatabase());
   const pulse = setInterval(() => heartbeat(), 5000);

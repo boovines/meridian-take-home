@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { uuid, revisionSchema, type Board } from "./canvas";
+import { uuid, revisionSchema } from "./validation";
+import type { Board } from "./canvas";
 export const reviewStart = z.object({ request_key: uuid }).strict();
 export const goalAnswer = z
   .object({

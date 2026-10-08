@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DomainError } from "../../domain/canvas";
+import { DomainError } from "../../domain/errors";
 import type {
   GmailMessage,
   GmailReader,

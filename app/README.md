@@ -68,7 +68,10 @@ The first command bundles workflows without credentials and runs in CI. The last
 | --- | --- |
 | `src/app/api/workflows` | Request validation and delegation; no orchestration or model prompts |
 | `src/components/canvas`, `src/components/reviews`, `src/components/engineering`, `src/components/evaluations`, `src/components/repairs`, `src/components/runtime` | Feature UI and browser state |
-| `src/domain` | Typed contracts and pure graph/business rules |
+| `src/domain` | Typed contracts and pure graph/business rules; `errors.ts` and `validation.ts` hold cross-feature errors and scalar schemas |
+| `src/components/evaluations/use-evaluation-data.ts` | Workspace loading, polling and historical suite/result projections; the panel owns selection and mutation actions |
+| `src/components/evaluations/evaluation-results-header.tsx` | Evaluation history controls and result summary |
+| `src/app/globals.css`, `src/styles` | Ordered global style imports, shared foundations and reduced-motion policy; canvas/review styles live with their features |
 | `src/server/canvas` | Targeted, revision-checked canvas mutations |
 | `src/server/workflows/store.ts` | Shared workflow locking and graph reads |
 | `src/server/reviews` | Transactional review, discussion and freeze behavior |
@@ -87,6 +90,8 @@ The first command bundles workflows without credentials and runs in CI. The last
 | `scripts/demo` | Example process requirements, draft seeding and operator-supplied suite import |
 | `../.runtime` | Ignored runtime databases, certificates, captured inputs and generated artifacts |
 | `../work` | Ignored temporary verification renders and handoff-building tools; not application code |
+
+ESLint rejects inward dependencies from domain to application layers, browser imports of server/worker code, and runtime I/O imports in deterministic workflow modules. Node built-ins are restricted in both bare and `node:` forms, including subpaths. Type-only workflow imports remain allowed.
 
 Keep shared modules small and named for their responsibility. Split growing feature modules when another responsibility appears; do not add empty architectural folders or a catch-all utilities file.
 

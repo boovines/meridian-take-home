@@ -1,5 +1,5 @@
 import type { z } from "zod";
-import { DomainError } from "../../domain/canvas";
+import { DomainError } from "../../domain/errors";
 import type { freezeInput } from "../../domain/review";
 import { validateGraph } from "../../domain/validate-graph";
 import type { Database, Queryable } from "../database";

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { uuid } from "./canvas";
+import { uuid } from "./validation";
 
 export const generatedSources = z
   .object({

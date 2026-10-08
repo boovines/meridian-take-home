@@ -1,4 +1,4 @@
-import { DomainError } from "../../domain/canvas";
+import { DomainError } from "../../domain/errors";
 import type { Project } from "../../domain/project";
 import type { RepairContext } from "./generation-service";
 

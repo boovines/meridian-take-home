@@ -1,6 +1,6 @@
 import { heartbeat, cancellationSignal } from "@temporalio/activity";
 import { ApplicationFailure } from "@temporalio/common";
-import { DomainError } from "../domain/canvas";
+import { DomainError } from "../domain/errors";
 import { getDatabase } from "../server/database";
 import { RepairService } from "../server/repairs/service";
 import { RepairGenerationService } from "../server/repairs/generation-service";

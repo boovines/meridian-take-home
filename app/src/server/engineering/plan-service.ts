@@ -1,5 +1,6 @@
 import type { z } from "zod";
-import { DomainError, type Board } from "../../domain/canvas";
+import { DomainError } from "../../domain/errors";
+import type { Board } from "../../domain/canvas";
 import type {
   Plan,
   PlanStep,

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { uuid, revisionSchema } from "./canvas";
+import { uuid, revisionSchema } from "./validation";
 export const methods = ["code", "agent", "human"] as const;
 export type Method = (typeof methods)[number];
 export const createPlanInput = z
