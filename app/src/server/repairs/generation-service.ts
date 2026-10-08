@@ -8,6 +8,7 @@ import { assembleProject, validateProject } from "../engineering/project";
 import { VersionService } from "../engineering/version-service";
 import { RepairService } from "./service";
 import { changedStepSources, type PreviousSourceEvidence } from "./evidence";
+import { completeRepairSources } from "./patch";
 export type RepairContext = Awaited<
   ReturnType<RepairService["generationContext"]>
 >;
@@ -86,7 +87,7 @@ export class RepairGenerationService {
         context.spec.id,
         context.plan,
         context.steps,
-        generated.project,
+        completeRepairSources(baseline, context.steps, generated),
         adapter.model,
       );
       artifactId = (

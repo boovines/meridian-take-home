@@ -19,7 +19,10 @@ import { EvaluationExecutionService } from "../src/server/evaluations/execution-
 import { RunService } from "../src/server/runtime/run-service";
 import { StepService } from "../src/server/runtime/step-service";
 import { RuntimeEngine } from "../src/domain/runtime-engine";
-import { inputInventory, repairPrompt } from "../src/server/repairs/evidence";
+import { changedStepSources, inputInventory, repairPrompt } from "../src/server/repairs/evidence";
+import { completeRepairSources } from "../src/server/repairs/patch";
+import { PlanService } from "../src/server/engineering/plan-service";
+import { assembleProject } from "../src/server/engineering/project";
 import { caseInput } from "../src/domain/evaluation";
 import type { Json } from "../src/domain/runtime";
 import { runtimeFixture } from "./fixtures/runtime";
@@ -58,10 +61,10 @@ const generator = {
   ) => ({
     diagnosis: {
       summary: "Correct the output while preserving shipment identity.",
-      affected_node_ids: [c.steps.at(-1)!.node_id],
+      affected_node_ids: c.spec.board.nodes.filter(n => n.type === "outcome").map(n => n.id),
       changes: ["Count goods once per good."],
     },
-    project: fixtureSources(c.spec.board, c.steps),
+    project: fixtureSources(c.spec.board, c.steps.filter(s => c.spec.board.nodes.some(n => n.id === s.node_id && n.type === "outcome"))),
   }),
 };
 async function record(jobId: string, evaluationId: string, actual: Json) {
@@ -163,6 +166,67 @@ async function prepared(withWorkflowCase = false) {
   await repairs.prepare(started.job.id);
   return { f, suite, initial, ...started };
 }
+it("publishes a focused repair while preserving every untouched step", async () => {
+  const { f, job } = await prepared();
+  const attempt = await repairs.beginAttempt(job.id, 1);
+  const target = f.nodes[1].id;
+  const published = await generation.run(attempt.id, {
+    ...generator,
+    generate: async (context) => {
+      const result = await generator.generate(context);
+      result.project.steps = result.project.steps.filter(s => s.node_id === target);
+      result.project.steps[0].source_lines.push("// Focused correction");
+      return result;
+    },
+  }, AbortSignal.timeout(10000));
+  const versions = new VersionService(db, artifacts);
+  const baseline = (await versions.load(f.w.id, f.version.id)).project;
+  const candidate = (await versions.load(f.w.id, published.candidate_version_id!)).project;
+  const untouched = baseline.node_file_map[f.nodes[0].id];
+  expect(candidate.files[untouched]).toBe(baseline.files[untouched]);
+  expect(candidate.files[candidate.node_file_map[target]]).toContain("// Focused correction");
+  expect(candidate.files["graph.json"]).toBe(baseline.files["graph.json"]);
+  expect(candidate.files["plan.json"]).toBe(baseline.files["plan.json"]);
+  await repairs.finish(job.id, "cancelled", "Focused publication verified.");
+});
+it("rejects duplicate, unknown, undiagnosed and empty repair patches", async () => {
+  const { f, job } = await prepared();
+  const attempt = await repairs.beginAttempt(job.id, 1);
+  const context = await repairs.generationContext(attempt.id);
+  const { project: baseline } = await new VersionService(db, artifacts).load(f.w.id, f.version.id);
+  const valid = await generator.generate(context);
+  const variants = [
+    { ...valid, project: { ...valid.project, steps: [...valid.project.steps, ...valid.project.steps] } },
+    { ...valid, project: { ...valid.project, steps: [{ ...valid.project.steps[0], node_id: randomUUID() }] } },
+    { ...valid, diagnosis: { ...valid.diagnosis, affected_node_ids: [] } },
+    { ...valid, project: { ...valid.project, steps: [] } },
+  ];
+  for (const patch of variants) expect(() => completeRepairSources(baseline, context.steps, patch))
+    .toThrow(/within the approved plan and diagnosed scope/);
+  await repairs.finish(job.id, "cancelled", "Patch validation verified.");
+});
+it("preserves human gates and includes repaired human handlers in later evidence", async () => {
+  const f = await runtimeFixture(db, artifacts);
+  await f.runs.finish(f.job.id, { status: "cancelled" });
+  const { project: baseline } = await new VersionService(db, artifacts).load(f.w.id, f.version.id);
+  const { steps } = await new PlanService(db).state(f.w.id);
+  const human = f.nodes[1].id;
+  const outcome = f.nodes[2].id;
+  const repair = {
+    diagnosis: { summary: "Correct outcome only.", affected_node_ids: [outcome], changes: ["Outcome correction"] },
+    project: fixtureSources(f.board, steps.filter(s => s.node_id === outcome)),
+  };
+  const candidate = assembleProject(f.board, baseline.frozen_spec_id, f.plan, steps,
+    completeRepairSources(baseline, steps, repair), "fixture");
+  const handler = `human/${human}.mjs`;
+  expect(candidate.files[handler]).toBe(baseline.files[handler]);
+  expect(candidate.files[candidate.node_file_map[human]]).toBe(baseline.files[baseline.node_file_map[human]]);
+  const modified = structuredClone(candidate);
+  modified.files[handler] += "\n// Handle a corrected response";
+  expect(changedStepSources(modified, candidate)).toEqual([
+    { node_id: human, path: handler, source: modified.files[handler] },
+  ]);
+});
 it("supplies only locked-suite input inventory and keeps numeric filenames outside truncated traces", async () => {
   const { f, job } = await prepared(true);
   const attempt = await repairs.beginAttempt(job.id, 1);

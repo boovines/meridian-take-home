@@ -1,6 +1,7 @@
 import { DomainError } from "../../domain/errors";
 import type { Project } from "../../domain/project";
 import type { RepairContext } from "./generation-service";
+import { implementationPath } from "./patch";
 
 export type PreviousSourceEvidence = {
   attempt_number: number;
@@ -12,10 +13,11 @@ export type PreviousSourceEvidence = {
 // Host scaffolding is fixed and need not be repeated for each candidate.
 export function changedStepSources(candidate: Project, baseline: Project) {
   return Object.entries(candidate.node_file_map)
+    .map(([nodeId]) => [nodeId, implementationPath(candidate, nodeId)] as const)
     .filter(
       ([nodeId, path]) =>
         candidate.files[path] !==
-        baseline.files[baseline.node_file_map[nodeId]],
+        baseline.files[implementationPath(baseline, nodeId)],
     )
     .map(([node_id, path]) => ({
       node_id,
