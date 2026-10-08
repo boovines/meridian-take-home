@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { X, MessageSquare } from "lucide-react";
 import type { Board } from "@/domain/canvas";
 import type { ReviewState } from "@/domain/review";
@@ -11,6 +11,7 @@ export function ReviewPanel({
   onRefresh,
   onClose,
   onLocate,
+  onHighlight,
   selected,
 }: {
   board: Board;
@@ -18,6 +19,7 @@ export function ReviewPanel({
   onRefresh: () => Promise<void>;
   onClose: () => void;
   onLocate: (kind: "node" | "connection", id: string) => void;
+  onHighlight: (threadId: string | null) => void;
   selected?: { kind: "node" | "connection"; id: string } | null;
 }) {
   const [busy, setBusy] = useState(false),
@@ -44,6 +46,22 @@ export function ReviewPanel({
   const findings = state.threads.filter((t) => t.kind === "finding"),
     open = findings.filter((t) => t.status === "open"),
     notes = state.threads.filter((t) => t.kind === "note");
+  const [hoveredThread, setHoveredThread] = useState<string | null>(null);
+  const [focusedThread, setFocusedThread] = useState<string | null>(null);
+  const visibleThread = (id: string | null) =>
+    state.threads.some(
+      (thread) =>
+        thread.id === id &&
+        (thread.kind === "note" || thread.status === "open" || showHistory),
+    )
+      ? id
+      : null;
+  const highlightedThread =
+    visibleThread(hoveredThread) || visibleThread(focusedThread);
+  useEffect(() => {
+    onHighlight(highlightedThread);
+    return () => onHighlight(null);
+  }, [highlightedThread, onHighlight]);
   const latest = state.runs[0];
   return (
     <aside className="inspector review-panel" aria-label="Review and comments">
@@ -160,6 +178,8 @@ export function ReviewPanel({
           locked={locked || busy}
           onRefresh={onRefresh}
           onLocate={onLocate}
+          onHover={setHoveredThread}
+          onFocusThread={setFocusedThread}
         />
       ))}
       {!active && !latest && (
@@ -194,6 +214,8 @@ export function ReviewPanel({
                 locked={locked || busy}
                 onRefresh={onRefresh}
                 onLocate={onLocate}
+                onHover={setHoveredThread}
+                onFocusThread={setFocusedThread}
               />
             ))}
           {state.runs.map((r) => (
@@ -219,6 +241,8 @@ export function ReviewPanel({
             locked={locked || busy}
             onRefresh={onRefresh}
             onLocate={onLocate}
+            onHover={setHoveredThread}
+            onFocusThread={setFocusedThread}
           />
         ))}
         {!locked && (

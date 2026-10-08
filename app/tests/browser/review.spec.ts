@@ -173,7 +173,7 @@ test("one response composer replies, resolves, reopens and rejects with matching
     .getByRole("button", { name: "Show resolved findings and review history" })
     .click();
   await expect(thread.locator(".thread-status")).toHaveText("Resolved");
-  await thread.locator("summary").click();
+  await thread.locator(":scope > summary").click();
   await expect(thread).toContainText(
     "This wording is already specified in the process; no change needed.",
   );
@@ -189,4 +189,72 @@ test("one response composer replies, resolves, reopens and rejects with matching
     .getByRole("button", { name: "Show resolved findings and review history" })
     .click();
   await expect(thread.locator(".thread-status")).toHaveText("Rejected");
+});
+
+test("review hover and keyboard focus highlight only referenced blocks and connections", async ({
+  page,
+  request,
+}, testInfo) => {
+  const workflow = await seededWorkflow(request);
+  const board = await (
+    await request.get(`/api/workflows/${workflow.id}`)
+  ).json();
+  const task = board.nodes.find(
+    (node: { type: string }) => node.type === "task",
+  );
+  const outcome = board.nodes.find(
+    (node: { type: string }) => node.type === "outcome",
+  );
+  const edge = board.connections.find(
+    (connection: { source_node_id: string }) =>
+      connection.source_node_id === task.id,
+  );
+  const note = await request.post(`/api/workflows/${workflow.id}/threads`, {
+    data: {
+      title: "Report these validation results",
+      body: "Carry the checked fields into the report.",
+      node_ids: [task.id, outcome.id],
+      connection_ids: [edge.id],
+      request_key: crypto.randomUUID(),
+    },
+  });
+  expect(note.ok()).toBe(true);
+  await page.goto(`/workflows/${workflow.id}`);
+  await page.getByRole("button", { name: /Review & comments/ }).click();
+  await page
+    .getByRole("button", { name: "Start draft review", exact: true })
+    .click();
+  const finding = page
+    .locator(".review-thread")
+    .filter({ hasText: "Which invoice fields are required?" });
+  const discussion = page
+    .locator(".review-thread")
+    .filter({ hasText: "Report these validation results" });
+  const highlightedBlocks = page.locator(".process-block.review-highlighted");
+  const highlightedEdges = page.locator(".react-flow__edge.review-highlighted");
+  await finding.hover();
+  await expect(highlightedBlocks).toHaveCount(1);
+  await expect(highlightedBlocks).toContainText("Validate invoice");
+  await expect(highlightedEdges).toHaveCount(0);
+  await discussion.hover();
+  await expect(highlightedBlocks).toHaveCount(2);
+  await expect(highlightedEdges).toHaveCount(1);
+  await expect(page.locator(".process-block.selected")).toHaveCount(0);
+  await page.screenshot({
+    path: testInfo.outputPath("review-anchor-highlight.png"),
+    fullPage: true,
+  });
+  await page.getByRole("heading", { name: workflow.name }).hover();
+  await expect(highlightedBlocks).toHaveCount(0);
+  await discussion.locator(":scope > summary").focus();
+  await expect(highlightedBlocks).toHaveCount(2);
+  await expect(highlightedEdges).toHaveCount(1);
+  await discussion.getByRole("textbox").focus();
+  await expect(highlightedBlocks).toHaveCount(2);
+  await page.getByRole("button", { name: "Close review", exact: true }).focus();
+  await expect(highlightedBlocks).toHaveCount(0);
+  await discussion.hover();
+  await page.getByRole("button", { name: "Close review", exact: true }).click();
+  await expect(highlightedBlocks).toHaveCount(0);
+  await expect(highlightedEdges).toHaveCount(0);
 });

@@ -37,6 +37,9 @@ export function BoardClient({ id }: { id: string }) {
       id: string;
     } | null>(null),
     [goalOpen, setGoalOpen] = useState(false);
+  const [highlightedThread, setHighlightedThread] = useState<string | null>(
+    null,
+  );
   const [dirty, setDirty] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false),
     [freezeOpen, setFreezeOpen] = useState(false);
@@ -324,6 +327,28 @@ export function BoardClient({ id }: { id: string }) {
                 <ProcessCanvas
                   board={board}
                   findingCounts={counts}
+                  reviewHighlight={
+                    reviewOpen && highlightedThread
+                      ? {
+                          nodeIds: review.state.anchors
+                            .filter(
+                              (a) =>
+                                a.thread_id === highlightedThread && a.node_id,
+                            )
+                            .map((a) => a.node_id!),
+                          connectionIds: review.state.anchors
+                            .filter(
+                              (a) =>
+                                a.thread_id === highlightedThread &&
+                                a.connection_id,
+                            )
+                            .map((a) => a.connection_id!),
+                          wholeWorkflow: !review.state.anchors.some(
+                            (a) => a.thread_id === highlightedThread,
+                          ),
+                        }
+                      : undefined
+                  }
                   onOpenReviews={openReviews}
                   selected={selection?.id}
                   locked={locked}
@@ -357,6 +382,7 @@ export function BoardClient({ id }: { id: string }) {
                   selected={selection}
                   onClose={() => setReviewOpen(false)}
                   onLocate={select}
+                  onHighlight={setHighlightedThread}
                 />
               ) : selectedNode && inspectorProps ? (
                 <NodeInspector

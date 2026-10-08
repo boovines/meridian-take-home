@@ -24,14 +24,21 @@ import {
 } from "@/domain/canvas";
 import { primitives } from "./primitives";
 type ProcessNode = Node<
-  { block: CanvasNode; findingCount: number; onOpenReviews: () => void },
+  {
+    block: CanvasNode;
+    findingCount: number;
+    reviewHighlighted: boolean;
+    onOpenReviews: () => void;
+  },
   "process"
 >;
 function ProcessBlock({ data, selected }: NodeProps<ProcessNode>) {
   const n = data.block,
     Icon = primitives[n.type].icon;
   return (
-    <div className={`process-block ${n.type}${selected ? " selected" : ""}`}>
+    <div
+      className={`process-block ${n.type}${selected ? " selected" : ""}${data.reviewHighlighted ? " review-highlighted" : ""}`}
+    >
       <Handle
         type="target"
         position={Position.Top}
@@ -78,6 +85,11 @@ const nodeTypes = { process: ProcessBlock };
 interface Props {
   board: Board;
   selected?: string;
+  reviewHighlight?: {
+    nodeIds: string[];
+    connectionIds: string[];
+    wholeWorkflow: boolean;
+  };
   findingCounts?: Record<string, number>;
   onOpenReviews?: () => void;
   locked: boolean;
@@ -90,6 +102,7 @@ function FlowCanvas({
   board,
   selected,
   findingCounts,
+  reviewHighlight,
   onOpenReviews,
   locked,
   onSelect,
@@ -134,6 +147,10 @@ function FlowCanvas({
             : { x: n.x, y: n.y },
         data: {
           block: n,
+          reviewHighlighted: !!(
+            reviewHighlight?.wholeWorkflow ||
+            reviewHighlight?.nodeIds.includes(n.id)
+          ),
           findingCount: findingCounts?.[n.id] || 0,
           onOpenReviews: onOpenReviews || (() => {}),
         },
@@ -145,6 +162,7 @@ function FlowCanvas({
       measurements,
       selected,
       findingCounts,
+      reviewHighlight,
       onOpenReviews,
     ],
   );
@@ -185,8 +203,26 @@ function FlowCanvas({
           target: c.target_node_id,
           label: c.is_default ? "Otherwise" : c.condition_text,
           selected: c.id === selected,
-          markerEnd: { type: MarkerType.ArrowClosed },
-          style: { strokeWidth: 1.6 },
+          className:
+            reviewHighlight?.wholeWorkflow ||
+            reviewHighlight?.connectionIds.includes(c.id)
+              ? "review-highlighted"
+              : undefined,
+          markerEnd: {
+            type: MarkerType.ArrowClosed,
+            color:
+              reviewHighlight?.wholeWorkflow ||
+              reviewHighlight?.connectionIds.includes(c.id)
+                ? "var(--blue)"
+                : undefined,
+          },
+          style: {
+            strokeWidth:
+              reviewHighlight?.wholeWorkflow ||
+              reviewHighlight?.connectionIds.includes(c.id)
+                ? 3
+                : 1.6,
+          },
           labelStyle: { fontSize: 11 },
           labelBgPadding: [6, 4] as [number, number],
         }))}

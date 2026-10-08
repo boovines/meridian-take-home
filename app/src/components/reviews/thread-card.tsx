@@ -15,12 +15,16 @@ export function ThreadCard({
   locked,
   onRefresh,
   onLocate,
+  onHover,
+  onFocusThread,
 }: {
   thread: DiscussionThread;
   state: ReviewState;
   board: Board;
   locked: boolean;
   onRefresh: () => Promise<void>;
+  onHover: (threadId: string | null) => void;
+  onFocusThread: (threadId: string | null) => void;
   onLocate: (kind: "node" | "connection", id: string) => void;
 }) {
   const [reply, setReply] = useState(""),
@@ -70,6 +74,14 @@ export function ThreadCard({
     <details
       className={`review-thread ${thread.status}`}
       open={thread.status === "open"}
+      onPointerEnter={() => onHover(thread.id)}
+      onPointerLeave={() => onHover(null)}
+      onFocusCapture={() => onFocusThread(thread.id)}
+      onBlurCapture={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+          onFocusThread(null);
+        }
+      }}
     >
       <summary>
         <span
@@ -88,35 +100,42 @@ export function ThreadCard({
             decision remains in history.
           </p>
         )}
-        <div className="anchor-links">
-          {anchors.length ? (
-            anchors.map((a) => {
-              const n = board.nodes.find((n) => n.id === a.node_id),
-                c = board.connections.find((c) => c.id === a.connection_id),
-                present = !!n || !!c;
-              return (
-                <button
-                  key={a.id}
-                  className="subtle"
-                  disabled={!present}
-                  onClick={() =>
-                    onLocate(
-                      a.node_id ? "node" : "connection",
-                      (a.node_id || a.connection_id)!,
-                    )
-                  }
-                >
-                  {n?.title ||
-                    (c
-                      ? "View connection"
-                      : `${String(a.context_snapshot.title || "Referenced item")} · removed`)}
-                </button>
-              );
-            })
-          ) : (
-            <span className="field-help">Entire workflow</span>
-          )}
-        </div>
+        <details className="thread-references">
+          <summary>
+            {anchors.length
+              ? `Referenced items (${anchors.length})`
+              : "Entire workflow"}
+          </summary>
+          <div className="anchor-links">
+            {anchors.length ? (
+              anchors.map((a) => {
+                const n = board.nodes.find((n) => n.id === a.node_id),
+                  c = board.connections.find((c) => c.id === a.connection_id),
+                  present = !!n || !!c;
+                return (
+                  <button
+                    key={a.id}
+                    className="subtle"
+                    disabled={!present}
+                    onClick={() =>
+                      onLocate(
+                        a.node_id ? "node" : "connection",
+                        (a.node_id || a.connection_id)!,
+                      )
+                    }
+                  >
+                    {n?.title ||
+                      (c
+                        ? "View connection"
+                        : `${String(a.context_snapshot.title || "Referenced item")} · removed`)}
+                  </button>
+                );
+              })
+            ) : (
+              <span className="field-help">Entire workflow</span>
+            )}
+          </div>
+        </details>
         {messages.map((m) => (
           <div key={m.id} className={`thread-message ${m.kind}`}>
             <small>

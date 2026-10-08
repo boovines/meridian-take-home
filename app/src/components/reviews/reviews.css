@@ -113,6 +113,15 @@
   flex-wrap: wrap;
   gap: 4px;
 }
+.thread-references > summary {
+  padding: 4px 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+.review-thread:hover,
+.review-thread:focus-within {
+  border-color: var(--blue);
+}
 .anchor-links button {
   color: var(--accent);
   padding: 3px 0;
