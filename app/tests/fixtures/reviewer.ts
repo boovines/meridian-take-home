@@ -30,3 +30,17 @@ export function fixtureReview(
     ],
   };
 }
+
+/** Deterministic transport fixture, not evidence of model rewrite quality. */
+export function fixtureReplyRewrite(
+  context: import("../../src/domain/review-reply").ReplyContext,
+): import("../../src/domain/review-reply").ReplyRewrite {
+  return {
+    outcome: "updated",
+    explanation: "Updated the referenced block instructions from your answer.",
+    updates: context.targets.map((node) => ({
+      node_id: node.id,
+      instructions: `${node.instructions}\n${context.answer}`,
+    })),
+  };
+}

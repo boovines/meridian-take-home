@@ -1,12 +1,13 @@
 "use client";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { ErrorNotice } from "../error-notice";
-import { api, errorMessage } from "@/lib/api";
+import { api, ApiError, errorMessage } from "@/lib/api";
 import {
   findingLabel,
   type DiscussionThread,
   type ReviewState,
 } from "@/domain/review";
+import { replyIncorporationEvent } from "@/domain/review-reply";
 import type { Board } from "@/domain/canvas";
 export function ThreadCard({
   thread,
@@ -32,7 +33,11 @@ export function ThreadCard({
       "reply",
     ),
     [busy, setBusy] = useState(false),
-    [error, setError] = useState("");
+    [error, setError] = useState(""),
+    [refreshFailed, setRefreshFailed] = useState(false);
+  const pendingRequest = useRef<{ signature: string; key: string } | null>(
+    null,
+  );
   const messages = state.messages.filter((m) => m.thread_id === thread.id),
     anchors = state.anchors.filter((a) => a.thread_id === thread.id),
     proposal = thread.proposed_patch;
@@ -43,14 +48,24 @@ export function ThreadCard({
   ) {
     setBusy(true);
     setError("");
+    setRefreshFailed(false);
     try {
+      const signature = JSON.stringify({
+        action,
+        reply,
+        revision: thread.revision,
+      });
+      if (pendingRequest.current?.signature !== signature)
+        pendingRequest.current = { signature, key: crypto.randomUUID() };
+      const requestKey = pendingRequest.current.key;
       const base = `/api/workflows/${board.workflow.id}/threads/${thread.id}`;
       if (action === "reply") {
         await api(`${base}/messages`, "POST", {
           body: reply,
+          expected_revision: thread.revision,
           parent_message_id:
             messages.filter((m) => m.kind === "comment").at(-1)?.id || null,
-          request_key: crypto.randomUUID(),
+          request_key: requestKey,
         });
         setReply("");
       } else {
@@ -58,14 +73,28 @@ export function ThreadCard({
           action,
           reason: action === "reopen" ? "" : reply,
           expected_revision: thread.revision,
-          request_key: crypto.randomUUID(),
+          request_key: requestKey,
         });
         setReply("");
         setResponseType("reply");
       }
-      await onRefresh();
+      pendingRequest.current = null;
+      try {
+        await onRefresh();
+      } catch {
+        setRefreshFailed(true);
+        setError(
+          "Your response was saved, but the latest board could not be loaded. Reopen the board to see the saved changes.",
+        );
+      }
     } catch (e) {
       setError(errorMessage(e));
+      if (
+        e instanceof ApiError &&
+        ["STALE_REPLY_UPDATE", "STALE_EDIT", "WORKFLOW_LOCKED"].includes(e.code)
+      ) {
+        await onRefresh().catch(() => {});
+      }
     } finally {
       setBusy(false);
     }
@@ -146,6 +175,7 @@ export function ThreadCard({
                   : "Activity"}
             </small>
             <p>{m.body}</p>
+            <ReplyEvidence event={m.event_data} board={board} />
           </div>
         ))}
         {thread.status === "open" && proposal && (
@@ -176,7 +206,14 @@ export function ThreadCard({
           </div>
         )}
         {error && (
-          <ErrorNotice title="Couldn’t save this change" message={error} />
+          <ErrorNotice
+            title={
+              refreshFailed
+                ? "Response saved; couldn’t refresh"
+                : "Couldn’t save this change"
+            }
+            message={error}
+          />
         )}
         {thread.status === "open" && !locked && (
           <form
@@ -227,7 +264,9 @@ export function ThreadCard({
               </label>
               <button className="primary" disabled={busy || !reply.trim()}>
                 {busy
-                  ? "Sending…"
+                  ? thread.kind === "finding" && responseType === "reply"
+                    ? "Updating blocks…"
+                    : "Sending…"
                   : responseType === "reply"
                     ? "Send"
                     : responseType === "resolve"
@@ -239,7 +278,7 @@ export function ThreadCard({
               {thread.kind === "note"
                 ? "Add context to this discussion. Notes do not block handoff."
                 : responseType === "reply"
-                  ? "A reply marks this as answered. Resolve or reject it when you've made a decision."
+                  ? "Send updates the referenced block instructions using your answer. Graph changes remain manual. Resolve or reject the finding when you've made a decision."
                   : responseType === "resolve"
                     ? "Update the block or paths first if needed. Your response records how this was resolved."
                     : "Your response records why you're keeping the process as it is."}
@@ -256,6 +295,36 @@ export function ThreadCard({
           </button>
         )}
       </div>
+    </details>
+  );
+}
+
+function ReplyEvidence({
+  event,
+  board,
+}: {
+  event: Record<string, unknown> | null;
+  board: Board;
+}) {
+  const parsed = replyIncorporationEvent.safeParse(event);
+  if (!parsed.success || !parsed.data.applied.length) return null;
+  return (
+    <details className="thread-references">
+      <summary>View saved block changes ({parsed.data.applied.length})</summary>
+      {parsed.data.applied.map((edit) => (
+        <div key={edit.node_id} className="proposal">
+          <strong>
+            {board.nodes.find((n) => n.id === edit.node_id)?.title ||
+              "Referenced block"}
+          </strong>
+          <small>Before</small>
+          <p className="proposal-before">
+            {edit.before.instructions || "(empty)"}
+          </p>
+          <small>Saved instructions</small>
+          <p>{edit.after.instructions}</p>
+        </div>
+      ))}
     </details>
   );
 }

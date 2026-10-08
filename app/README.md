@@ -77,6 +77,7 @@ The first command bundles workflows without credentials and runs in CI. The last
 | `src/server/canvas` | Targeted, revision-checked canvas mutations |
 | `src/server/workflows/store.ts` | Shared workflow locking and graph reads |
 | `src/server/reviews` | Transactional review, discussion and freeze behavior |
+| `src/server/reviews/reply-service.ts`, `src/server/integrations/openai-review-reply.ts` | Foreground answer incorporation: bounded instruction rewrite outside transactions, atomic revision-checked publication and audit history |
 | `src/server/engineering` | Versioned plans, generation lifecycle, project assembly and source/download inspection |
 | `src/server/evaluations` | Verified suites, trusted grading, case execution and result history |
 | `src/server/repairs` | Bounded sessions, candidate ancestry, diagnostic evidence projection and repeated-output field differences, bounded recorded-input replay, focused source patches, generation checkpoints and three-run confirmation |
