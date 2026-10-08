@@ -11,8 +11,11 @@ import {
   EvaluationService,
   resultsByEvaluation,
 } from "../src/server/evaluations/evaluation-service";
+import { ExecutionAuditService } from "../src/server/runtime/audit-service";
+import { repairAuditBudget, RepairAuditReader } from "../src/server/repairs/audit";
 import { RepairService } from "../src/server/repairs/service";
-import { RepairGenerationService } from "../src/server/repairs/generation-service";
+import { repairDocumentBudget, RepairDocumentReader } from "../src/server/repairs/documents";
+import { RepairGenerationService, type RepairGenerator } from "../src/server/repairs/generation-service";
 import { JobService } from "../src/server/engineering/job-service";
 import { VersionService } from "../src/server/engineering/version-service";
 import { EvaluationExecutionService } from "../src/server/evaluations/execution-service";
@@ -68,19 +71,24 @@ const generator = {
     project: fixtureSources(c.spec.board, c.steps.filter(s => c.spec.board.nodes.some(n => n.id === s.node_id && n.type === "outcome"))),
   }),
 };
-async function record(jobId: string, evaluationId: string, actual: Json) {
+async function record(jobId: string, evaluationId: string, actual: Json, withAudit = false) {
   const ready = (await evals.prepare(jobId, evaluationId))!;
   for (const result of ready.results) {
     await evals.beginCase(result.id);
+    if (withAudit) {
+      const token = randomUUID();
+      await db.query("UPDATE evaluation_case_results SET attempt_token=$2 WHERE id=$1", [result.id, token]);
+      await new ExecutionAuditService(db, artifacts).recorder(result.workflow_id, { case_result_id: result.id }, token)("model_response", actual);
+    }
     await evals.recordCase(result.id, { actual });
   }
   await evals.finish(jobId, undefined, false, evaluationId);
 }
-async function prepared(withWorkflowCase = false, withDocument = false) {
+async function prepared(withWorkflowCase = false, withDocument: boolean | Buffer = false, withAudit = false) {
   const f = await runtimeFixture(db, artifacts, ["trigger", "outcome"]);
   await f.runs.finish(f.job.id, { status: "cancelled" });
   if (withDocument) {
-    const document = await artifacts.create(f.w.id, "source_document", "source.txt", "text/plain", Buffer.from("Independent source evidence"));
+    const document = await artifacts.create(f.w.id, "source_document", Buffer.isBuffer(withDocument) ? "source.pdf" : "source.txt", Buffer.isBuffer(withDocument) ? "application/pdf" : "text/plain", Buffer.isBuffer(withDocument) ? withDocument : Buffer.from("Independent source evidence"));
     f.bundle = await new BundleService(db).create(f.w.id, {
       source_kind: "fixture", shipment_reference: "SYNTHETIC-001",
       manifest: {
@@ -165,7 +173,7 @@ async function prepared(withWorkflowCase = false, withDocument = false) {
   await record(initial.job.id, initial.evaluation.id, {
     shipment: "SYNTHETIC-001",
     failed_goods: 2,
-  });
+  }, withAudit);
   const request = {
     request_key: randomUUID(),
     baseline_evaluation_id: initial.evaluation.id,
@@ -814,4 +822,141 @@ it("reuses complete candidate bytes when an activity stops between artifact crea
   );
   expect(recovered.candidate_version_id).toBeTruthy();
   expect(calls).toBe(1);
+});
+
+
+it.each([1, 3])("shares the three-read allowance across generation retries after %i reads", async (initialReads) => {
+  const { job } = await prepared(true, true);
+  const attempt = await repairs.beginAttempt(job.id, 1);
+  let invocation = 0;
+  const adapter: RepairGenerator = {
+    ...generator,
+    generate: async (context, _baseline, _signal, _previous, readDocument) => {
+      const id = String(context.input_inventory[0].documents[0].artifact_id);
+      if (++invocation === 1) {
+        for (let i = 0; i < initialReads; i++) await readDocument(id);
+        throw new Error("Transient failure after inspection");
+      }
+      const results = await Promise.allSettled(Array.from({ length: 3 }, () => readDocument(id)));
+      expect(results.filter(r => r.status === "fulfilled")).toHaveLength(3 - initialReads);
+      for (const result of results) {
+        if (result.status === "rejected") expect(result.reason).toMatchObject({ code: "REPAIR_DOCUMENT_LIMIT" });
+      }
+      return generator.generate(context);
+    },
+  };
+  await expect(generation.run(attempt.id, adapter, AbortSignal.timeout(10000))).rejects.toThrow("Transient failure");
+  // A new service simulates a retry on another worker, without shared memory.
+  const recovered = await new RepairGenerationService(db, artifacts).run(attempt.id, adapter, AbortSignal.timeout(10000));
+  expect(recovered.candidate_version_id).toBeTruthy();
+  const row = (await db.query("SELECT invocation_count,document_read_count,document_byte_count FROM repair_attempts WHERE id=$1", [attempt.id])).rows[0];
+  expect(row).toMatchObject({ invocation_count: 2, document_read_count: 3, document_byte_count: 3 * Buffer.byteLength("Independent source evidence") });
+});
+
+it("preserves the byte allowance after a transient generation failure", async () => {
+  const bytes = Buffer.alloc(11 * 1024 * 1024);
+  bytes.write("%PDF-1.7");
+  const { job } = await prepared(true, bytes);
+  const attempt = await repairs.beginAttempt(job.id, 1);
+  let invocation = 0;
+  const adapter: RepairGenerator = {
+    ...generator,
+    generate: async (context, _baseline, _signal, _previous, readDocument) => {
+      const id = String(context.input_inventory[0].documents[0].artifact_id);
+      if (++invocation === 1) {
+        await readDocument(id);
+        throw new Error("Transient failure after inspection");
+      }
+      await expect(readDocument(id)).rejects.toMatchObject({ code: "DOCUMENT_CONTEXT_TOO_LARGE" });
+      return generator.generate(context);
+    },
+  };
+  await expect(generation.run(attempt.id, adapter, AbortSignal.timeout(10000))).rejects.toThrow("Transient failure");
+  await new RepairGenerationService(db, artifacts).run(attempt.id, adapter, AbortSignal.timeout(10000));
+  const row = (await db.query("SELECT document_read_count,document_byte_count FROM repair_attempts WHERE id=$1", [attempt.id])).rows[0];
+  expect(row).toMatchObject({ document_read_count: 2, document_byte_count: bytes.length });
+});
+
+it("fences document reads from a superseded generation invocation", async () => {
+  const { f, job } = await prepared(true, true);
+  const attempt = await repairs.beginAttempt(job.id, 1);
+  const first = await repairs.claimGeneration(attempt.id);
+  const context = await repairs.generationContext(attempt.id);
+  const id = String(context.input_inventory[0].documents[0].artifact_id);
+  let release!: () => void;
+  let started!: () => void;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  const reading = new Promise<void>(resolve => { started = resolve; });
+  const read = vi.fn(async () => {
+    started();
+    await pending;
+    return artifacts.read(f.w.id, id);
+  });
+  const documents = new RepairDocumentReader(f.w.id, new Set([id]), { read }, AbortSignal.timeout(10000), repairDocumentBudget(db, attempt.id, first.token!));
+  const inFlight = documents.read(id);
+  await reading;
+  await repairs.claimGeneration(attempt.id);
+  const rejected = expect(inFlight).rejects.toMatchObject({ code: "STALE_REPAIR_RESULT" });
+  release();
+  await rejected;
+  await expect(documents.read(id)).rejects.toMatchObject({ code: "STALE_REPAIR_RESULT" });
+  expect(read).toHaveBeenCalledTimes(1);
+  expect(documents.inspected).toEqual([]);
+  await repairs.finish(job.id, "cancelled", "Fencing verification completed");
+});
+
+
+it.each([1, 3])("shares audit allowance across generation retries after %i inspections", async (initialReads) => {
+  const { job } = await prepared(false, false, true);
+  const attempt = await repairs.beginAttempt(job.id, 1);
+  let invocation = 0;
+  const adapter: RepairGenerator = {
+    ...generator,
+    generate: async (context, _baseline, _signal, _previous, _documents, readAudit) => {
+      const id = String(context.audit_events[0].id);
+      if (++invocation === 1) {
+        for (let i = 0; i < initialReads; i++) await readAudit(id, []);
+        throw new Error("Transient failure after audit inspection");
+      }
+      const results = await Promise.allSettled(Array.from({ length: 3 }, () => readAudit(id, [])));
+      expect(results.filter(r => r.status === "fulfilled")).toHaveLength(3 - initialReads);
+      for (const result of results) {
+        if (result.status === "rejected") expect(result.reason).toMatchObject({ code: "AUDIT_READ_LIMIT" });
+      }
+      return generator.generate(context);
+    },
+  };
+  await expect(generation.run(attempt.id, adapter, AbortSignal.timeout(10000))).rejects.toThrow("Transient failure");
+  const recovered = await new RepairGenerationService(db, artifacts).run(attempt.id, adapter, AbortSignal.timeout(10000));
+  expect(recovered.candidate_version_id).toBeTruthy();
+  const row = (await db.query("SELECT invocation_count,audit_read_count FROM repair_attempts WHERE id=$1", [attempt.id])).rows[0];
+  expect(row).toMatchObject({ invocation_count: 2, audit_read_count: 3 });
+});
+
+it("blocks audit evidence returned after an invocation is superseded", async () => {
+  const { f, job } = await prepared(false, false, true);
+  const attempt = await repairs.beginAttempt(job.id, 1);
+  const first = await repairs.claimGeneration(attempt.id);
+  const context = await repairs.generationContext(attempt.id);
+  const id = String(context.audit_events[0].id);
+  let release!: () => void;
+  let started!: () => void;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  const reading = new Promise<void>(resolve => { started = resolve; });
+  const read = vi.fn(async () => {
+    started();
+    await pending;
+    return new ExecutionAuditService(db, artifacts).read(f.w.id, id);
+  });
+  const reader = new RepairAuditReader(f.w.id, new Set([id]), { read }, AbortSignal.timeout(10000), repairAuditBudget(db, attempt.id, first.token!));
+  const inFlight = reader.read(id, []);
+  await reading;
+  await repairs.claimGeneration(attempt.id);
+  const rejected = expect(inFlight).rejects.toMatchObject({ code: "STALE_REPAIR_RESULT" });
+  release();
+  await rejected;
+  await expect(reader.read(id, [])).rejects.toMatchObject({ code: "STALE_REPAIR_RESULT" });
+  expect(read).toHaveBeenCalledTimes(1);
+  expect(reader.inspected).toEqual([]);
+  await repairs.finish(job.id, "cancelled", "Audit fencing verified");
 });
