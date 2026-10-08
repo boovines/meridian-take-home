@@ -132,3 +132,61 @@ test("clarifies an empty outcome and can cancel to resume editing", async ({
     page.getByText("1 completed review", { exact: true }),
   ).toBeVisible();
 });
+
+test("one response composer replies, resolves, reopens and rejects with matching status", async ({
+  page,
+  request,
+}) => {
+  const workflow = await seededWorkflow(request);
+  await page.goto(`/workflows/${workflow.id}`);
+  await page.getByRole("button", { name: /Review & comments/ }).click();
+  await page
+    .getByRole("button", { name: "Start draft review", exact: true })
+    .click();
+  const thread = page
+    .locator(".review-thread")
+    .filter({ hasText: "Which invoice fields are required?" });
+  await expect(thread.locator(".thread-status")).toHaveText("Open");
+  await expect(thread.getByRole("textbox")).toHaveCount(1);
+  const response = thread.getByRole("textbox", {
+    name: "Response to Which invoice fields are required?",
+    exact: true,
+  });
+  const type = thread.getByRole("combobox", {
+    name: "Response type for Which invoice fields are required?",
+    exact: true,
+  });
+  await response.fill("The five fields in our SOP are required.");
+  await thread.getByRole("button", { name: "Send reply", exact: true }).click();
+  await expect(thread.locator(".thread-status")).toHaveText("Answered");
+  await response.fill(
+    "This wording is already specified in the process; no change needed.",
+  );
+  await type.selectOption("resolve");
+  await expect(response).toHaveValue(
+    "This wording is already specified in the process; no change needed.",
+  );
+  await thread
+    .getByRole("button", { name: "Resolve finding", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Show resolved findings and review history" })
+    .click();
+  await expect(thread.locator(".thread-status")).toHaveText("Resolved");
+  await thread.locator("summary").click();
+  await expect(thread).toContainText(
+    "This wording is already specified in the process; no change needed.",
+  );
+  await thread.getByRole("button", { name: "Reopen finding" }).click();
+  await expect(thread.locator(".thread-status")).toHaveText("Open");
+  await type.selectOption("reject");
+  await response.fill("This requirement belongs to another team's workflow.");
+  await thread.getByRole("button", { name: "Reject suggestion" }).click();
+  await expect(thread.locator(".thread-status")).toHaveText("Rejected");
+  await page.reload();
+  await page.getByRole("button", { name: /Review & comments/ }).click();
+  await page
+    .getByRole("button", { name: "Show resolved findings and review history" })
+    .click();
+  await expect(thread.locator(".thread-status")).toHaveText("Rejected");
+});

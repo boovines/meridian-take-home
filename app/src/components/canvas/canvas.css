@@ -474,3 +474,17 @@
     padding: 20px;
   }
 }
+
+.palette-item[draggable="true"] {
+  cursor: grab;
+}
+.palette-item[draggable="true"]:active {
+  cursor: grabbing;
+}
+.saved-button:disabled {
+  opacity: 1;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--line);
+  cursor: default;
+}

@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { ErrorNotice } from "../error-notice";
 import Workspace from "../shell/workspace";
 import { api, errorMessage } from "@/lib/api";
 import type { EngineeringState } from "./types";
@@ -92,18 +93,21 @@ export function EngineerClient({ id }: { id: string }) {
           ))}
         </nav>
         {error && (
-          <div role="alert" className="error-banner">
-            {error}
-            <button
-              onClick={() =>
-                void load()
-                  .then(() => setError(""))
-                  .catch((e) => setError(errorMessage(e)))
-              }
-            >
-              Reload
-            </button>
-          </div>
+          <ErrorNotice
+            title="Couldn't update the workspace"
+            message={error}
+            action={
+              <button
+                onClick={() =>
+                  void load()
+                    .then(() => setError(""))
+                    .catch((e) => setError(errorMessage(e)))
+                }
+              >
+                Reload
+              </button>
+            }
+          />
         )}
         {activeJob && (
           <div className="operation-banner" role="status">
@@ -141,9 +145,28 @@ export function EngineerClient({ id }: { id: string }) {
           </div>
         )}
         {state?.jobs[0]?.status === "failed" && (
-          <div role="alert" className="error-banner">
-            {state.jobs[0].error_message}
-          </div>
+          <ErrorNotice
+            title={
+              state.jobs[0].error_code === "GENERATION_NEEDS_ATTENTION"
+                ? "Generation needs an engineer decision"
+                : `${state.jobs[0].kind === "generation" ? "Generation" : "Operation"} couldn't finish`
+            }
+            message={
+              state.jobs[0].error_message || "No further details were provided."
+            }
+            guidance={
+              state.jobs[0].error_code === "GENERATION_NEEDS_ATTENTION"
+                ? "The approved plan couldn't satisfy the frozen requirements. Read the explanation, then review the implementation choices."
+                : undefined
+            }
+            action={
+              state.jobs[0].error_code === "GENERATION_NEEDS_ATTENTION" ? (
+                <button onClick={() => setTab("Implementation")}>
+                  Review implementation
+                </button>
+              ) : undefined
+            }
+          />
         )}
         {busy && (
           <p role="status" className="field-help">

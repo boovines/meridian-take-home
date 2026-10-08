@@ -20,7 +20,7 @@ The workflow library at `/` lists the most recently updated workflows. Create wo
 
 The board shows a block palette, a movable and zoomable canvas, and a detail panel for the selected block or connection. Workflow details edits the name and the outcome the process should accomplish. Explicit Save actions persist text. A save-status indicator identifies unsaved panel edits.
 
-Customers can add seven kinds of block: Trigger, Information, Task, Check, Human handoff, Human approval, and Outcome. Each has a name and plain-language instructions, with contextual prompts explaining the information to provide. Adding a block saves it immediately. Moving a block saves its position when the drag ends.
+Customers can add seven kinds of block: Trigger, Information, Task, Check, Human handoff, Human approval, and Outcome. Each has a name and plain-language instructions, with contextual prompts explaining the information to provide. Adding a block saves it immediately. Click a palette item or drag it onto the canvas; dropped coordinates account for the current pan and zoom. Moving a block saves its position when the drag ends. After a detail save, the button shows a checkmark and Saved until the fields change again.
 
 Connect a bottom dot to another block's top dot, or choose a next block in the detail panel. Return paths and incomplete drafts are allowed. Clicking a connection opens its condition editor. Conditions are plain language. A connection can be marked Otherwise; this clears its condition. Each source block can have only one Otherwise connection.
 
@@ -28,7 +28,7 @@ A block can explicitly select Follow one matching path or Run both paths. A merg
 
 ### Changes, removal, and conflicts
 
-Save rejects stale changes when another tab has changed the same item. The draft text remains in the form. For detail saves, the panel shows the saved version and lets the customer deliberately use its revision before saving their own text again. Changes to unrelated blocks do not cause a false text conflict. Layout changes do not count as changed business requirements.
+Save rejects stale changes when another tab has changed the same item. The draft text remains in the form. For detail saves, the panel shows the saved version and lets the customer deliberately use its revision before saving their own text again. Changes to unrelated blocks do not cause a false text conflict. Moving the selected block advances its row revision, but the open editor safely uses that newer revision only if all process fields still match its saved baseline. Unsaved text remains intact; actual changed instructions still require comparison. Canvas mutations are disabled while an inspector request is saving. Layout changes do not count as changed business requirements.
 
 Removing a block asks for confirmation, removes its connected paths, and clears merge references to it. The removed content remains in history, but restore and undo are not exposed in the current interface. Removing a connection takes effect immediately. Changing panels with unsaved detail text asks whether to discard it; browser unload also warns. Internal navigation to the workflow library currently does not show that discard warning.
 

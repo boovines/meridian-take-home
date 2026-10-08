@@ -59,3 +59,5 @@ Operation history preserves generation outcomes and errors. The source view labe
 The latest 20 plans, code versions, and operations are listed. General repository connection, IDE edit import, and an in-browser editor are outside demo scope. Hosted artifact access requires private shared storage; local development artifacts remain on the machine that created them.
 
 Method suggestions run while the request is open; generation runs durably in the background. The UI prevents starting competing operations but does not require a new AI recommendation before an engineer approves a revised plan. Model suggestions and source generation can fail; neither failure modifies the frozen customer process.
+
+Generation failures display a concise error card with expandable diagnostic details. When generation needs an engineer decision, Review implementation returns to the plan tab; the full provider explanation remains available. This presentation does not change approved methods or retry generation automatically.
