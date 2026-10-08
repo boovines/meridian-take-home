@@ -1,5 +1,5 @@
 import { generateText, Output } from "ai";
-import { openai } from "@ai-sdk/openai";
+import { openai } from "./openai-client";
 import type { Board } from "../../domain/canvas";
 import { DomainError } from "../../domain/errors";
 import { planRecommendations, type PlanStep } from "../../domain/engineering";

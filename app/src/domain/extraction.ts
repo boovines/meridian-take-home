@@ -71,10 +71,10 @@ export interface EvidenceDocument {
   artifact_id: string;
   page_count: number;
 }
-export interface ExtractionIssue {
+export type ExtractionIssue = {
   path: string[];
   reason: string;
-}
+};
 function invalid(
   issues: ExtractionIssue[],
   code = "EXTRACTION_EVIDENCE_INVALID",

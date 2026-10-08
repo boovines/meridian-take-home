@@ -6,6 +6,7 @@ export interface ReasoningDocument {
   name: string;
   media_type: string;
   bytes: Buffer;
+  source_page_numbers?: number[];
 }
 // Resolve only source artifacts captured for this exact run. Generated code supplies IDs, never URLs or paths.
 export async function documentsForRun(

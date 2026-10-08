@@ -29,7 +29,7 @@ export interface StepAdapters {
     request: ExtractionRequest,
     documents: ReasoningDocument[],
     signal: AbortSignal,
-  ): Promise<Json>;
+  ): Promise<{ output: Json; metadata: Json }>;
   reason(
     instructions: string,
     data: Json,
@@ -114,17 +114,23 @@ export async function invokeApprovedStep(
           "EXTRACTION_UNAVAILABLE",
           "No evidence-aware extraction provider is configured.",
         );
-      const raw =
+      const extraction =
         result.kind === "extract"
           ? await adapters.extract!(result, documents, signal)
-          : await adapters.reason(
-              result.instructions,
-              result.data,
-              signal,
-              documents,
-            );
+          : null;
+      const raw = extraction
+        ? extraction.output
+        : await adapters.reason(
+            result.instructions,
+            result.data,
+            signal,
+            documents,
+          );
       signal.throwIfAborted();
-      await audit?.("model_response", raw);
+      await audit?.(
+        "model_response",
+        extraction ? { output: raw, provider: extraction.metadata } : raw,
+      );
       const envelope =
         result.kind === "extract"
           ? validateExtraction(result, raw, sourcePages)
@@ -215,6 +221,9 @@ export function invocationFailure(error: unknown): RuntimeError {
               "MODEL_QUOTA_EXCEEDED",
               "AUDIT_UNAVAILABLE",
               "EXTRACTION_UNAVAILABLE",
+              "EXTRACTION_PROVIDER_ERROR",
+              "INFERENCE_BUDGET_LIMIT",
+              "BUDGET_UNAVAILABLE",
             ].includes(error.code)
           ? "infrastructure"
           : "unknown";

@@ -1,5 +1,5 @@
 import { generateText, Output } from "ai";
-import { openai } from "@ai-sdk/openai";
+import { openai } from "./openai-client";
 import { z } from "zod";
 import { reviewerOutput } from "../../domain/review";
 import type { ReviewService } from "../reviews/review-service";

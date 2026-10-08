@@ -428,19 +428,22 @@ it("isolated Agent cases read only their captured bundle and override mutable fi
       extract: async (_request, documents) => {
         expect(documents[0].bytes.toString()).toBe("Seller: Example Ltd");
         return {
-          data: { seller: "Example Ltd" },
-          fields: [
-            {
-              path: ["seller"],
-              raw_value: "Example Ltd",
-              normalized_value: "Example Ltd",
-              status: "found",
-              explanation: null,
-              evidence: [
-                { artifact_id: doc.id, page: 1, text: "Seller: Example Ltd" },
-              ],
-            },
-          ],
+          metadata: { provider: "fixture" },
+          output: {
+            data: { seller: "Example Ltd" },
+            fields: [
+              {
+                path: ["seller"],
+                raw_value: "Example Ltd",
+                normalized_value: "Example Ltd",
+                status: "found",
+                explanation: null,
+                evidence: [
+                  { artifact_id: doc.id, page: 1, text: "Seller: Example Ltd" },
+                ],
+              },
+            ],
+          },
         };
       },
     },

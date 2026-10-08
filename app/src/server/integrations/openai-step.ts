@@ -3,7 +3,7 @@ import {
   type ExtractionRequest,
 } from "../../domain/extraction";
 import { generateText, Output, type UserContent } from "ai";
-import { openai } from "@ai-sdk/openai";
+import { openai } from "./openai-client";
 import { DomainError } from "../../domain/errors";
 import type { Json } from "../../domain/runtime";
 import type { ReasoningDocument } from "../runtime/documents";
@@ -23,6 +23,7 @@ export async function reasonForStep(
   data: Json,
   signal: AbortSignal,
   documents: ReasoningDocument[] = [],
+  metadata?: (value: Json) => void,
 ): Promise<Json> {
   const configuration = runtimeModelConfiguration();
   const prompt = JSON.stringify({ task: instructions, data });
@@ -36,7 +37,7 @@ export async function reasonForStep(
   for (const document of documents) {
     content.push({
       type: "text",
-      text: `Captured document ${document.artifact_id}: ${document.name}`,
+      text: `Captured document ${document.artifact_id}: ${document.name}${document.source_page_numbers ? `. PDF pages in order correspond to original source pages ${document.source_page_numbers.join(", ")}. Cite original source page numbers.` : ""}`,
     });
     if (document.media_type === "application/pdf")
       content.push({
@@ -54,25 +55,30 @@ export async function reasonForStep(
     else content.push({ type: "text", text: document.bytes.toString("utf8") });
   }
   try {
-    return (await modelOutput(
-      () =>
-        generateText({
-          model: openai(configuration.name),
-          output: Output.json(),
-          system: configuration.system,
-          messages: [{ role: "user", content }],
-          maxOutputTokens: configuration.max_output_tokens,
-          maxRetries: 1,
-          abortSignal: signal,
-          providerOptions: {
-            openai: {
-              reasoningEffort: configuration.reasoning_effort,
-              store: false,
-            },
+    return (await modelOutput(async () => {
+      const result = await generateText({
+        model: openai(configuration.name),
+        output: Output.json(),
+        system: configuration.system,
+        messages: [{ role: "user", content }],
+        maxOutputTokens: configuration.max_output_tokens,
+        maxRetries: 1,
+        abortSignal: signal,
+        providerOptions: {
+          openai: {
+            reasoningEffort: configuration.reasoning_effort,
+            store: false,
           },
-        }),
-      "Document interpretation",
-    )) as Json;
+        },
+      });
+      metadata?.({
+        provider: "openai",
+        model: result.response.modelId,
+        response_id: result.response.id,
+        usage: JSON.parse(JSON.stringify(result.totalUsage)),
+      });
+      return result;
+    }, "Document interpretation")) as Json;
   } catch (error) {
     if (signal.aborted || error instanceof DomainError) throw error;
     throw new DomainError(
@@ -87,8 +93,12 @@ export async function extractForStep(
   request: ExtractionRequest,
   documents: ReasoningDocument[],
   signal: AbortSignal,
-): Promise<Json> {
-  return reasonForStep(
+): Promise<{ output: Json; metadata: Json }> {
+  let metadata: Json = {
+    provider: "openai",
+    model: runtimeModelConfiguration().name,
+  };
+  const output = await reasonForStep(
     `${extractionInstructions}\nTask: ${request.instructions}`,
     {
       context: request.data,
@@ -97,5 +107,9 @@ export async function extractForStep(
     },
     signal,
     documents,
+    (value) => {
+      metadata = value;
+    },
   );
+  return { output, metadata };
 }

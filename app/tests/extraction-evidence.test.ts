@@ -107,7 +107,10 @@ describe("evidence contract at extraction boundary", () => {
             return request;
           },
           reason: async () => ({}),
-          extract: async () => response("unresolved", null),
+          extract: async () => ({
+            output: response("unresolved", null),
+            metadata: { provider: "fixture" },
+          }),
         },
         AbortSignal.timeout(1000),
         async () => [
@@ -153,7 +156,7 @@ it("never invokes a provider for invalid schemas or a non-Agent method", async (
           reason: async () => ({}),
           extract: async () => {
             modelCalls++;
-            return response();
+            return { output: response(), metadata: { provider: "fixture" } };
           },
         },
         AbortSignal.timeout(1000),
@@ -179,7 +182,7 @@ it("a cancelled provider result cannot reach generated postprocessing", async ()
         reason: async () => ({}),
         extract: async () => {
           controller.abort();
-          return response();
+          return { output: response(), metadata: { provider: "fixture" } };
         },
       },
       controller.signal,
