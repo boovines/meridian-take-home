@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { describe, it, expect } from "vitest";
 import {
   validateExtraction,
+  validateExtractionSchema,
   extractionRequest,
 } from "../src/domain/extraction";
 import { invokeApprovedStep } from "../src/server/runtime/invoke-step";
@@ -42,6 +43,10 @@ function response(status = "found", value: string | null = "Example Ltd") {
   };
 }
 describe("evidence contract at extraction boundary", () => {
+  it("rejects asynchronous schemas instead of treating validation promises as success", () => {
+    expect(() => validateExtractionSchema({ ...request.output_schema, $async: true }))
+      .toThrow(expect.objectContaining({ code: "EXTRACTION_SCHEMA_INVALID" }));
+  });
   it("preserves raw identifiers independently of normalized values", () => {
     const r = response("found", "X100");
     r.fields[0].raw_value = "X100A";
@@ -132,6 +137,7 @@ describe("evidence contract at extraction boundary", () => {
 it("never invokes a provider for invalid schemas or a non-Agent method", async () => {
   for (const [method, req, code] of [
     ["code", request, "METHOD_VIOLATION"],
+    ["agent", { ...request, output_schema: { ...request.output_schema, $async: true } }, "EXTRACTION_SCHEMA_INVALID"],
     [
       "agent",
       {
