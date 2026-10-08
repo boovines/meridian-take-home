@@ -1,5 +1,7 @@
 # Bounded repair
 
+The repair model can inspect captured source evidence when an extraction output is suspect. A read-only tool accepts only artifact IDs present in the locked suite's captured input manifests. Each attempt permits at most three document reads and 20 MB total (200 KB per text document); PDFs, images and text are supported. Read and byte reservations persist on the attempt across infrastructure retries; superseded invocations cannot reserve more evidence. Reservations are not refunded after failures, so an interrupted read can consume allowance. A bounded model loop reserves its fourth call for the final patch. Document IDs and content hashes are saved in the candidate artifact metadata. This provides diagnostic access, not permission to alter documents, expectations or workflow requirements.
+
 From a completed evaluation with implementation failures, the engineer chooses **Repair and rerun**. A session fixes its approved plan, locked suite, starting code and starting evaluation. It generates at most three candidates. Each candidate gets a full evaluation before any acceptance decision; partial or inconclusive evidence never establishes an accepted baseline.
 
 When a candidate cannot compile, its evaluation shows a bounded compiler excerpt with the affected file and line. The next attempt receives the same evidence. All cases remain unrun, and the retained baseline stays unchanged. Operational provider details are excluded from that excerpt.

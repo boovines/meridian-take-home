@@ -12,11 +12,13 @@ import {
   resultsByEvaluation,
 } from "../src/server/evaluations/evaluation-service";
 import { RepairService } from "../src/server/repairs/service";
-import { RepairGenerationService } from "../src/server/repairs/generation-service";
+import { repairDocumentBudget, RepairDocumentReader } from "../src/server/repairs/documents";
+import { RepairGenerationService, type RepairGenerator } from "../src/server/repairs/generation-service";
 import { JobService } from "../src/server/engineering/job-service";
 import { VersionService } from "../src/server/engineering/version-service";
 import { EvaluationExecutionService } from "../src/server/evaluations/execution-service";
 import { RunService } from "../src/server/runtime/run-service";
+import { BundleService } from "../src/server/runtime/bundle-service";
 import { StepService } from "../src/server/runtime/step-service";
 import { RuntimeEngine } from "../src/domain/runtime-engine";
 import { changedStepSources, inputInventory, repairPrompt } from "../src/server/repairs/evidence";
@@ -75,9 +77,19 @@ async function record(jobId: string, evaluationId: string, actual: Json) {
   }
   await evals.finish(jobId, undefined, false, evaluationId);
 }
-async function prepared(withWorkflowCase = false) {
+async function prepared(withWorkflowCase = false, withDocument: boolean | Buffer = false) {
   const f = await runtimeFixture(db, artifacts, ["trigger", "outcome"]);
   await f.runs.finish(f.job.id, { status: "cancelled" });
+  if (withDocument) {
+    const document = await artifacts.create(f.w.id, "source_document", Buffer.isBuffer(withDocument) ? "source.pdf" : "source.txt", Buffer.isBuffer(withDocument) ? "application/pdf" : "text/plain", Buffer.isBuffer(withDocument) ? withDocument : Buffer.from("Independent source evidence"));
+    f.bundle = await new BundleService(db).create(f.w.id, {
+      source_kind: "fixture", shipment_reference: "SYNTHETIC-001",
+      manifest: {
+        input: { shipment: "SYNTHETIC-001", documents: [{ artifact_id: document.id, name: document.display_name, media_type: document.media_type, byte_size: document.byte_size }] },
+        artifacts: [{ artifact_id: document.id, name: document.display_name, message_id: null }], message_ids: [],
+      },
+    });
+  }
   const suite = await suites.create(f.w.id, {
     request_key: randomUUID(),
     name: "Locked counting expectations",
@@ -166,6 +178,25 @@ async function prepared(withWorkflowCase = false) {
   await repairs.prepare(started.job.id);
   return { f, suite, initial, ...started };
 }
+it("records inspected locked-case source hashes with the published candidate", async () => {
+  const { job } = await prepared(true, true);
+  const attempt = await repairs.beginAttempt(job.id, 1);
+  let inspectedId = "";
+  await generation.run(attempt.id, {
+    ...generator,
+    generate: async (context, baseline, signal, previousSources, readDocument) => {
+      inspectedId = String(context.input_inventory[0].documents[0].artifact_id);
+      const document = await readDocument(inspectedId);
+      expect(document.bytes.toString()).toBe("Independent source evidence");
+      await expect(readDocument(randomUUID())).rejects.toMatchObject({ code: "DOCUMENT_ACCESS_DENIED" });
+      return generator.generate(context);
+    },
+  }, AbortSignal.timeout(10000));
+  const saved = (await db.query("SELECT metadata FROM artifacts WHERE metadata->>'repair_attempt_id'=$1", [attempt.id])).rows[0];
+  const source = (await db.query("SELECT content_hash FROM artifacts WHERE id=$1", [inspectedId])).rows[0];
+  expect(saved.metadata).toMatchObject({ inspected_documents: [{ artifact_id: inspectedId, content_hash: source.content_hash }] });
+  await repairs.finish(job.id, "cancelled", "Document evidence verified.");
+});
 it("publishes a focused repair while preserving every untouched step", async () => {
   const { f, job } = await prepared();
   const attempt = await repairs.beginAttempt(job.id, 1);
@@ -238,16 +269,18 @@ it("supplies only locked-suite input inventory and keeps numeric filenames outsi
       documents: [],
     },
   ]);
+  const documentId = randomUUID();
   const inventory = inputInventory([
     {
       id: f.bundle.id,
       shipment_reference: "SYNTHETIC-001",
       manifest: {
+        artifacts: [{ artifact_id: documentId }],
         input: {
           messages: [{ text: "private email body" }],
           documents: [
             {
-              artifact_id: randomUUID(),
+              artifact_id: documentId,
               name: "180-465.pdf",
               media_type: "application/pdf",
               byte_size: 123,
@@ -778,4 +811,85 @@ it("reuses complete candidate bytes when an activity stops between artifact crea
   );
   expect(recovered.candidate_version_id).toBeTruthy();
   expect(calls).toBe(1);
+});
+
+
+it.each([1, 3])("shares the three-read allowance across generation retries after %i reads", async (initialReads) => {
+  const { job } = await prepared(true, true);
+  const attempt = await repairs.beginAttempt(job.id, 1);
+  let invocation = 0;
+  const adapter: RepairGenerator = {
+    ...generator,
+    generate: async (context, _baseline, _signal, _previous, readDocument) => {
+      const id = String(context.input_inventory[0].documents[0].artifact_id);
+      if (++invocation === 1) {
+        for (let i = 0; i < initialReads; i++) await readDocument(id);
+        throw new Error("Transient failure after inspection");
+      }
+      const results = await Promise.allSettled(Array.from({ length: 3 }, () => readDocument(id)));
+      expect(results.filter(r => r.status === "fulfilled")).toHaveLength(3 - initialReads);
+      for (const result of results) {
+        if (result.status === "rejected") expect(result.reason).toMatchObject({ code: "REPAIR_DOCUMENT_LIMIT" });
+      }
+      return generator.generate(context);
+    },
+  };
+  await expect(generation.run(attempt.id, adapter, AbortSignal.timeout(10000))).rejects.toThrow("Transient failure");
+  // A new service simulates a retry on another worker, without shared memory.
+  const recovered = await new RepairGenerationService(db, artifacts).run(attempt.id, adapter, AbortSignal.timeout(10000));
+  expect(recovered.candidate_version_id).toBeTruthy();
+  const row = (await db.query("SELECT invocation_count,document_read_count,document_byte_count FROM repair_attempts WHERE id=$1", [attempt.id])).rows[0];
+  expect(row).toMatchObject({ invocation_count: 2, document_read_count: 3, document_byte_count: 3 * Buffer.byteLength("Independent source evidence") });
+});
+
+it("preserves the byte allowance after a transient generation failure", async () => {
+  const bytes = Buffer.alloc(11 * 1024 * 1024);
+  bytes.write("%PDF-1.7");
+  const { job } = await prepared(true, bytes);
+  const attempt = await repairs.beginAttempt(job.id, 1);
+  let invocation = 0;
+  const adapter: RepairGenerator = {
+    ...generator,
+    generate: async (context, _baseline, _signal, _previous, readDocument) => {
+      const id = String(context.input_inventory[0].documents[0].artifact_id);
+      if (++invocation === 1) {
+        await readDocument(id);
+        throw new Error("Transient failure after inspection");
+      }
+      await expect(readDocument(id)).rejects.toMatchObject({ code: "DOCUMENT_CONTEXT_TOO_LARGE" });
+      return generator.generate(context);
+    },
+  };
+  await expect(generation.run(attempt.id, adapter, AbortSignal.timeout(10000))).rejects.toThrow("Transient failure");
+  await new RepairGenerationService(db, artifacts).run(attempt.id, adapter, AbortSignal.timeout(10000));
+  const row = (await db.query("SELECT document_read_count,document_byte_count FROM repair_attempts WHERE id=$1", [attempt.id])).rows[0];
+  expect(row).toMatchObject({ document_read_count: 2, document_byte_count: bytes.length });
+});
+
+it("fences document reads from a superseded generation invocation", async () => {
+  const { f, job } = await prepared(true, true);
+  const attempt = await repairs.beginAttempt(job.id, 1);
+  const first = await repairs.claimGeneration(attempt.id);
+  const context = await repairs.generationContext(attempt.id);
+  const id = String(context.input_inventory[0].documents[0].artifact_id);
+  let release!: () => void;
+  let started!: () => void;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  const reading = new Promise<void>(resolve => { started = resolve; });
+  const read = vi.fn(async () => {
+    started();
+    await pending;
+    return artifacts.read(f.w.id, id);
+  });
+  const documents = new RepairDocumentReader(f.w.id, new Set([id]), { read }, AbortSignal.timeout(10000), repairDocumentBudget(db, attempt.id, first.token!));
+  const inFlight = documents.read(id);
+  await reading;
+  await repairs.claimGeneration(attempt.id);
+  const rejected = expect(inFlight).rejects.toMatchObject({ code: "STALE_REPAIR_RESULT" });
+  release();
+  await rejected;
+  await expect(documents.read(id)).rejects.toMatchObject({ code: "STALE_REPAIR_RESULT" });
+  expect(read).toHaveBeenCalledTimes(1);
+  expect(documents.inspected).toEqual([]);
+  await repairs.finish(job.id, "cancelled", "Fencing verification completed");
 });

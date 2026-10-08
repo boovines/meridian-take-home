@@ -9,6 +9,7 @@ import { VersionService } from "../engineering/version-service";
 import { RepairService } from "./service";
 import { changedStepSources, type PreviousSourceEvidence } from "./evidence";
 import { completeRepairSources } from "./patch";
+import { repairDocumentBudget, RepairDocumentReader, type ReadRepairDocument } from "./documents";
 export type RepairContext = Awaited<
   ReturnType<RepairService["generationContext"]>
 >;
@@ -19,6 +20,7 @@ export interface RepairGenerator {
     baseline: Project,
     signal: AbortSignal,
     previousSources: PreviousSourceEvidence[],
+    readDocument: ReadRepairDocument,
   ): Promise<z.infer<typeof repairSources>>;
 }
 export class RepairGenerationService {
@@ -77,8 +79,15 @@ export class RepairGenerationService {
           }),
       );
       signal.throwIfAborted();
+      const documents = new RepairDocumentReader(
+        claimed.job.workflow_id,
+        new Set(context.input_inventory.flatMap((bundle) => bundle.documents.map((d) => String(d.artifact_id)))),
+        this.artifacts,
+        signal,
+        repairDocumentBudget(this.db, attemptId, claimed.token),
+      );
       const generated = repairSources.parse(
-        await adapter.generate(context, baseline, signal, previousSources),
+        await adapter.generate(context, baseline, signal, previousSources, documents.read),
       );
       signal.throwIfAborted();
       diagnosis = generated.diagnosis;
@@ -97,7 +106,7 @@ export class RepairGenerationService {
           "repair-project.json",
           "application/json",
           Buffer.from(JSON.stringify(project)),
-          { repair_attempt_id: attemptId, diagnosis },
+          { repair_attempt_id: attemptId, diagnosis, inspected_documents: documents.inspected },
         )
       ).id;
     }
