@@ -24,7 +24,8 @@
     "repair:smoke": "tsx scripts/repair-smoke.ts",
     "gmail:smoke": "tsx scripts/gmail-smoke.ts",
     "demo:seed": "tsx scripts/demo/seed.ts",
-    "demo:suite": "tsx scripts/demo/load-suite.ts"
+    "demo:suite": "tsx scripts/demo/load-suite.ts",
+    "docs:check": "tsx scripts/check-docs.ts"
   },
   "engines": {
     "node": ">=22"

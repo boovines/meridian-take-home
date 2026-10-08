@@ -2,7 +2,7 @@
 
 A process owner maps a workflow, resolves anchored AI findings, and freezes a handoff. An engineer approves how its steps are implemented, generates inspectable code, evaluates it against fixed expectations, and starts bounded repair sessions. The import-receiving example reads captured Gmail documents and previews a shipment report.
 
-Start with [app setup](app/README.md), the [demo walkthrough](docs/demo.md), the [technical handoff](docs/handoff.md), and [verified implementation status](docs/implementation-status.md). Live checks and fixture tests are reported separately.
+Start with the [documentation index](docs/README.md), [app setup](app/README.md), the [demo walkthrough](docs/guides/demo.md), the [technical handoff](docs/guides/handoff.md), and [verified implementation status](docs/implementation-status.md). Live checks and fixture tests are reported separately.
 
 ## Run
 
@@ -25,9 +25,13 @@ app/
     demo/            Example business requirements, draft seeding, suite import
   README.md          Setup, commands, module map, integration details
 
-docs/                Product requirements, architecture, feature guides and evidence
-specs/               Implemented functional behavior
-.plans/              Detailed interview decisions and original schema proposals
+docs/
+  README.md          Documentation entry point and authority map
+  product/           Product requirements
+  architecture/      System diagrams and data-model rationale
+  features/          Implemented behavior and operator guidance
+  guides/            Demo and handoff walkthroughs
+  archive/interviews/ Original interview decisions and schema proposals
 .github/workflows/   Required CI without live model/Gmail credentials
 .runtime/            Ignored inputs, artifacts, databases and local investigation
 ```
@@ -36,7 +40,7 @@ Application files follow feature boundaries. API handlers validate requests and 
 
 ## Design and data model
 
-The revised [Whiteboard PRD](docs/whiteboard-prd.md) and [Self-Healing Agent PRD](docs/self-healing-agent-prd.md) retain product decisions. [Architecture and diagrams](docs/architecture.md) describe boundaries and invariants. The [data-model decision audit](docs/data-model-decisions.md) explains table boundaries, keys, indexes and alternatives; `app/migrations` is the executable schema. Earlier `.plans` proposals include conditional tables that were intentionally omitted once Temporal became the scheduling authority.
+The revised [Whiteboard PRD](docs/product/whiteboard.md) and [Self-Healing Agent PRD](docs/product/self-healing-agent.md) retain product decisions. [Architecture and diagrams](docs/architecture/overview.md) describe boundaries and invariants. The [data-model decision audit](docs/architecture/data-model.md) explains table boundaries, keys, indexes and alternatives; `app/migrations` is the executable schema. [Archived interview](docs/archive/interviews/README.md) proposals include conditional tables that were intentionally omitted once Temporal became the scheduling authority.
 
 Mutable nodes and connections have independent rows and optimistic revisions. Immutable snapshots, input manifests and generated artifacts retain the exact context used by reviews, runs and evaluations. The frozen process, approved plan and locked expectations cannot be rewritten by a repair agent. Each repair session retains every candidate and only advances its baseline after full-suite regression checks.
 

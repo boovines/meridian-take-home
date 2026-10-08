@@ -1,5 +1,7 @@
 # Meridian entity model
 
+> Archived interview/design record. Some proposed tables and execution responsibilities were intentionally superseded during implementation. Start with the [documentation index](../../README.md) and [current data-model audit](../../architecture/data-model.md); executable fields and constraints live in [migrations](../../../app/migrations).
+
 Step 2 checkpoint — October 7, 2026. Builds on [business requirements](meridian-business-requirements-spec.md). This is the recommended entity model; column definitions, constraints, and the final physical table layout come next.
 
 ## Recommendation

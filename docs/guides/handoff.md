@@ -8,7 +8,7 @@ Use Node 24. In `app/`, run `npm ci`, configure `.env.local` from `.env.example`
 
 Supabase stores application records. Temporal Cloud schedules durable work; its Node worker must keep running. OpenAI reviews, generates, interprets documents and repairs code. Composio reads the configured Gmail account. Vercel Sandbox runs generated code with denied network egress and no application credentials. Local artifact storage supports a laptop demo; hosting needs shared private storage, a persistent worker and access protection.
 
-`npm run demo:seed -- --create --incomplete` creates a fresh example draft. Follow `docs/demo.md` for two review rounds, handoff, implementation approval, Gmail capture, locked evaluations and repair. The app never sends a report email.
+`npm run demo:seed -- --create --incomplete` creates a fresh example draft. Follow `docs/guides/demo.md` for two review rounds, handoff, implementation approval, Gmail capture, locked evaluations and repair. The app never sends a report email.
 
 ## The primitive set
 

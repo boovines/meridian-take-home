@@ -1,6 +1,8 @@
 # Meridian execution and artifact schema
 
-October 7, 2026. Original design proposal. Implementation checkpoint: migration 007 now implements captured inputs, manual runs, visits and human responses. Temporal owns parallel coordination, so conditional parallel tables are omitted and step `branch_ref` replaces `branch_id`. See `docs/workflow-runtime.md` for executable behavior and remaining evaluation work. Completes the main schema interview and extends the [engineering schema](meridian-engineering-schema-spec.md).
+> Archived interview/design record. Some proposed tables and execution responsibilities were intentionally superseded during implementation. Start with the [documentation index](../../README.md) and [current data-model audit](../../architecture/data-model.md); executable fields and constraints live in [migrations](../../../app/migrations).
+
+October 7, 2026. Original design proposal. Implementation checkpoint: migration 007 now implements captured inputs, manual runs, visits and human responses. Temporal owns parallel coordination, so conditional parallel tables are omitted and step `branch_ref` replaces `branch_id`. See `docs/features/workflow-runtime.md` for executable behavior and remaining evaluation work. Completes the main schema interview and extends the [engineering schema](meridian-engineering-schema-spec.md).
 
 ## Recommendation
 
