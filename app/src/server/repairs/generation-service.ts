@@ -101,6 +101,7 @@ export class RepairGenerationService {
         new Set(
           [
             ...context.audit_events,
+            ...context.baseline_repetitions.flatMap(run => run.audit_events),
             ...context.previous_attempts.flatMap(
               (a) => a.candidate_audit_events,
             ),

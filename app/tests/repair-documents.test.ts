@@ -58,3 +58,25 @@ it("never authorizes a document solely because arbitrary input JSON mentions it"
   } }]);
   expect(inventory[0].documents.map(d => d.artifact_id)).toEqual([captured]);
 });
+
+
+it("returns only requested PDF pages in order while retaining original source identity", async () => {
+  const { PDFDocument } = await import("pdf-lib");
+  const pdf = await PDFDocument.create();
+  for (const width of [100, 200, 300, 400]) pdf.addPage([width, 500]);
+  const original = Buffer.from(await pdf.save());
+  const r = reader(original);
+  const selected = await r.documents.read(r.id, [4, 2]);
+  const subset = await PDFDocument.load(selected.bytes);
+  expect(subset.getPages().map(page => page.getWidth())).toEqual([400, 200]);
+  expect(selected.source_page_numbers).toEqual([4, 2]);
+  expect(r.documents.inspected).toEqual([{ artifact_id: r.id, content_hash: "fixture-hash", source_page_numbers: [4, 2] }]);
+  expect((await PDFDocument.load(original)).getPageCount()).toBe(4);
+  for (const pages of [[5], [0], [1, 1], [1, 2, 3, 4]]) {
+    const invalid = reader(original);
+    await expect(invalid.documents.read(invalid.id, pages)).rejects.toMatchObject({ code: "INVALID_SOURCE_PAGES" });
+    expect(invalid.documents.inspected).toHaveLength(0);
+  }
+  const text = reader(Buffer.from("text"), "text/plain");
+  await expect(text.documents.read(text.id, [1])).rejects.toMatchObject({ code: "INVALID_SOURCE_PAGES" });
+});

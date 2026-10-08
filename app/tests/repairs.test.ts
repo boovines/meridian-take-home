@@ -899,6 +899,10 @@ it("stops confirmation at its first failure and keeps all fresh runs", async () 
   expect((await repairs.decide(attempt.id)).session.status).toBe("running");
   await expect(repairs.createEvaluation(attempt.id, 3)).rejects.toMatchObject({code:"NO_CANDIDATE"});
   const next = await repairs.beginAttempt(job.id, 2);
+  const diagnosisContext = await repairs.generationContext(next.id);
+  expect(diagnosisContext.evaluation.id).toBe(two.id);
+  expect(diagnosisContext.baseline_repetitions.map(run => run.id)).toEqual([one.id]);
+  expect(diagnosisContext.baseline_repetitions[0].verdict).toBe("passed");
   await expect(generation.run(next.id, { ...generator, generate: c => generator.generate({ ...c, attempt: { ...c.attempt, attempt_number: 1 } }) }, AbortSignal.timeout(10000))).rejects.toMatchObject({ code: "UNCHANGED_REPAIR_CANDIDATE" });
   const history = (await repairs.state(attempt.workflow_id)).confirmations;
   expect(history.map(c => c.verdict)).toEqual(["passed", "failed"]);
