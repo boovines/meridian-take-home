@@ -11,15 +11,16 @@ export const assertionSchema = z
     label: z.string().trim().min(1).max(300),
     path: z.array(z.string().max(200)).max(20),
     operator: z
-      .enum(["equals", "contains_record", "excludes_record"])
+      .enum(["equals", "contains_record", "excludes_record", "text_includes", "array_includes"])
       .optional(),
     expected: z.json(),
   })
   .strict()
   .superRefine((a, ctx) => {
+    if (a.operator === "text_includes" && (typeof a.expected !== "string" || !a.expected.trim()))
+      ctx.addIssue({ code: "custom", path: ["expected"], message: "Text checks require a nonempty expected string." });
     if (
-      a.operator &&
-      a.operator !== "equals" &&
+      (a.operator === "contains_record" || a.operator === "excludes_record") &&
       (a.expected === null ||
         typeof a.expected !== "object" ||
         Array.isArray(a.expected) ||

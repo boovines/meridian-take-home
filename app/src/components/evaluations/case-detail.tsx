@@ -84,7 +84,7 @@ export function CaseDetail({
                       ? "Required record"
                       : a.operator === "excludes_record"
                         ? "Forbidden record"
-                        : "Expected"}
+                        : a.operator === "text_includes" ? "Required text (ignores case and whitespace)" : a.operator === "array_includes" ? "Required exact array value" : "Expected"}
                   </dt>
                   <dd>
                     <pre>{JSON.stringify(a.expected, null, 2)}</pre>

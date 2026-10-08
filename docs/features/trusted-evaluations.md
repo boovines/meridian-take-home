@@ -64,3 +64,5 @@ The current UI starts evaluations explicitly; generation does not start them aut
 The local test executor is visibly labeled as a fixture. It verifies UI/persistence/grading behavior with known outputs and does not execute generated source. Live execution uses isolated environments. Shipment accuracy must be verified separately against supplied real inputs and ground truth.
 
 Anyone with access to the protected demo can act as the engineer; role and team permissions are outside scope. Suite verification is an explicit user action, not a claim that the system independently knows an expected answer is correct.
+
+Supplemental source checks can require text containment (ignoring case and whitespace only) or exact array membership. These are explicit assertion operators, not fuzzy matching: no spelling correction, unit conversion, punctuation removal or identifier suffix stripping occurs. Text checks establish the specified fragment, not correctness of the entire field. Pair them with record counts and exact identifiers where independently verified. Existing equals/record assertions retain their original semantics.

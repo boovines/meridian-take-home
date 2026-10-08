@@ -276,6 +276,8 @@ export function CaseEditor({
               <option value="equals">Equals exactly</option>
               <option value="contains_record">Contains a record</option>
               <option value="excludes_record">Excludes a record</option>
+              <option value="text_includes">Text includes (ignores case and whitespace)</option>
+              <option value="array_includes">Array includes exact value</option>
             </select>
           </label>
           <p className="field-help" id={`check-comparison-help-${c.key}`}>
