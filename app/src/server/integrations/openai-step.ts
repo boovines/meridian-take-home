@@ -1,3 +1,7 @@
+import {
+  extractionInstructions,
+  type ExtractionRequest,
+} from "../../domain/extraction";
 import { generateText, Output, type UserContent } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { DomainError } from "../../domain/errors";
@@ -77,4 +81,21 @@ export async function reasonForStep(
       "The step's reasoning request could not finish. Check model access and retry.",
     );
   }
+}
+
+export async function extractForStep(
+  request: ExtractionRequest,
+  documents: ReasoningDocument[],
+  signal: AbortSignal,
+): Promise<Json> {
+  return reasonForStep(
+    `${extractionInstructions}\nTask: ${request.instructions}`,
+    {
+      context: request.data,
+      output_schema: request.output_schema,
+      critical_paths: request.critical_paths,
+    },
+    signal,
+    documents,
+  );
 }

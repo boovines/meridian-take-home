@@ -328,3 +328,127 @@ it("cancelling an evaluation settles queued child runs and fences later case pub
   });
   expect(late.outcome).toBe("not_run");
 });
+
+it("isolated Agent cases read only their captured bundle and override mutable fixture input", async () => {
+  const f = await runtimeFixture(
+    db,
+    artifacts,
+    ["trigger", "task", "outcome"],
+    {
+      name: "Evidence",
+      desired_outcome: "Extract seller",
+      instructions: { task: "Read seller" },
+      methods: { task: "agent" },
+    },
+  );
+  await f.runs.finish(f.job.id, { status: "cancelled" });
+  const doc = await artifacts.create(
+    f.w.id,
+    "source_document",
+    "seller.txt",
+    "text/plain",
+    Buffer.from("Seller: Example Ltd"),
+  );
+  const bundle = await new BundleService(db).create(f.w.id, {
+    source_kind: "fixture",
+    shipment_reference: null,
+    manifest: {
+      input: { seller_source: doc.id },
+      message_ids: [],
+      artifacts: [
+        { artifact_id: doc.id, name: "seller.txt", message_id: null },
+      ],
+    },
+  });
+  const suite = await suites.create(f.w.id, {
+    request_key: randomUUID(),
+    name: "Source verified",
+    parent_suite_version_id: null,
+  });
+  const c = await suites.addCase(
+    f.w.id,
+    suite.id,
+    caseInput.parse({
+      case_key: "extract",
+      name: "Extract seller",
+      kind: "step",
+      node_id: f.nodes[1].id,
+      input_bundle_id: bundle.id,
+      input_data: {
+        input: { untrusted: "must not replace captured input" },
+        steps: {},
+      },
+      assertions: [
+        {
+          key: "seller",
+          label: "Printed seller",
+          path: ["seller"],
+          expected: "Example Ltd",
+        },
+      ],
+    }),
+  );
+  await suites.verifyCase(f.w.id, suite.id, c.id, {
+    expected_revision: c.revision,
+  });
+  await suites.lock(f.w.id, suite.id, {
+    expected_revision: (await suites.state(f.w.id)).suites[0].revision,
+  });
+  const started = await evals.start(f.w.id, {
+    request_key: randomUUID(),
+    implementation_version_id: f.version.id,
+    suite_version_id: suite.id,
+  });
+  const ready = (await evals.prepare(started.job.id))!;
+  await evals.beginCase(ready.results[0].id);
+  let contextInput: unknown;
+  await execution.step(
+    ready.results[0].id,
+    {
+      invoke: async (_p, _n, context) => {
+        contextInput = context.input;
+        return context.tool_result
+          ? {
+              kind: "complete",
+              output: context.tool_result,
+              matching_connection_ids: f.board.connections
+                .filter((e) => e.source_node_id === f.nodes[1].id)
+                .map((e) => e.id),
+            }
+          : {
+              kind: "extract",
+              instructions: "Extract seller",
+              data: {},
+              document_ids: [doc.id],
+              output_schema: { type: "object" },
+              critical_paths: [["seller"]],
+            };
+      },
+      reason: async () => ({}),
+      extract: async (_request, documents) => {
+        expect(documents[0].bytes.toString()).toBe("Seller: Example Ltd");
+        return {
+          data: { seller: "Example Ltd" },
+          fields: [
+            {
+              path: ["seller"],
+              raw_value: "Example Ltd",
+              normalized_value: "Example Ltd",
+              status: "found",
+              explanation: null,
+              evidence: [
+                { artifact_id: doc.id, page: 1, text: "Seller: Example Ltd" },
+              ],
+            },
+          ],
+        };
+      },
+    },
+    AbortSignal.timeout(10000),
+  );
+  expect(contextInput).toEqual({ seller_source: doc.id });
+  await evals.finish(started.job.id);
+  expect(
+    (await evals.state(f.w.id, started.evaluation.id)).results[0].outcome,
+  ).toBe("passed");
+});

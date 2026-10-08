@@ -10,6 +10,7 @@ import { HumanService } from "../server/runtime/human-service";
 import { invokeInSandbox } from "../server/integrations/sandbox-step";
 import {
   reasonForStep,
+  extractForStep,
   runtimeModelConfiguration,
 } from "../server/integrations/openai-step";
 export async function prepareExecution(id: string) {
@@ -36,6 +37,7 @@ export async function executeOccurrence(data: ScheduleStep, resume = false) {
       {
         invoke: invokeInSandbox,
         reason: reasonForStep,
+        extract: extractForStep,
         model: runtimeModelConfiguration(),
       },
       AbortSignal.any([cancellationSignal(), AbortSignal.timeout(150000)]),

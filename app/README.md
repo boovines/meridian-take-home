@@ -136,3 +136,5 @@ npm run gmail:smoke -- --live --message <message-id> --shipment <reference> --pd
 ```
 
 This optional live check creates a workflow, captures one supplied message, and asks OpenAI to read the chosen PDF. It uses real mailbox data and credits; keep its output and captured artifacts private. Required CI uses sanitized fixtures for capture completeness, immutable inputs, run ownership, safe attachment downloads, and approved document interpretation. No live credentials are needed by CI.
+
+Evidence-aware document extraction uses the pure `domain/extraction` contract, `server/runtime/extraction` for PDF page bounds, and provider code in `server/integrations`. Isolated evaluation cases can use the same immutable document bundles as workflow runs (migration 011). Run the extraction/evaluation/Gmail fixture tests when changing this boundary.

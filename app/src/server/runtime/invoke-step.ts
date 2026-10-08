@@ -1,3 +1,9 @@
+import {
+  validateExtraction,
+  validateExtractionSchema,
+  type ExtractionRequest,
+} from "../../domain/extraction";
+import { evidenceDocuments } from "./extraction";
 import { DomainError } from "../../domain/errors";
 import { createHash } from "node:crypto";
 import type { RecordAudit } from "../../domain/execution-audit";
@@ -19,6 +25,11 @@ export interface StepAdapters {
     context: Record<string, Json>,
     signal: AbortSignal,
   ): Promise<unknown>;
+  extract?(
+    request: ExtractionRequest,
+    documents: ReasoningDocument[],
+    signal: AbortSignal,
+  ): Promise<Json>;
   reason(
     instructions: string,
     data: Json,
@@ -48,7 +59,9 @@ export async function invokeApprovedStep(
     signal.throwIfAborted();
     await audit?.("initial_output", initial);
     let result = stepResult.parse(initial);
-    if (result.kind === "reason") {
+    if (result.kind === "reason" || result.kind === "extract") {
+      if (result.kind === "extract")
+        validateExtractionSchema(result.output_schema);
       if (method !== "agent")
         throw new DomainError(
           422,
@@ -65,9 +78,19 @@ export async function invokeApprovedStep(
         ? await readDocuments(result.document_ids)
         : [];
       signal.throwIfAborted();
+      const sourcePages =
+        result.kind === "extract" ? await evidenceDocuments(documents) : [];
       await audit?.(
         "model_request",
         {
+          kind: result.kind,
+          ...(result.kind === "extract"
+            ? {
+                output_schema: result.output_schema,
+                critical_paths: result.critical_paths,
+                source_pages: sourcePages,
+              }
+            : {}),
           instructions: result.instructions,
           data: result.data,
           model: adapters.model ?? { provider: "unknown", name: "unknown" },
@@ -85,18 +108,36 @@ export async function invokeApprovedStep(
         },
       );
       signal.throwIfAborted();
-      const tool_result = await adapters.reason(
-        result.instructions,
-        result.data,
-        signal,
-        documents,
-      );
+      if (result.kind === "extract" && !adapters.extract)
+        throw new DomainError(
+          503,
+          "EXTRACTION_UNAVAILABLE",
+          "No evidence-aware extraction provider is configured.",
+        );
+      const raw =
+        result.kind === "extract"
+          ? await adapters.extract!(result, documents, signal)
+          : await adapters.reason(
+              result.instructions,
+              result.data,
+              signal,
+              documents,
+            );
       signal.throwIfAborted();
-      await audit?.("model_response", tool_result);
+      await audit?.("model_response", raw);
+      const envelope =
+        result.kind === "extract"
+          ? validateExtraction(result, raw, sourcePages)
+          : null;
+      const tool_result = envelope ? envelope.data : raw;
       const processed = await adapters.invoke(
         project,
         nodeId,
-        { ...context, tool_result },
+        {
+          ...context,
+          tool_result,
+          ...(envelope ? { extraction_evidence: envelope.fields } : {}),
+        },
         signal,
       );
       signal.throwIfAborted();
@@ -125,6 +166,9 @@ export async function invokeApprovedStep(
       await audit?.("failure", {
         code: failure.code,
         category: failure.category,
+        ...(error instanceof DomainError && error.code.startsWith("EXTRACTION_")
+          ? { evidence_issues: error.details ?? null }
+          : {}),
       });
     }
     throw error;
@@ -147,6 +191,9 @@ export function invocationFailure(error: unknown): RuntimeError {
     "UNSUPPORTED_DOCUMENT",
     "MODEL_OUTPUT_LIMIT",
     "MODEL_OUTPUT_INVALID",
+    "EXTRACTION_SCHEMA_INVALID",
+    "EXTRACTION_EVIDENCE_INVALID",
+    "EXTRACTION_UNRESOLVED",
   ];
   const routeCode =
     /^(INVALID_ROUTES|AMBIGUOUS_ROUTE|NO_MATCHING_ROUTE|INVALID_OUTCOME):/.exec(
@@ -167,6 +214,7 @@ export function invocationFailure(error: unknown): RuntimeError {
               "MODEL_PROJECT_SPEND_LIMIT",
               "MODEL_QUOTA_EXCEEDED",
               "AUDIT_UNAVAILABLE",
+              "EXTRACTION_UNAVAILABLE",
             ].includes(error.code)
           ? "infrastructure"
           : "unknown";

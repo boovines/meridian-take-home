@@ -8,6 +8,7 @@ import { validateInSandbox } from "../server/integrations/sandbox-project";
 import { invokeInSandbox } from "../server/integrations/sandbox-step";
 import {
   reasonForStep,
+  extractForStep,
   runtimeModelConfiguration,
 } from "../server/integrations/openai-step";
 export async function prepareEvaluation(id: string, evaluationId?: string) {
@@ -93,6 +94,7 @@ export async function evaluateStepCase(id: string) {
       {
         invoke: invokeInSandbox,
         reason: reasonForStep,
+        extract: extractForStep,
         model: runtimeModelConfiguration(),
       },
       AbortSignal.any([cancellationSignal(), AbortSignal.timeout(150000)]),
