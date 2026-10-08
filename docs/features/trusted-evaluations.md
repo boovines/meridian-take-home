@@ -66,3 +66,5 @@ The local test executor is visibly labeled as a fixture. It verifies UI/persiste
 Anyone with access to the protected demo can act as the engineer; role and team permissions are outside scope. Suite verification is an explicit user action, not a claim that the system independently knows an expected answer is correct.
 
 Supplemental source checks can require text containment (ignoring case and whitespace only) or exact array membership. These are explicit assertion operators, not fuzzy matching: no spelling correction, unit conversion, punctuation removal or identifier suffix stripping occurs. Text checks establish the specified fragment, not correctness of the entire field. Pair them with record counts and exact identifiers where independently verified. Existing equals/record assertions retain their original semantics.
+
+Evaluation settings are also checked at the actual step invocation boundary. If a worker restarts with different settings after a case was scheduled, both isolated cases and full-workflow steps stop with an infrastructure error before calling the new model. This prevents a mixed-configuration run from counting toward confirmation.

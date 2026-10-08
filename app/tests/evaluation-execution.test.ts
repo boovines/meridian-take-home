@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { beforeAll, afterAll, it, expect } from "vitest";
+import { beforeAll, afterAll, it, expect, vi } from "vitest";
 import { createDatabase, migrate, type Database } from "../src/server/database";
 import { ArtifactService } from "../src/server/artifacts/service";
 import { LocalObjectStore } from "../src/server/artifacts/storage";
@@ -454,4 +454,19 @@ it("isolated Agent cases read only their captured bundle and override mutable fi
   expect(
     (await evals.state(f.w.id, started.evaluation.id)).results[0].outcome,
   ).toBe("passed");
+});
+
+it("stops a resumed isolated invocation when the worker configuration changed after scheduling", async () => {
+  const { job, cases, results } = await prepared();
+  const c = cases.find(c => c.kind === "step")!;
+  const r = results.find(r => r.case_id === c.id)!;
+  await evals.beginCase(r.id);
+  const invoke = vi.fn();
+  vi.stubEnv("OPENAI_RUNTIME_MODEL", "changed-worker-model");
+  try {
+    await execution.step(r.id, { invoke, reason: async () => ({}) }, AbortSignal.timeout(10000));
+    expect(invoke).not.toHaveBeenCalled();
+    expect((await db.query("SELECT outcome,failure_code,failure_category FROM evaluation_case_results WHERE id=$1", [r.id])).rows[0]).toMatchObject({outcome:"error",failure_code:"EVALUATION_CONFIGURATION_CHANGED",failure_category:"infrastructure"});
+  } finally { vi.unstubAllEnvs(); }
+  await evals.finish(job.id, undefined, true);
 });

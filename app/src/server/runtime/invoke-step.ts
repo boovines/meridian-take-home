@@ -224,6 +224,7 @@ export function invocationFailure(error: unknown): RuntimeError {
               "EXTRACTION_PROVIDER_ERROR",
               "INFERENCE_BUDGET_LIMIT",
               "BUDGET_UNAVAILABLE",
+              "EVALUATION_CONFIGURATION_CHANGED",
             ].includes(error.code)
           ? "infrastructure"
           : "unknown";
