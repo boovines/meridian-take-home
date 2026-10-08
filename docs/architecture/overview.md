@@ -1,6 +1,6 @@
 # Architecture
 
-Architecture and design contracts · October 8, 2026. Canvas authoring, review/freeze, implementation plans/generation, runtime, evaluations, bounded repair and Gmail ingestion are implemented. A real packet completes end to end; full-dataset shipment accuracy remains incomplete. See [implementation status](../implementation-status.md) for measured outcomes and [migrations](../../app/migrations) for executable schema.
+Architecture and design contracts · October 8, 2026. Canvas authoring, review/freeze, implementation plans/generation, runtime, evaluations, bounded repair and Gmail ingestion are implemented. A real packet completes end to end. Shipment v17 passed three consecutive fresh evaluations of the locked 24-case suite; this is a measured demo threshold, not an unseen-document accuracy guarantee. See [implementation status](../implementation-status.md) for measured outcomes and [migrations](../../app/migrations) for executable schema.
 
 Start with the revised [Whiteboard PRD](../product/whiteboard.md) and [Self-Healing Agent PRD](../product/self-healing-agent.md). Current table rationale is in the [data-model audit](data-model.md); exact fields and constraints are defined by [migrations](../../app/migrations). [Archived interview proposals](../archive/interviews/README.md) preserve earlier alternatives and are not the executable schema.
 
