@@ -80,12 +80,20 @@ export const replyProposalEvent = z.object({
 export const replyProposalDecision = z
   .object({
     decision: z.enum(["accept", "reject"]),
+    node_id: uuid,
+    instructions: z.string().trim().min(1).max(20000).optional(),
     expected_revision: z.number().int().positive(),
     request_key: uuid,
   })
-  .strict();
+  .strict()
+  .refine(
+    (value) => value.decision !== "accept" || value.instructions !== undefined,
+    { message: "Accepted instructions are required", path: ["instructions"] },
+  );
 export const replyProposalDecisionEvent = z.object({
   action: z.literal("reply_proposal_decided"),
+  node_id: uuid.optional(),
+  instructions: z.string().optional(),
   proposal_message_id: uuid,
   decision: z.enum(["accept", "reject"]),
 });
@@ -95,12 +103,18 @@ export function proposalStatus(
   messages: DiscussionMessage[],
   board: Board,
   thread: DiscussionThread,
+  nodeId: string,
 ) {
   const proposal = replyProposalEvent.safeParse(message.event_data);
   if (!proposal.success || !proposal.data.edits.length) return "none";
   const decision = messages
     .map((m) => replyProposalDecisionEvent.safeParse(m.event_data))
-    .find((d) => d.success && d.data.proposal_message_id === message.id);
+    .find(
+      (d) =>
+        d.success &&
+        d.data.proposal_message_id === message.id &&
+        (!d.data.node_id || d.data.node_id === nodeId),
+    );
   if (decision?.success)
     return decision.data.decision === "accept" ? "accepted" : "rejected";
   if (
@@ -114,13 +128,39 @@ export function proposalStatus(
     return "superseded";
   if (thread.status !== "open") return "closed";
   if (
-    board.workflow.content_revision !== proposal.data.content_revision ||
-    proposal.data.edits.some(
-      (edit) =>
-        board.nodes.find((n) => n.id === edit.node_id)?.revision !==
-        edit.before.revision,
-    )
+    board.workflow.content_revision !==
+      proposalContentRevision(
+        message.id,
+        proposal.data.content_revision,
+        messages,
+      ) ||
+    proposal.data.edits
+      .filter((edit) => edit.node_id === nodeId)
+      .some(
+        (edit) =>
+          board.nodes.find((n) => n.id === edit.node_id)?.revision !==
+          edit.before.revision,
+      )
   )
     return "stale";
   return "pending";
+}
+
+// Only accepted blocks from this proposal explain intervening content revisions.
+// Any unrelated graph change still invalidates the remaining decisions.
+export function proposalContentRevision(
+  proposalId: string,
+  original: number,
+  messages: DiscussionMessage[],
+) {
+  return (
+    original +
+    messages.filter(
+      (m) =>
+        m.event_data?.action === "reply_proposal_decided" &&
+        m.event_data?.proposal_message_id === proposalId &&
+        m.event_data?.decision === "accept" &&
+        typeof m.event_data?.node_id === "string",
+    ).length
+  );
 }

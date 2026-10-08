@@ -1,5 +1,6 @@
+import { memo } from "react";
 import { diffWordsWithSpace } from "diff";
-export function InstructionDiff({
+export const InstructionDiff = memo(function InstructionDiff({
   before,
   after,
 }: {
@@ -16,8 +17,8 @@ export function InstructionDiff({
   return (
     <div className="instruction-diff">
       <div className="diff-legend">
-        <span>− Removed</span>
-        <span>+ Added</span>
+        <span className="diff-removed-label">− Removed</span>
+        <span className="diff-added-label">+ Added</span>
       </div>
       <p>
         {parts.map((part, i) =>
@@ -38,4 +39,4 @@ export function InstructionDiff({
       </p>
     </div>
   );
-}
+});

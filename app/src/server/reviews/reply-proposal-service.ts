@@ -2,6 +2,7 @@ import type { z } from "zod";
 import { DomainError } from "../../domain/errors";
 import {
   replyProposalEvent,
+  proposalContentRevision,
   replyProposalDecision,
   replyProposalDecisionEvent,
 } from "../../domain/review-reply";
@@ -23,6 +24,7 @@ export class ReplyProposalService {
     proposalId: string,
     data: z.infer<typeof replyProposalDecision>,
   ) {
+    data = replyProposalDecision.parse(data);
     return this.db.transaction(async (tx) => {
       const w = await workflow(tx, workflowId, true);
       const thread = await threadById(tx, workflowId, threadId);
@@ -42,7 +44,10 @@ export class ReplyProposalService {
         if (
           !event.success ||
           event.data.proposal_message_id !== proposalId ||
-          event.data.decision !== data.decision
+          event.data.decision !== data.decision ||
+          event.data.node_id !== data.node_id ||
+          (data.decision === "accept" &&
+            event.data.instructions !== data.instructions)
         )
           throw new DomainError(
             409,
@@ -66,11 +71,21 @@ export class ReplyProposalService {
           "PROPOSAL_NOT_FOUND",
           "This conversation has no such proposed changes.",
         );
+      const edit = proposal.data.edits.find(
+        (edit) => edit.node_id === data.node_id,
+      );
+      if (!edit)
+        throw new DomainError(
+          404,
+          "PROPOSAL_NOT_FOUND",
+          "This block is not part of this proposal.",
+        );
       if (
         messages.some(
           (m) =>
             m.event_data?.action === "reply_proposal_decided" &&
-            m.event_data?.proposal_message_id === proposalId,
+            m.event_data?.proposal_message_id === proposalId &&
+            (!m.event_data?.node_id || m.event_data.node_id === data.node_id),
         )
       )
         throw new DomainError(
@@ -91,26 +106,30 @@ export class ReplyProposalService {
           "PROPOSAL_SUPERSEDED",
           "This proposal is no longer current. Continue the conversation for a new proposal.",
         );
+      const board = await readBoard(tx, workflowId);
+      const title =
+        board.nodes.find((n) => n.id === data.node_id)?.title ||
+        "Removed block";
       if (data.decision === "accept") {
-        const board = await readBoard(tx, workflowId);
         if (
-          w.content_revision !== proposal.data.content_revision ||
-          proposal.data.edits.some(
-            (edit) =>
-              board.nodes.find((n) => n.id === edit.node_id)?.revision !==
-              edit.before.revision,
-          )
+          w.content_revision !==
+            proposalContentRevision(
+              proposalId,
+              proposal.data.content_revision,
+              messages,
+            ) ||
+          board.nodes.find((n) => n.id === edit.node_id)?.revision !==
+            edit.before.revision
         )
           throw new DomainError(
             409,
             "STALE_PROPOSAL",
             "The board changed after this proposal. Send another reply to get a fresh diff; no changes were applied.",
           );
-        for (const edit of proposal.data.edits)
-          await tx.query(
-            "UPDATE nodes SET instructions=$2,revision=revision+1,updated_at=now() WHERE workflow_id=$1 AND id=$3",
-            [workflowId, edit.after.instructions, edit.node_id],
-          );
+        await tx.query(
+          "UPDATE nodes SET instructions=$2,revision=revision+1,updated_at=now() WHERE workflow_id=$1 AND id=$3",
+          [workflowId, data.instructions, edit.node_id],
+        );
         await tx.query(
           "UPDATE workflows SET content_revision=content_revision+1,updated_at=now() WHERE id=$1",
           [workflowId],
@@ -121,13 +140,24 @@ export class ReplyProposalService {
         parent: proposalId,
         body:
           data.decision === "accept"
-            ? "Accepted the proposed changes. Block instructions are now updated."
-            : "Rejected the proposed changes. Block instructions are unchanged.",
+            ? `Accepted changes to “${title}”. Instructions are now updated.`
+            : `Rejected changes to “${title}”. Its instructions are unchanged.`,
         requestKey: data.request_key,
         event: {
           action: "reply_proposal_decided",
           proposal_message_id: proposalId,
           decision: data.decision,
+          node_id: data.node_id,
+          ...(data.decision === "accept"
+            ? {
+                instructions: data.instructions,
+                before: edit.before,
+                after: {
+                  instructions: data.instructions,
+                  revision: edit.before.revision + 1,
+                },
+              }
+            : {}),
         },
       });
     });

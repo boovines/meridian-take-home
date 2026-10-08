@@ -147,7 +147,9 @@ test("one response composer replies, resolves, reopens and rejects with matching
     .locator(".review-thread")
     .filter({ hasText: "Which invoice fields are required?" });
   await expect(thread.locator(".thread-status")).toHaveText("Open");
-  await expect(thread.getByRole("textbox")).toHaveCount(1);
+  await expect(
+    thread.getByRole("textbox", { name: /^Response to/ }),
+  ).toHaveCount(1);
   const response = thread.getByRole("textbox", {
     name: "Response to Which invoice fields are required?",
     exact: true,
@@ -307,7 +309,7 @@ test("a failed reply update preserves the answer and retries without duplicate m
   const thread = page
     .locator(".review-thread")
     .filter({ hasText: "Which invoice fields are required?" });
-  const response = thread.getByRole("textbox");
+  const response = thread.getByRole("textbox", { name: /^Response to/ });
   const initial = await (
     await request.get(`/api/workflows/${workflow.id}`)
   ).json();
@@ -399,10 +401,12 @@ test("expanded conversation preserves drafts, traps focus, rejects changes and w
     .fill("Keep the existing required fields, and flag unreadable invoices.");
   for (let i = 0; i < 3; i++) {
     await expand.click();
-    await expect(page.getByRole("dialog").getByRole("textbox")).toHaveValue(
-      /Keep the existing/,
-    );
-    await expect(thread.getByRole("textbox")).toHaveCount(1);
+    await expect(
+      page.getByRole("dialog").getByRole("textbox", { name: /^Response to/ }),
+    ).toHaveValue(/Keep the existing/);
+    await expect(
+      thread.getByRole("textbox", { name: /^Response to/ }),
+    ).toHaveCount(1);
     await page.keyboard.press("Escape");
     await expect(expand).toBeFocused();
   }
@@ -457,5 +461,154 @@ test("expanded conversation preserves drafts, traps focus, rejects changes and w
   await expand.click();
   await expect(page.getByRole("dialog").locator(".proposal-state")).toHaveText(
     "rejected",
+  );
+});
+
+test("edits and decides each proposed block independently while preserving unsaved wording", async ({
+  page,
+  request,
+}, testInfo) => {
+  const workflow = await seededWorkflow(request);
+  await request.post(`/api/workflows/${workflow.id}/nodes`, {
+    data: {
+      type: "task",
+      title: "Check certificates",
+      instructions: "Check invoice",
+      x: 400,
+      y: 400,
+    },
+  });
+  await page.goto(`/workflows/${workflow.id}`);
+  await page.getByRole("button", { name: /Review & comments/ }).click();
+  await page
+    .getByRole("button", { name: "Start draft review", exact: true })
+    .click();
+  const thread = page
+    .locator(".review-thread")
+    .filter({ hasText: "Which invoice fields are required?" });
+  await thread
+    .getByRole("textbox", { name: /^Response to/ })
+    .fill("Include the required identifiers.");
+  await thread.getByRole("button", { name: "Send", exact: true }).click();
+  const first = thread.locator(".block-diff").filter({
+    has: page.getByRole("textbox", {
+      name: "Proposed instructions for Validate invoice",
+      exact: true,
+    }),
+  });
+  const second = thread.locator(".block-diff").filter({
+    has: page.getByRole("textbox", {
+      name: "Proposed instructions for Check certificates",
+      exact: true,
+    }),
+  });
+  await expect(first.locator(".instruction-diff")).toBeVisible();
+  expect(
+    (await first.locator(".instruction-diff ins").allTextContents()).join(""),
+  ).toContain("Include the required identifiers.");
+  await first.getByRole("textbox").fill("Check invoice");
+  await expect(
+    first.locator(".instruction-diff ins, .instruction-diff del"),
+  ).toHaveCount(0);
+  await first
+    .getByRole("textbox")
+    .fill(
+      "Require the five approved invoice identifiers. Include the required identifiers. Preserve source references.",
+    );
+  await second.getByRole("textbox").fill("Keep this draft until I decide.");
+  await thread.getByRole("button", { name: /Expand conversation:/ }).click();
+  await expect(first.getByRole("textbox")).toHaveValue(
+    "Require the five approved invoice identifiers. Include the required identifiers. Preserve source references.",
+  );
+  await expect(first.locator(".instruction-diff")).toBeVisible();
+  await expect(first.locator(".instruction-diff del")).toContainText("Check");
+  expect(
+    (await first.locator(".instruction-diff ins").allTextContents()).join(""),
+  ).toContain("Include the required identifiers.");
+  expect(
+    await first.locator(".instruction-diff ins").allTextContents(),
+  ).toEqual(
+    expect.arrayContaining([
+      expect.stringContaining("Preserve source references."),
+    ]),
+  );
+  const proposedText = (locator: ReturnType<typeof page.locator>) =>
+    locator.locator(".instruction-diff p").evaluate((el) => {
+      const copy = el.cloneNode(true) as HTMLElement;
+      copy.querySelectorAll("del, .sr-only").forEach((node) => node.remove());
+      return copy.textContent;
+    });
+  expect(await proposedText(first)).toBe(
+    "Require the five approved invoice identifiers. Include the required identifiers. Preserve source references.",
+  );
+  await first.scrollIntoViewIfNeeded();
+  await page.screenshot({
+    path: testInfo.outputPath("editable-block-proposals.png"),
+    fullPage: true,
+  });
+  await page.route("**/proposals/*", (route) =>
+    route.fulfill({
+      status: 503,
+      json: {
+        error: { code: "UNAVAILABLE", message: "Please retry this decision." },
+      },
+    }),
+  );
+  await first
+    .getByRole("button", { name: "Accept changes", exact: true })
+    .click();
+  await expect(thread.getByRole("alert")).toContainText(
+    "Please retry this decision.",
+  );
+  await expect(first.getByRole("textbox")).toHaveValue(
+    "Require the five approved invoice identifiers. Include the required identifiers. Preserve source references.",
+  );
+  await expect(second.getByRole("textbox")).toHaveValue(
+    "Keep this draft until I decide.",
+  );
+  await page.unroute("**/proposals/*");
+  await first
+    .getByRole("button", { name: "Accept changes", exact: true })
+    .click();
+  await expect(thread.locator(".proposal-state").first()).toHaveText(
+    "accepted",
+  );
+  await expect(second.getByRole("textbox")).toHaveValue(
+    "Keep this draft until I decide.",
+  );
+  await expect(
+    second.getByRole("button", { name: "Accept changes", exact: true }),
+  ).toBeEnabled();
+  await page
+    .getByRole("button", { name: "Close conversation", exact: true })
+    .click();
+  await expect(second.getByRole("textbox")).toHaveValue(
+    "Keep this draft until I decide.",
+  );
+  await second
+    .getByRole("button", { name: "Reject changes", exact: true })
+    .click();
+  await expect(thread.locator(".proposal-state").last()).toHaveText("rejected");
+  const board = await (
+    await request.get(`/api/workflows/${workflow.id}`)
+  ).json();
+  expect(
+    board.nodes.find((n: { title: string }) => n.title === "Validate invoice")
+      .instructions,
+  ).toBe(
+    "Require the five approved invoice identifiers. Include the required identifiers. Preserve source references.",
+  );
+  expect(
+    board.nodes.find((n: { title: string }) => n.title === "Check certificates")
+      .instructions,
+  ).toBe("Check invoice");
+  await page.reload();
+  await page.getByRole("button", { name: /Review & comments/ }).click();
+  await expect(thread.locator(".proposal-state")).toHaveText([
+    "accepted",
+    "rejected",
+  ]);
+  expect(await proposedText(thread.locator(".block-diff").first())).toBe(
+    "Require the five approved invoice identifiers. Include the required identifiers. Preserve source references.",
   );
 });

@@ -38,6 +38,9 @@ export function ThreadCard({
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [refreshFailed, setRefreshFailed] = useState(false);
+  const [proposalDrafts, setProposalDrafts] = useState<Record<string, string>>(
+    {},
+  );
   const [expanded, setExpanded] = useState(false);
   const dialog = useRef<HTMLDialogElement>(null);
   const expandButton = useRef<HTMLButtonElement>(null);
@@ -66,6 +69,8 @@ export function ThreadCard({
       | "accept-proposal"
       | "reject-proposal",
     proposalId?: string,
+    nodeId?: string,
+    instructions?: string,
   ) {
     setBusy(true);
     setError("");
@@ -74,6 +79,8 @@ export function ThreadCard({
       const signature = JSON.stringify({
         action,
         proposalId,
+        nodeId,
+        instructions,
         reply,
         revision: thread.revision,
       });
@@ -84,6 +91,8 @@ export function ThreadCard({
       if (action === "accept-proposal" || action === "reject-proposal") {
         await api(`${base}/proposals/${proposalId}`, "POST", {
           decision: action === "accept-proposal" ? "accept" : "reject",
+          node_id: nodeId,
+          ...(instructions !== undefined ? { instructions } : {}),
           expected_revision: thread.revision,
           request_key: requestKey,
         });
@@ -186,10 +195,16 @@ export function ThreadCard({
               board={board}
               thread={thread}
               disabled={locked || busy}
-              onDecision={(decision, id) =>
+              drafts={proposalDrafts}
+              onDraft={(key, text) =>
+                setProposalDrafts((current) => ({ ...current, [key]: text }))
+              }
+              onDecision={(decision, id, nodeId, instructions) =>
                 void submit(
                   decision === "accept" ? "accept-proposal" : "reject-proposal",
                   id,
+                  nodeId,
+                  instructions,
                 )
               }
             />
