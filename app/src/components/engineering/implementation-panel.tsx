@@ -44,8 +44,8 @@ export function ImplementationPanel({
           <span className="eyebrow">Implementation plan</span>
           <h2>Decide how each step works.</h2>
           <p className="field-help">
-            AI can recommend a method. You approve the choices before
-            generation.
+            Suggest methods fills in the choices below. Review and approve them
+            before generation; changed choices need approval again.
           </p>
         </div>
         {plan && (
