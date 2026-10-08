@@ -137,6 +137,7 @@ export interface AssertionResult {
   missing: boolean;
 }
 export interface EvaluationRun {
+  execution_configuration: Json;
   code_version_number?: number;
   suite_version_number?: number;
   id: string;

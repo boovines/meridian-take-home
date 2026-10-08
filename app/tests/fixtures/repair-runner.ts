@@ -21,15 +21,22 @@ export async function repairFixture(db: Database, jobId: string) {
               affected_node_ids: c.steps.map(s => s.node_id),
               changes: ["Preserve the known pass-through fixture."],
             },
-            project: fixtureSources(c.spec.board, c.steps),
+            project: (() => {
+              const sources = fixtureSources(c.spec.board, c.steps);
+              sources.steps.forEach(s => s.source_lines.push(`// Distinct fixture candidate ${number}`));
+              return sources;
+            })(),
           }),
         },
         AbortSignal.timeout(10000),
       );
-      const evaluation = await service.createEvaluation(attempt.id);
-      await evaluateFixture(db, jobId, evaluation.id);
-      if ((await service.decide(attempt.id)).session.status !== "running")
-        return;
+      for (let round = 1; round <= 3; round++) {
+        const evaluation = await service.createEvaluation(attempt.id, round);
+        await evaluateFixture(db, jobId, evaluation.id);
+        const result = await service.decide(attempt.id);
+        if (result.session.status !== "running") return;
+        if (result.attempt.status !== "running") break;
+      }
     }
   } catch {
     await service.finish(

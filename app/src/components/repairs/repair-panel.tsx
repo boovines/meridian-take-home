@@ -89,6 +89,7 @@ export function RepairPanel({
       <RepairHistory
         session={session}
         attempts={detail!.attempts}
+        confirmations={detail!.confirmations || []}
         versionLabel={(id) => {
           const v = versions.find((v) => v.id === id);
           return v ? `v${v.version_number}` : "Earlier code";

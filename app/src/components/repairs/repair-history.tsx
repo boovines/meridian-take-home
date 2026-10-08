@@ -2,6 +2,7 @@ import type { RepairHistoryProps } from "./types";
 export function RepairHistory({
   session,
   attempts,
+  confirmations,
   versionLabel,
   onInspectEvaluation,
   onInspectCode,
@@ -62,6 +63,13 @@ export function RepairHistory({
               >
                 {a.status}
               </span>
+            </div>
+            <div aria-label={`Attempt ${a.attempt_number} confirmation runs`}>
+              <p className="field-help">{confirmations.filter(c => c.attempt_id === a.id && c.verdict === "passed").length} / 3 complete passes · Same code, suite, and execution settings required.</p>
+              <div className="button-row">
+                {confirmations.filter(c => c.attempt_id === a.id).map(c => <button key={c.evaluation_run_id} onClick={() => onInspectEvaluation(c.evaluation_run_id)}>Run {c.round}: {c.verdict || c.status}</button>)}
+              </div>
+              {!confirmations.some(c => c.attempt_id === a.id) && a.status !== "running" && <p className="field-help">Historical result; no three-run confirmation recorded.</p>}
             </div>
             <p>
               {a.decision_reason ||

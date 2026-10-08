@@ -65,13 +65,17 @@ export async function repairImplementation(jobId: string) {
             );
             return;
           }
-          const evaluationId = await io.createRepairEvaluation(attemptId);
-          await executeChild(evaluateSuite, {
-            workflowId: `repair-evaluation-${evaluationId}`,
-            args: [jobId, evaluationId],
-            workflowIdReusePolicy: "REJECT_DUPLICATE",
-          });
-          if ((await io.decideRepairAttempt(attemptId)).done) return;
+          for (let round = 1; round <= 3; round++) {
+            const evaluationId = await io.createRepairEvaluation(attemptId, round);
+            await executeChild(evaluateSuite, {
+              workflowId: `repair-evaluation-${evaluationId}`,
+              args: [jobId, evaluationId],
+              workflowIdReusePolicy: "REJECT_DUPLICATE",
+            });
+            const decision = await io.decideRepairAttempt(attemptId);
+            if (decision.done) return;
+            if (!decision.confirming) break;
+          }
         }
         await cleanup.endRepair(
           jobId,

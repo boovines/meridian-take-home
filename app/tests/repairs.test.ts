@@ -65,7 +65,11 @@ const generator = {
       affected_node_ids: c.spec.board.nodes.filter(n => n.type === "outcome").map(n => n.id),
       changes: ["Count goods once per good."],
     },
-    project: fixtureSources(c.spec.board, c.steps.filter(s => c.spec.board.nodes.some(n => n.id === s.node_id && n.type === "outcome"))),
+    project: (() => {
+      const sources = fixtureSources(c.spec.board, c.steps.filter(s => c.spec.board.nodes.some(n => n.id === s.node_id && n.type === "outcome")));
+      sources.steps.forEach(s => s.source_lines.push(`// Distinct fixture candidate ${c.attempt.attempt_number}`));
+      return sources;
+    })(),
   }),
 };
 async function record(jobId: string, evaluationId: string, actual: Json) {
@@ -435,6 +439,14 @@ it("rejects regression by assertion identity, keeps rejected code, and repairs f
     )
   ).rows[0];
   expect(parent.parent_version_id).toBe(f.version.id);
+  const pending = await repairs.decide(second.attempt.id);
+  expect(pending.session.status).toBe("running");
+  expect(pending.session.baseline_version_id).toBe(f.version.id);
+  for (const round of [2, 3]) {
+    const confirmation = await repairs.createEvaluation(second.attempt.id, round);
+    await record(job.id, confirmation.id, { shipment: "SYNTHETIC-001", failed_goods: 1 });
+    if (round === 2) expect((await repairs.decide(second.attempt.id)).session.status).toBe("running");
+  }
   const accepted = await repairs.decide(second.attempt.id);
   expect(accepted.session).toMatchObject({
     status: "passed",
@@ -841,4 +853,38 @@ it('cancelled replay results cannot be published or count as acceptance',async()
  await expect(replay.run({recorded_input_id:context.results[0].id,candidate_patch:{node_id:f.nodes[1].id,source_lines:['export async function run() {}']}})).rejects.toThrow();
  const state=await repairs.state(f.w.id);expect(state.replays[0]).toMatchObject({status:'running',result_artifact_id:null});expect(state.attempts[0].candidate_version_id).toBeNull();
  await repairs.finish(job.id,'cancelled','Cancellation fixture verified');
+});
+
+it("stops confirmation at its first failure and keeps all fresh runs", async () => {
+  const { job } = await prepared();
+  const attempt = await repairs.beginAttempt(job.id, 1);
+  await generation.run(attempt.id, generator, AbortSignal.timeout(10000));
+  const one = await repairs.createEvaluation(attempt.id);
+  await record(job.id, one.id, { shipment: "SYNTHETIC-001", failed_goods: 1 });
+  expect((await repairs.decide(attempt.id)).attempt.status).toBe("running");
+  const two = await repairs.createEvaluation(attempt.id, 2);
+  expect(two.id).not.toBe(one.id);
+  await record(job.id, two.id, { shipment: "SYNTHETIC-001", failed_goods: 2 });
+  expect((await repairs.decide(attempt.id)).session.status).toBe("running");
+  await expect(repairs.createEvaluation(attempt.id, 3)).rejects.toMatchObject({code:"NO_CANDIDATE"});
+  const next = await repairs.beginAttempt(job.id, 2);
+  await expect(generation.run(next.id, { ...generator, generate: c => generator.generate({ ...c, attempt: { ...c.attempt, attempt_number: 1 } }) }, AbortSignal.timeout(10000))).rejects.toMatchObject({ code: "UNCHANGED_REPAIR_CANDIDATE" });
+  const history = (await repairs.state(attempt.workflow_id)).confirmations;
+  expect(history.map(c => c.verdict)).toEqual(["passed", "failed"]);
+  await repairs.finish(job.id, "needs_attention", "Unchanged candidate stopped.");
+});
+it("rejects changed execution settings during a confirmation sequence", async () => {
+  const { job } = await prepared();
+  const attempt = await repairs.beginAttempt(job.id, 1);
+  await generation.run(attempt.id, generator, AbortSignal.timeout(10000));
+  const one = await repairs.createEvaluation(attempt.id);
+  await record(job.id, one.id, { shipment: "SYNTHETIC-001", failed_goods: 1 });
+  await repairs.decide(attempt.id);
+  const two = await repairs.createEvaluation(attempt.id, 2);
+  vi.stubEnv("EXTRACTION_REINSPECTION", "1");
+  try {
+    await expect(evals.prepare(job.id, two.id)).rejects.toMatchObject({code:"EVALUATION_CONFIGURATION_CHANGED"});
+    await expect(db.query("UPDATE evaluation_runs SET execution_configuration='{}' WHERE id=$1", [one.id])).rejects.toMatchObject({code:"23514"});
+  } finally { vi.unstubAllEnvs(); }
+  await repairs.finish(job.id, "needs_attention", "Settings changed.");
 });

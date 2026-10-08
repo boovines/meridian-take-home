@@ -545,7 +545,8 @@ export class RepairService {
       return attemptById(tx, attempt.id);
     });
   }
-  async createEvaluation(attemptId: string) {
+  async createEvaluation(attemptId: string, round = 1) {
+    if (!Number.isInteger(round) || round < 1 || round > 3) throw new DomainError(422, "INVALID_CONFIRMATION", "Confirmation round must be 1, 2, or 3.");
     return this.db.transaction(async (tx) => {
       const old = await attemptById(tx, attemptId);
       await workflow(tx, old.workflow_id, true);
@@ -557,8 +558,8 @@ export class RepairService {
         ).rows[0] as unknown as RepairSession,
         job = await jobById(tx, session.job_id);
       active(job, session);
-      if (attempt.evaluation_run_id)
-        return evaluationById(tx, attempt.evaluation_run_id);
+      const prior = (await tx.query("SELECT evaluation_run_id FROM repair_confirmations WHERE attempt_id=$1 AND round=$2", [attemptId, round])).rows[0];
+      if (prior) return evaluationById(tx, String(prior.evaluation_run_id));
       if (attempt.status !== "running" || !attempt.candidate_version_id)
         throw new DomainError(
           409,
@@ -570,8 +571,9 @@ export class RepairService {
         job,
         attempt.candidate_version_id,
         session.suite_version_id,
-        `repair-${attempt.id}`,
+        `repair-${attempt.id}-confirmation-${round}`,
       );
+      await tx.query("INSERT INTO repair_confirmations(workflow_id,attempt_id,round,evaluation_run_id) VALUES($1,$2,$3,$4)", [attempt.workflow_id, attempt.id, round, evaluation.id]);
       await tx.query(
         "UPDATE repair_attempts SET evaluation_run_id=$2 WHERE id=$1",
         [attempt.id, evaluation.id],
@@ -612,6 +614,13 @@ export class RepairService {
         ),
         expected = await suiteCases(tx, session.suite_version_id);
       const decision = regressionDecision(baseline, results, expected);
+      const confirmations = (await tx.query("SELECT c.round,e.status,e.verdict,e.execution_configuration FROM repair_confirmations c JOIN evaluation_runs e ON e.id=c.evaluation_run_id WHERE c.attempt_id=$1 ORDER BY c.round", [attempt.id])).rows;
+      const completePass = decision.accepted && evaluation.status === "completed" && evaluation.verdict === "passed";
+      if (completePass && confirmations.length < 3) {
+        await tx.query("UPDATE workflow_jobs SET phase=$2,progress=$3,updated_at=now() WHERE id=$1", [job.id, `confirming repeatability ${confirmations.length}/3`, { session_id: session.id, attempt: attempt.attempt_number, confirmations_passed: confirmations.length, confirmations_required: 3 }]);
+        return { attempt, session };
+      }
+      const confirmed = completePass && confirmations.length === 3 && confirmations.every((c, i) => c.round === i + 1 && c.status === "completed" && c.verdict === "passed" && JSON.stringify(c.execution_configuration) === JSON.stringify(confirmations[0].execution_configuration));
       await tx.query(
         "UPDATE repair_attempts SET status=$2,decision_reason=$3,finished_at=now(),attempt_token=NULL WHERE id=$1",
         [
@@ -624,12 +633,12 @@ export class RepairService {
         evaluation.verdict === "passed"
           ? null
           : repairBlocker(evaluation, results);
-      const done = decision.accepted && evaluation.verdict === "passed",
+      const done = confirmed,
         stop =
           done || !!blocker || attempt.attempt_number >= session.attempt_limit;
       const status = done ? "passed" : stop ? "needs_attention" : "running";
       const reason = done
-        ? decision.reason
+        ? "Three consecutive complete passes with the same candidate, locked suite, and execution configuration. This is demo confirmation, not a guarantee for unseen inputs."
         : blocker ||
           (stop
             ? "The three-attempt limit was reached. Inspect the remaining failures before starting another session."
@@ -758,6 +767,7 @@ export class RepairService {
           )
         ).rows
       : [];
-    return { sessions, attempts, replays };
+    const confirmations = (await this.db.query("SELECT c.*,e.status,e.verdict FROM repair_confirmations c JOIN evaluation_runs e ON e.id=c.evaluation_run_id WHERE c.workflow_id=$1 ORDER BY c.created_at,c.round", [wid])).rows;
+    return { sessions, attempts, replays, confirmations };
   }
 }

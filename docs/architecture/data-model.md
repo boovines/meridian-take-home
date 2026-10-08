@@ -294,3 +294,7 @@ This is separate from `step_executions` because a model request, its answer and 
 ### Repair replay evidence (migration 012)
 
 `repair_replays` records the bounded diagnostic calls within a repair attempt. The unique `(attempt_id, call_number)` and 1–3 constraint make the limit durable across worker retries. A row references exactly one recorded step occurrence or isolated case result, with same-workflow foreign keys. Request/result contents use existing immutable trace artifacts. An invocation token fences publication, while completed rows cannot be edited or deleted. Keeping these records separate from evaluations prevents diagnostic checks from being mistaken for acceptance evidence.
+
+### Repeatability evidence
+
+Migration 013 adds `evaluation_runs.execution_configuration`, captured once before execution, and `repair_confirmations` keyed by attempt and round (1–3). A separate relation preserves every evaluation rather than overwriting an attempt’s latest-evaluation pointer. Same-workflow foreign keys and insertion guards tie each run to the candidate, approved plan and locked suite; prior success is required before another round. A session cannot transition to passed without three complete, matching-configuration passes. Completed history is immutable.
