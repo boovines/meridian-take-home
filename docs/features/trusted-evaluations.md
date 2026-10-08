@@ -3,7 +3,7 @@
 Use **Evaluation** in `/workflows/:id/engineer` to compare a code version against verified examples. A syntax check only establishes that code can be parsed; an evaluation checks its behavior.
 
 1. Create a test suite and add full-workflow or one-step cases. Workflow cases use captured inputs; step cases accept a JSON context.
-2. Add expected values and output paths. Inspect the inputs and confirm the expected answers with **Verify inputs & answers**.
+2. Add output paths and expected values. Choose **Equals exactly**, **Contains a record**, or **Excludes a record**. Inspect the inputs and confirm the expected answers with **Verify inputs & answers**.
 3. Lock the suite, select a code version, and choose **Run full suite**.
 4. Open **Results & history** to compare values, inspect errors, or expand the step trace. Closing the page does not interrupt the work.
 
@@ -11,7 +11,7 @@ The results view keeps the case list beside its details. A pass means every chec
 
 Correct an expected answer by creating a suite revision. Earlier expectations and results remain available; revised cases need verification again. **Run these versions again** repeats the exact historical code/suite pairing as a new evaluation.
 
-When final totals do not explain a failure, add independently checked evidence comparisons in a new suite revision. For example, compare the invoice number, required fields and source document against the original page. Use a descriptive label that names that page. Preserve the existing totals; a more detailed check should diagnose a mismatch, not redefine success to match the agent. Array positions can appear as string keys in an output path, and comparisons are exact.
+When final totals do not explain a failure, add independently checked evidence comparisons in a new suite revision. For example, require a record with the original identifier and source document, regardless of where it appears in the output array. Use a descriptive label that names the inspected page. Preserve the existing totals; a more detailed check should diagnose a mismatch, not redefine success to match the agent.
 
 The operation banner allows cancellation. The Agent tab also shows the latest evaluation status for its selected version. Full-workflow human actions use scripted responses for each visit; automated tests do not wait for a person. Reports are captured without sending email.
 
@@ -23,7 +23,13 @@ The engineer checks generated behavior against independently verified expectatio
 
 ### Authoring and verification
 
-The Test cases view lets the engineer create a named suite, add cases, inspect inputs, edit or remove draft cases, verify each case, and lock the suite. Every case has a name and at least one exact comparison. A comparison selects an output path using a JSON array of keys and declares an expected JSON value. Array positions use string keys such as "0". An empty path compares the entire output. Object key order does not matter; array order does. A missing field is different from an explicit null. Comparison labels can identify the independently inspected source page. Engineers can check source evidence as well as final totals when that evidence is included in the final output; the system does not create or verify these expectations automatically.
+The Test cases view lets the engineer create a named suite, add cases, inspect inputs, edit or remove draft cases, verify each case, and lock the suite. Every case has a name and at least one comparison. A comparison selects an output path using a JSON array of keys and declares an expected JSON value. Array positions use string keys such as "0". An empty path selects the entire output.
+
+**Equals exactly** compares the complete value: object key order does not matter; array order does. A missing field differs from an explicit null. Existing assertions without an `operator` retain this behavior and are not rewritten.
+
+**Contains a record** (`contains_record`) requires the selected output to be an array with at least one object matching every expected top-level field. **Excludes a record** (`excludes_record`) requires that no such object appears. Expected values must be nonempty JSON objects; additional fields on an actual record are allowed. Fields must match within the same record. Nested objects and arrays use exact equality, without normalization, substring matching or recursive partial matching. Missing or non-array output fails both operators. An empty array passes an exclusion check but fails an inclusion check. These operators establish presence or absence, not uniqueness or document completeness. Results retain the selected array for inspection and label the expectation Required record or Forbidden record.
+
+Comparison labels can identify the independently inspected source page. Engineers can check source evidence as well as final totals when that evidence is included in the final output; the system does not create or verify these expectations automatically. Assertion operators live in the existing JSONB case definition, so no table or migration is added. Suite revision and locking rules apply to operators and expected values together.
 
 A full-workflow case selects a previously captured input and runs the frozen process from its entry point. A one-step case selects a frozen block and supplies its input, previous step outputs, and any required human response. It checks the output of that implementation in isolation, including valid routing. This does not establish full-workflow correctness.
 
@@ -53,7 +59,7 @@ The Agent tab reports the most recent evaluation of its selected code version an
 
 ### Constraints and pending work
 
-The current UI starts evaluations explicitly; generation does not start them automatically. Autonomous repair and Gmail input capture are implemented as separate features. There is no OCR benchmark library, arbitrary test-code editor, selected-case acceptance run, or import of IDE changes. Step checks currently compare JSON outputs, rather than accepting arbitrary engineer-authored test scripts. They do not accept a captured document bundle; document extraction checks require a full-workflow case. Exact comparisons do not normalize formatting or match unordered collections automatically.
+The current UI starts evaluations explicitly; generation does not start them automatically. Autonomous repair and Gmail input capture are implemented as separate features. There is no OCR benchmark library, arbitrary test-code editor, selected-case acceptance run, or import of IDE changes. Step checks currently compare JSON outputs, rather than accepting arbitrary engineer-authored test scripts. They do not accept a captured document bundle; document extraction checks require a full-workflow case. Exact comparisons do not normalize formatting; record checks must be selected explicitly and do not compare entire unordered collections.
 
 The local test executor is visibly labeled as a fixture. It verifies UI/persistence/grading behavior with known outputs and does not execute generated source. Live execution uses isolated environments. Shipment accuracy must be verified separately against supplied real inputs and ground truth.
 

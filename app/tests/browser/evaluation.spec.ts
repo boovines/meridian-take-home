@@ -58,7 +58,17 @@ test("verifies a suite, runs comparisons, and preserves results when expectation
   await post(request, `${base}/input-bundles`, {
     source_kind: "fixture",
     shipment_reference: "SYNTHETIC-001",
-    manifest: { input: { goods_failed: 1 }, message_ids: [], artifacts: [] },
+    manifest: {
+      input: {
+        goods_failed: 1,
+        records: [
+          { id: "RAW-9", source: "source-b" },
+          { id: "RAW-7", source: "source-a", page: 2 },
+        ],
+      },
+      message_ids: [],
+      artifacts: [],
+    },
   });
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
@@ -82,6 +92,27 @@ test("verifies a suite, runs comparisons, and preserves results when expectation
   await page
     .getByRole("textbox", { name: "Expected value (JSON)", exact: true })
     .fill("2");
+  for (const [operator, label, expected] of [
+    [
+      "contains_record",
+      "Preserve source identifier",
+      { id: "RAW-7", source: "source-a" },
+    ],
+    ["excludes_record", "Do not invent a suffix", { id: "RAW-7A" }],
+  ] as const) {
+    await page.getByRole("button", { name: "Add check", exact: true }).click();
+    const check = page.locator(".assertion-editor").last();
+    await check.getByLabel("Check label", { exact: true }).fill(label);
+    await check
+      .getByLabel("Output path (JSON array)", { exact: true })
+      .fill('["records"]');
+    await check
+      .getByRole("combobox", { name: "Comparison", exact: true })
+      .selectOption(operator);
+    await check
+      .getByRole("textbox", { name: "Expected value (JSON)", exact: true })
+      .fill(JSON.stringify(expected));
+  }
   await page.getByRole("button", { name: "Save case", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Lock verified suite", exact: true }),
@@ -103,6 +134,24 @@ test("verifies a suite, runs comparisons, and preserves results when expectation
   await expect(
     page.getByText("1 / 1 cases passed", { exact: false }),
   ).not.toBeVisible();
+  await expect(
+    page.getByText("Required record", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Forbidden record", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page
+      .locator(".assertion-result")
+      .filter({ hasText: "Preserve source identifier" })
+      .getByText("Pass", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page
+      .locator(".assertion-result")
+      .filter({ hasText: "Do not invent a suffix" })
+      .getByText("Pass", { exact: true }),
+  ).toBeVisible();
   await page
     .getByRole("button", { name: "Inspect step trace", exact: true })
     .click();
@@ -163,8 +212,15 @@ test("verifies a suite, runs comparisons, and preserves results when expectation
     page.getByRole("button", { name: "Lock verified suite", exact: true }),
   ).toBeDisabled();
   await page.getByRole("button", { name: "Edit case", exact: true }).click();
+  await expect(
+    page.getByRole("combobox", { name: "Comparison", exact: true }).nth(1),
+  ).toHaveValue("contains_record");
+  await expect(
+    page.getByRole("combobox", { name: "Comparison", exact: true }).nth(2),
+  ).toHaveValue("excludes_record");
   await page
     .getByRole("textbox", { name: "Expected value (JSON)", exact: true })
+    .first()
     .fill("1");
   await page.getByRole("button", { name: "Save case", exact: true }).click();
   await page

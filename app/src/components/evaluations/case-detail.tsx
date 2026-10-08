@@ -78,7 +78,13 @@ export function CaseDetail({
               )}
               <dl>
                 <div>
-                  <dt>Expected</dt>
+                  <dt>
+                    {a.operator === "contains_record"
+                      ? "Required record"
+                      : a.operator === "excludes_record"
+                        ? "Forbidden record"
+                        : "Expected"}
+                  </dt>
                   <dd>
                     <pre>{JSON.stringify(a.expected, null, 2)}</pre>
                   </dd>

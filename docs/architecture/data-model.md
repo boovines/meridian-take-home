@@ -9,7 +9,7 @@ The main domain boundaries are justified by independently edited or versioned re
 | Decision reconsidered | Revised decision | Reason |
 | --- | --- | --- |
 | Project/evaluator hashes duplicated on version rows | Keep the authoritative byte hash on `artifacts`; versions reference that immutable record. | Independent copies add a consistency obligation without a demonstrated query benefit. |
-| Custom evaluator artifact per suite | Use the trusted host’s fixed JSON-path equality grader for the demo. | Cases need immutable assertions, not generated grading code. Versioned grader artifacts are deferred; historical grades remain immutable, but future re-execution across grader changes is not guaranteed. |
+| Custom evaluator artifact per suite | Use the trusted host’s fixed JSON-path grader with equality and record-membership checks for the demo. | Cases need immutable assertions, not generated grading code. Versioned grader artifacts are deferred; historical grades remain immutable, but future re-execution across grader changes is not guaranteed. |
 | Test cases had no stale-edit version | Add a case revision; serialize case edits and suite locking through the parent suite. | Otherwise two editors can overwrite a case or change expectations while the suite is being locked. |
 | Case verification freshness | Editing a case clears its verification; adding a case starts unverified. All edits advance the suite revision, and lock checks that revision plus every case’s verification. | A prior verification cannot cover edited case content. Unchanged independently verified cases need not be reverified. |
 | Fixture responses addressed by an ambiguous visit number | Add a per-node visit number separately from the run-wide scheduling number. | Parallel execution order must not change which response a human step receives. |
@@ -98,13 +98,13 @@ A parent is necessary because a repair can continue from an older non-regressing
 
 ### 12. `evaluation_suite_versions` — keep, tighten locking
 
-One row defines a draft or locked collection of trusted expectations. Version/parent references preserve corrections. The demo uses one trusted host implementation of JSON-path equality; suites do not reference custom evaluator artifacts. Retaining grader-version identity before changing that implementation is future work.
+One row defines a draft or locked collection of trusted expectations. Version/parent references preserve corrections. The demo uses one trusted host implementation of JSON-path equality and record-membership checks; suites do not reference custom evaluator artifacts. Retaining grader-version identity before changing that implementation is future work.
 
 Verification applies to each case revision. Case edits clear verification and advance the suite revision. Lock checks that parent revision, requires at least one case with every case verified, and seals its children. Captured inputs and assertions remain unchanged during evaluation and repair.
 
 ### 13. `evaluation_cases` — keep, add concurrency protection
 
-One row is a named case owned by one suite version. `case_key` identifies the scenario across revisions; `kind` distinguishes an isolated step from a full workflow. Inputs and the assertion list have separate roles; each assertion names a JSON path and expected value. Workflow cases require a sealed bundle; small parameters and scripted responses can remain JSON.
+One row is a named case owned by one suite version. `case_key` identifies the scenario across revisions; `kind` distinguishes an isolated step from a full workflow. Inputs and the assertion list have separate roles; each assertion names a JSON path, expected value and optional comparison operator (omission means equality). Record presence/absence uses the same bounded JSONB definition; it does not need another table because its lifecycle is the case's lifecycle. Workflow cases require a sealed bundle; small parameters and scripted responses can remain JSON.
 
 Per-case revision rejects stale edits; every case mutation advances the parent suite revision and clears verification under its lock. Cloning cases on suite revision deliberately preserves history. A global mutable case library would add sharing/version complexity not required by the demo.
 

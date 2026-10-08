@@ -107,6 +107,8 @@ export function repairPrompt(
         failure_category: result.failure_category,
       })),
       locked_cases: context.cases,
+      assertion_contract:
+        "An omitted operator or equals uses exact JSON equality. contains_record requires an array containing an object with every expected top-level field exactly equal; extra fields on that record are allowed. excludes_record requires an array with no such record. Both record checks fail on missing or non-array output. Nested values compare exactly, with no normalization or fuzzy matching. Expectations are locked.",
       input_inventory: context.input_inventory,
       step_traces: traces(context.traces),
       trace_coverage: coverage(context.traces),

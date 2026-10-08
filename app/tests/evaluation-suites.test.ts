@@ -49,6 +49,13 @@ it("requires verified expectations, rejects stale edits, and preserves locked su
         path: ["shipment"],
         expected: "SYNTHETIC-001",
       },
+      {
+        key: "source",
+        label: "Original record identifier",
+        path: ["records"],
+        operator: "contains_record",
+        expected: { id: "RAW-7", source: "source-a" },
+      },
     ],
   });
   let c = await suites.addCase(f.w.id, s.id, data);
@@ -71,6 +78,7 @@ it("requires verified expectations, rejects stale edits, and preserves locked su
     case: { ...data, name: "Reviewed packet" },
   });
   expect(c.verified_at).toBeNull();
+  expect(c.assertions).toEqual(data.assertions);
   c = await suites.verifyCase(f.w.id, s.id, c.id, {
     expected_revision: c.revision,
   });
@@ -105,6 +113,7 @@ it("requires verified expectations, rejects stale edits, and preserves locked su
   expect((await suites.state(f.w.id, revision.id)).cases).toHaveLength(0);
   const old = await suites.state(f.w.id, s.id);
   expect(old.cases[0].verified_at).not.toBeNull();
+  expect(old.cases[0].assertions).toEqual(data.assertions);
   expect(old.suites.find((x) => x.id === s.id)?.state).toBe("locked");
 });
 it("rejects foreign bundles and mismatched human fixtures before cases can be verified", async () => {
