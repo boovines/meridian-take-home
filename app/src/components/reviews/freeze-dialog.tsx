@@ -110,16 +110,43 @@ export function FreezeDialog({
                 {ready.issues.map((i, k) => (
                   <li key={k}>
                     {i.message}
-                    {(i.node_id || i.connection_id) && (
-                      <button
-                        className="subtle"
-                        onClick={() => {
-                          onClose();
-                          onLocate(i);
-                        }}
-                      >
-                        Show on canvas
-                      </button>
+                    {i.repair_steps?.length ? (
+                      <ol>
+                        {i.repair_steps.map((step, index) => (
+                          <li key={index}>
+                            {step.instruction}
+                            <button
+                              className="subtle"
+                              onClick={() => {
+                                onClose();
+                                onLocate({
+                                  ...i,
+                                  node_id: step.node_id,
+                                  connection_id: undefined,
+                                });
+                              }}
+                            >
+                              Edit “
+                              {ready.board.nodes.find(
+                                (node) => node.id === step.node_id,
+                              )?.title || "block"}
+                              ”
+                            </button>
+                          </li>
+                        ))}
+                      </ol>
+                    ) : (
+                      (i.node_id || i.connection_id) && (
+                        <button
+                          className="subtle"
+                          onClick={() => {
+                            onClose();
+                            onLocate(i);
+                          }}
+                        >
+                          Show on canvas
+                        </button>
+                      )
                     )}
                   </li>
                 ))}
