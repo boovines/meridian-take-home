@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -110,23 +110,7 @@ function FlowCanvas({
   onMove,
   onAdd,
 }: Props) {
-  const frame = useRef<HTMLDivElement>(null);
-  const { fitView, screenToFlowPosition } = useReactFlow();
-  useEffect(() => {
-    if (!frame.current) return;
-    let animationFrame = 0;
-    const observer = new ResizeObserver(() => {
-      cancelAnimationFrame(animationFrame);
-      animationFrame = requestAnimationFrame(() => {
-        void fitView({ padding: 0.25, maxZoom: 1 });
-      });
-    });
-    observer.observe(frame.current);
-    return () => {
-      observer.disconnect();
-      cancelAnimationFrame(animationFrame);
-    };
-  }, [fitView]);
+  const { screenToFlowPosition } = useReactFlow();
   const [positions, setPositions] = useState<
     Record<string, { revision: number; position: { x: number; y: number } }>
   >({});
@@ -194,7 +178,7 @@ function FlowCanvas({
       });
   };
   return (
-    <div ref={frame} style={{ width: "100%", height: "100%" }}>
+    <div style={{ width: "100%", height: "100%" }}>
       <ReactFlow<ProcessNode>
         nodes={nodes}
         edges={board.connections.map((c) => ({

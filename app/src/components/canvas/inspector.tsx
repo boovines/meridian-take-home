@@ -5,15 +5,19 @@ import {
   type Board,
   type CanvasNode,
   type Connection,
+  type Workflow,
   nodeLabels,
 } from "@/domain/canvas";
 import { ErrorNotice } from "../error-notice";
 import { api, ApiError, errorMessage } from "@/lib/api";
 import { primitives } from "./primitives";
+export type SavedCanvasChange =
+  { node: CanvasNode } | { connection: Connection } | { workflow: Workflow };
+
 interface Props {
   board: Board;
   locked: boolean;
-  onSaved: () => Promise<void>;
+  onSaved: (change?: SavedCanvasChange) => Promise<void>;
   onClose: () => void;
   onDirty: (dirty: boolean) => void;
   onBusy: (busy: boolean) => void;
@@ -80,7 +84,7 @@ export function NodeInspector({
       setSaved(true);
       onDirty(false);
       setConflict(null);
-      await onSaved();
+      await onSaved({ node: n });
     } catch (e) {
       setError(errorMessage(e));
       if (e instanceof ApiError && e.code === "STALE_EDIT")
@@ -112,14 +116,18 @@ export function NodeInspector({
     onBusy(true);
     setError("");
     try {
-      await api(`/api/workflows/${board.workflow.id}/connections`, "POST", {
-        source_node_id: node.id,
-        target_node_id: target,
-        condition_text: condition,
-      });
+      const edge = await api<Connection>(
+        `/api/workflows/${board.workflow.id}/connections`,
+        "POST",
+        {
+          source_node_id: node.id,
+          target_node_id: target,
+          condition_text: condition,
+        },
+      );
       setTarget("");
       setCondition("");
-      await onSaved();
+      await onSaved({ connection: edge });
     } catch (e) {
       setError(errorMessage(e));
     } finally {
@@ -344,7 +352,7 @@ export function ConnectionInspector({
       });
       setRevision(c.revision);
       onDirty(false);
-      await onSaved();
+      await onSaved({ connection: c });
     } catch (e) {
       setError(errorMessage(e));
       if (e instanceof ApiError && e.code === "STALE_EDIT")

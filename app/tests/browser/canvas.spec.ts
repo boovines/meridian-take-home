@@ -220,3 +220,133 @@ test("drop a palette block onto a zoomed canvas and preserve its position after 
     page.locator(".process-block strong").filter({ hasText: /^Task$/ }),
   ).toBeVisible();
 });
+
+test("saved actions update the mounted canvas without refetching or resetting the viewport", async ({
+  page,
+  request,
+}) => {
+  await createWorkflow(page, `Live board ${Date.now()}`);
+  await addBlock(page, "Trigger", "Start here", "Initial instructions.");
+  await page.getByRole("button", { name: "Zoom Out", exact: true }).click();
+  const viewport = page.locator(".react-flow__viewport");
+  const transform = await viewport.getAttribute("style");
+  const firstBlock = page.locator(".process-block").first();
+  // Identity and focus are user state; a matching replacement DOM is insufficient.
+  await firstBlock.evaluate((element) =>
+    element.setAttribute("data-mounted-marker", "original"),
+  );
+  const reads: string[] = [];
+  page.on("request", (req) => {
+    if (
+      req.method() === "GET" &&
+      /\/api\/workflows\/[^/]+(?:\/reviews)?$/.test(req.url())
+    )
+      reads.push(req.url());
+  });
+  await page
+    .getByRole("textbox", { name: "Instructions", exact: true })
+    .fill("Updated in place.");
+  await page.getByRole("button", { name: "Save block", exact: true }).click();
+  await expect(firstBlock).toContainText("Updated in place.");
+  await expect(firstBlock).toHaveAttribute("data-mounted-marker", "original");
+  await expect(viewport).toHaveAttribute("style", transform!);
+  await page
+    .getByRole("button", { name: "Close details", exact: true })
+    .click();
+  await expect(
+    page.getByRole("complementary", { name: "Block details" }),
+  ).toHaveCount(0);
+  await expect(viewport).toHaveAttribute("style", transform!);
+  await addBlock(page, "Task", "Next step", "Keep the view stable.");
+  await expect(viewport).toHaveAttribute("style", transform!);
+  await page
+    .getByRole("combobox", { name: "Next block", exact: true })
+    .selectOption({ label: "Start here" });
+  await page
+    .getByLabel("When should this path be taken?")
+    .fill("Return to start");
+  await page
+    .getByRole("button", { name: "Add connection", exact: true })
+    .click();
+  await expect(page.locator(".canvas-footer")).toContainText("1 connections");
+  await expect(viewport).toHaveAttribute("style", transform!);
+  await page
+    .getByRole("button", { name: "Workflow details", exact: false })
+    .click();
+  await page.getByLabel("Workflow name").fill("Updated workflow title");
+  await page.getByRole("button", { name: "Save workflow details" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Updated workflow title" }),
+  ).toBeVisible();
+  await expect(viewport).toHaveAttribute("style", transform!);
+  await page.locator(".react-flow__edge").dispatchEvent("click");
+  await page
+    .getByRole("textbox", { name: "Condition", exact: true })
+    .fill("Try again after clarification");
+  await page
+    .getByRole("button", { name: "Save connection", exact: true })
+    .click();
+  await expect(page.locator(".react-flow__edge-text")).toHaveText(
+    "Try again after clarification",
+  );
+  await expect(viewport).toHaveAttribute("style", transform!);
+  expect(reads).toEqual([]);
+  const board = await (
+    await request.get(`/api/workflows/${page.url().split("/").at(-1)}`)
+  ).json();
+  expect(board.workflow.name).toBe("Updated workflow title");
+  expect(board.nodes[0].instructions).toBe("Updated in place.");
+  expect(board.connections[0].condition_text).toBe(
+    "Try again after clarification",
+  );
+  await page
+    .getByRole("button", { name: "Remove connection", exact: true })
+    .click();
+  await expect(page.locator(".canvas-footer")).toContainText("0 connections");
+  await expect(viewport).toHaveAttribute("style", transform!);
+  await page
+    .locator(".process-block strong")
+    .filter({ hasText: "Next step" })
+    .click();
+  await page.getByRole("button", { name: "Remove block", exact: true }).click();
+  await page.getByRole("button", { name: "Remove block", exact: true }).click();
+  await expect(page.locator(".canvas-footer")).toContainText("1 blocks");
+  await expect(viewport).toHaveAttribute("style", transform!);
+});
+
+test("a rejected save preserves the draft and canvas until a successful retry", async ({
+  page,
+}) => {
+  await createWorkflow(page, `Failed save ${Date.now()}`);
+  await addBlock(page, "Task", "Saved title", "Saved instructions.");
+  await page.route("**/nodes/*", async (route) => {
+    if (route.request().method() !== "PATCH") return route.continue();
+    await route.fulfill({
+      status: 503,
+      json: {
+        error: { code: "UNAVAILABLE", message: "Please retry this save." },
+      },
+    });
+  });
+  await page
+    .getByRole("textbox", { name: "Instructions", exact: true })
+    .fill("Keep this draft.");
+  await page.getByRole("button", { name: "Save block", exact: true }).click();
+  await expect(page.getByRole("main").getByRole("alert")).toContainText(
+    "Please retry this save.",
+  );
+  await expect(
+    page.getByRole("textbox", { name: "Instructions", exact: true }),
+  ).toHaveValue("Keep this draft.");
+  await expect(page.locator(".process-block")).toContainText(
+    "Saved instructions.",
+  );
+  await page.unroute("**/nodes/*");
+  await page.getByRole("button", { name: "Save block", exact: true }).click();
+  await expect(page.locator(".process-block")).toContainText(
+    "Keep this draft.",
+  );
+  await expect(
+    page.getByRole("button", { name: "Saved", exact: true }),
+  ).toBeDisabled();
+});
