@@ -93,7 +93,7 @@ The first command bundles workflows without credentials and runs in CI. The last
 | `../.runtime` | Ignored runtime databases, certificates, captured inputs and generated artifacts |
 | `../work` | Ignored temporary verification renders and handoff-building tools; not application code |
 
-ESLint rejects inward dependencies from domain to application layers, browser imports of server/worker code, and runtime I/O imports in deterministic workflow modules. Type-only activity imports remain allowed.
+ESLint rejects inward dependencies from domain to application layers, browser imports of server/worker code, and runtime I/O imports in deterministic workflow modules. Node built-ins are restricted in both bare and `node:` forms, including subpaths. Type-only workflow imports remain allowed.
 
 Keep shared modules small and named for their responsibility. Split growing feature modules when another responsibility appears; do not add empty architectural folders or a catch-all utilities file.
 
