@@ -35,7 +35,7 @@ npm run test:browser
 
 Worker cancellation tests also start a temporary local Temporal server through the official testing SDK. The SDK downloads and caches its development-server binary on first use; tests tear it down afterward and never connect to the configured cloud namespace. This regression runs in the same `npm test` command in GitHub Actions.
 
-CI runs lint, typecheck, production build, Temporal workflow bundling, service/domain tests against PostgreSQL 17, and browser journeys through authoring, review, generation, evaluation, human responses and report preview. It needs no Gmail or model credentials.
+CI exposes separate static/worker, full-suite PGlite, full-suite PostgreSQL 17, and production-build/browser checks. Browser journeys cover authoring, review, generation, evaluation, human responses and report preview. Every open PR is eligible, including a stacked PR based on another feature branch. The existing required `app` check aggregates these results and fails if any check fails, is cancelled, or is skipped. It needs no Gmail or model credentials. Download JUnit results and browser failure traces from the workflow's artifacts; see [the check map](../docs/verification.md).
 
 ## Implementation boundaries
 
