@@ -18,6 +18,8 @@ Checked October 8 against the [original assignment](https://app.notion.com/p/Mer
 
 The additional v17 measurement under bounded token-count retries completed 23/24 cases with one Temporal heartbeat timeout and no assertion failures in its first run. It cannot count toward confirmation, and no second round was started. Neither infrastructure error is a correct business outcome. The original results and tests are preserved.
 
+A separate sequence under the subsequently changed, recorded heartbeat policy has one complete 24/24-case, 207/207-assertion pass; its second round is in progress. Earlier passes are excluded from this sequence. Independent repeatability measurements do not alter the earlier repair session's status or retained baseline.
+
 ## Exact local demonstration
 
 Start from the combined PR-stack tip using [app setup](../../app/README.md). Run the web app on port 3100 and keep the Temporal worker running. No hosted URL is required for this handoff.
@@ -35,4 +37,4 @@ The repository contains setup, current system diagrams, schema rationale, produc
 
 The minimum product loop is demonstrated. Do not describe the service as production-ready or the shipment implementation as repeatably confirmed. Remaining issues are fresh document/model variability, infrastructure interruptions, and an incorrect page citation outside the locked assertions. LlamaCloud comparison was paused at Justin's request to prioritize this minimum; its partial field-check results do not justify switching the default provider.
 
-Latest verification: 178 local fixture tests passed with one PostgreSQL-only skip; lint, typecheck, worker bundling and documentation checks passed. PR 45's combined stack also passed PostgreSQL CI and the production build/browser journeys. These checks establish the tested application behavior, not live LLM accuracy. Feature PRs remain open and unmerged.
+Latest verification: 179 local fixture tests passed with one PostgreSQL-only skip; lint, typecheck, worker bundling and documentation checks passed. PR 47's combined stack also passed PostgreSQL CI and the production build/browser journeys. These checks establish the tested application behavior, not live LLM accuracy. Feature PRs remain open and unmerged.
