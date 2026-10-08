@@ -541,6 +541,12 @@ test("edits and decides each proposed block independently while preserving unsav
   expect(await proposedText(first)).toBe(
     "Require the five approved invoice identifiers. Include the required identifiers. Preserve source references.",
   );
+  const editorPane = await first.locator(".proposal-text-editor").boundingBox();
+  const diffPane = await first.locator(".proposal-diff-preview").boundingBox();
+  expect(Math.abs(editorPane!.height - diffPane!.height)).toBeLessThan(1);
+  expect(Math.abs(editorPane!.width - diffPane!.width)).toBeLessThan(1);
+  expect(Math.abs(editorPane!.y - diffPane!.y)).toBeLessThan(1);
+  expect(diffPane!.x).toBeGreaterThan(editorPane!.x + editorPane!.width);
   await first.scrollIntoViewIfNeeded();
   await page.screenshot({
     path: testInfo.outputPath("editable-block-proposals.png"),
