@@ -16,7 +16,7 @@ The main domain boundaries are justified by independently edited or versioned re
 | Model/settings sufficient to explain review behavior | Add `reviewer_version`, identifying the deployed prompt/application revision. | The same model can produce different review behavior with a changed prompt. This is provenance, not guaranteed reproducibility. |
 | Custom leases and parallel coordination implicitly required | Temporal owns scheduling and per-occurrence fork/join state; omit SQL coordination tables and leases. | The database stores inspection history and idempotent dispatch intents without becoming a second scheduler. |
 
-The executable schema has **23 application tables**: four canvas, four review, ten engineering/evaluation, and five runtime/artifact tables. The two proposed parallel coordination tables were intentionally omitted because Temporal owns that state. The count follows record lifecycles; it is not a scalability target or a count of services.
+The executable schema has **24 application tables**: four canvas, four review, ten engineering/evaluation, and six runtime/artifact tables. The two proposed parallel coordination tables were intentionally omitted because Temporal owns that state. The count follows record lifecycles; it is not a scalability target or a count of services.
 
 ## How a table earns its place
 
@@ -138,7 +138,7 @@ One row records one attempt's starting baseline, diagnosis, optional candidate/e
 
 Unique session/attempt number and unique candidate identity preserve ordering and provenance. Neither code versions nor evaluations alone capture generation failures, rejected candidates, or why the baseline did not advance. Diagnosis is model-produced advice; the trusted result and acceptance rule determine promotion.
 
-## Runtime and artifacts: five tables
+## Runtime and artifacts: six tables
 
 ### 19. `artifacts` — keep
 
@@ -284,3 +284,9 @@ Migration 009 adds two tables with distinct lifecycles:
 Source bytes remain in immutable artifacts, code identity in `implementation_versions`, and trusted results in ordinary evaluation tables. Those records are referenced rather than copied into repair rows. Diagnosis is bounded attempt-owned JSON (summary, affected nodes, change descriptions), since it is displayed together and does not control acceptance. A token and invocation count fence delayed model responses without introducing a SQL scheduler. Finished rows cannot be rewritten; terminal immutability is enforced in PostgreSQL as well as service logic.
 
 The parent workflow lock serializes brief mutations and the active-job unique index prevents competing operations. Network work is outside those transactions. Each session is bounded to three attempt rows; each candidate still carries the evaluation suite's bounded case/trace costs. History reads return 20 session summaries and at most three selected attempts. These choices bound individual operations and support indexed access; they do not prove production capacity. Long-term artifact retention, paginated histories and workload measurement remain future scope.
+
+## 24. `execution_audit_events` — host interaction evidence
+
+Migration 010 adds one immutable row per observed interaction boundary. A row references exactly one step occurrence or isolated evaluation result, an invocation token and sequence, its event kind, bounded summary and immutable payload artifact. Composite foreign keys enforce workflow ownership; `(attempt_token, sequence)` prevents duplicate publication. Indexed step/case lookups support on-demand inspection without loading all workflow history. SQL guards require a ready trace artifact and the current active invocation; the service serializes publication against cancellation with the workflow lock.
+
+This is separate from `step_executions` because a model request, its answer and generated postprocessing have independent failure boundaries within one visit. Keeping only a final output loses the evidence needed when a later boundary fails. Append-only events preserve earlier boundaries through retries without overwriting an entire trace JSON array. Payloads use existing artifact storage, capped at 2 MB per event; at most six events per host invocation and the existing two-invocation limit bound growth. Historical visits without events remain valid. The audit is diagnostic evidence, not another scheduler or an alternative grader. Transport credentials and hidden reasoning are excluded. Production retention, orphan-artifact cleanup and workload sizing remain future work.

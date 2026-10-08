@@ -1,4 +1,7 @@
-import type { ImplementationVersion } from "../../src/domain/engineering";
+import type {
+  ImplementationVersion,
+  Method,
+} from "../../src/domain/engineering";
 import { randomUUID } from "node:crypto";
 import type { Database } from "../../src/server/database";
 import { CanvasService } from "../../src/server/canvas/service";
@@ -24,6 +27,7 @@ export async function runtimeFixture(
     name: string;
     desired_outcome: string;
     instructions: Partial<Record<NodeType, string>>;
+    methods?: Partial<Record<NodeType, Method>>;
   },
 ) {
   const canvas = new CanvasService(db),
@@ -66,11 +70,14 @@ export async function runtimeFixture(
     request_key: randomUUID(),
     parent_plan_version_id: null,
   });
-  for (const s of (await plans.state(w.id)).steps)
+  for (const s of (await plans.state(w.id)).steps) {
+    const method=options?.methods?.[nodes.find(n=>n.id===s.node_id)!.type];
+    const selected=method?await plans.editStep(w.id,plan.id,s.node_id,{expected_revision:s.revision,selected_method:method}):s;
     await plans.editStep(w.id, plan.id, s.node_id, {
-      expected_revision: s.revision,
+      expected_revision: selected.revision,
       approved: true,
     });
+  }
   await plans.approve(w.id, plan.id, {
     expected_revision: (await plans.state(w.id)).plans[0].revision,
   });

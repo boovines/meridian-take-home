@@ -69,6 +69,26 @@ async function evaluationTraces(
     )
   ).rows;
 }
+async function evaluationAudits(
+  db: Queryable,
+  workflowId: string,
+  evaluationId: string,
+  caseIds?: string[],
+) {
+  return (
+    await db.query(
+      `SELECT count(*) OVER() AS total_events,a.*,c.case_id,COALESCE(s.node_id,t.node_id) AS node_id
+    FROM execution_audit_events a
+    LEFT JOIN step_executions s ON s.id=a.step_execution_id
+    LEFT JOIN workflow_runs r ON r.id=s.run_id
+    JOIN evaluation_case_results c ON c.id=COALESCE(a.case_result_id,r.evaluation_case_result_id)
+    JOIN evaluation_cases t ON t.id=c.case_id
+    WHERE a.workflow_id=$1 AND c.evaluation_run_id=$2 AND ($3::uuid[] IS NULL OR c.case_id=ANY($3::uuid[]))
+    ORDER BY (a.kind<>'failure'),a.created_at,a.sequence LIMIT 300`,
+      [workflowId, evaluationId, caseIds ?? null],
+    )
+  ).rows;
+}
 export class RepairService {
   constructor(private db: Database) {}
   async start(wid: string, raw: z.infer<typeof startRepairInput>) {
@@ -398,6 +418,14 @@ export class RepairService {
                 diagnosticCases,
               )
             : [],
+          candidate_audit_events: prior.evaluation_run_id
+            ? await evaluationAudits(
+                this.db,
+                session.workflow_id,
+                prior.evaluation_run_id,
+                diagnosticCases,
+              )
+            : [],
           candidate_results: results.map((result) => ({
             case_id: result.case_id,
             outcome: result.outcome,
@@ -420,6 +448,11 @@ export class RepairService {
       cases,
       input_inventory: inventory,
       traces: await evaluationTraces(
+        this.db,
+        session.workflow_id,
+        attempt.baseline_evaluation_id,
+      ),
+      audit_events: await evaluationAudits(
         this.db,
         session.workflow_id,
         attempt.baseline_evaluation_id,

@@ -19,6 +19,8 @@ test("captures a packet, records a human decision, previews a report, and retrie
     runs: Record<string, unknown>[] = [],
     answered = false,
     requestId = crypto.randomUUID();
+  const auditId = crypto.randomUUID();
+  let auditReads = 0;
   const state = () => ({
     runs,
     steps: runs.length
@@ -168,6 +170,28 @@ test("captures a packet, records a human decision, previews a report, and retrie
       return route.fulfill({ json: state() });
     }
     if (path.includes("/runs/")) return route.fulfill({ json: state() });
+    if (path.endsWith("/audit-events")) {
+      auditReads++;
+      return route.fulfill({
+        json: {
+          events: [
+            {
+              id: auditId,
+              kind: "model_response",
+              attempt_token: "12345678-test",
+              sequence: 3,
+              summary: { elapsed_ms: 1200 },
+            },
+          ],
+        },
+      });
+    }
+    if (path.endsWith(`/audit-events/${auditId}`))
+      return route.fulfill({
+        json: {
+          payload: { delivery_date: "2026-10-09", source: "schedule.pdf" },
+        },
+      });
     return route.fulfill({
       status: 404,
       json: {
@@ -227,6 +251,20 @@ test("captures a packet, records a human decision, previews a report, and retrie
   await expect(page.getByRole("button", { name: /Send report/ })).toHaveCount(
     0,
   );
+  expect(auditReads).toBe(0);
+  await page.getByText("Step history · 1 visits", { exact: true }).click();
+  await page.getByText(/1\. Review shipment · visit 1 · completed/).click();
+  await page.getByText("Execution audit", { exact: true }).click();
+  await page
+    .getByText("Model response before postprocessing · 1200 ms", {
+      exact: true,
+    })
+    .click();
+  await expect(
+    page.locator("pre").filter({ hasText: "schedule.pdf" }),
+  ).toContainText("2026-10-09");
+  expect(auditReads).toBe(1);
+  await page.locator('.run-trace').screenshot({path:testInfo.outputPath('execution-audit.png')});
   await page.setViewportSize({ width: 390, height: 844 });
   expect(
     await page

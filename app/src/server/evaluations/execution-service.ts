@@ -19,10 +19,13 @@ import {
 } from "../runtime/invoke-step";
 import { suiteCases } from "./suite-service";
 import { EvaluationService, evaluationById } from "./evaluation-service";
+import { ArtifactService } from "../artifacts/service";
+import { ExecutionAuditService } from "../runtime/audit-service";
 export class EvaluationExecutionService {
   constructor(
     private db: Database,
     private versions = new VersionService(db),
+    private artifacts = new ArtifactService(db),
   ) {}
   async build(
     id: string,
@@ -116,6 +119,12 @@ export class EvaluationExecutionService {
         c.input_data as Record<string, Json>,
         adapters,
         signal,
+        undefined,
+        new ExecutionAuditService(this.db, this.artifacts).recorder(
+          result.workflow_id,
+          { case_result_id: id },
+          token,
+        ),
       );
       selectRoutes(
         node,

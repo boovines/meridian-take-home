@@ -39,7 +39,7 @@ beforeAll(async () => {
   versions = new VersionService(db, artifacts);
   suites = new SuiteService(db);
   evals = new EvaluationService(db);
-  execution = new EvaluationExecutionService(db, versions);
+  execution = new EvaluationExecutionService(db, versions, artifacts);
 });
 afterAll(async () => {
   await db?.close();
@@ -149,7 +149,7 @@ it("records a full suite with independent passes, assertion failures and executi
     reason: async () => ({}),
   };
   const runs = new RunService(db),
-    steps = new StepService(db, versions);
+    steps = new StepService(db, versions, artifacts);
   for (const result of results) {
     const task = await evals.beginCase(result.id);
     if (task.skip) throw new Error();
@@ -192,7 +192,9 @@ it("records a full suite with independent passes, assertion failures and executi
   const manual = await new RunService(db).state(f.w.id, undefined, "manual");
   expect(manual.runs).toHaveLength(1);
   expect(manual.runs[0].id).toBe(f.run.id);
-  expect((await new RunService(db).state(f.w.id)).runs.length).toBeGreaterThan(1);
+  expect((await new RunService(db).state(f.w.id)).runs.length).toBeGreaterThan(
+    1,
+  );
   const state = await evals.state(f.w.id, evaluation.id);
   expect(state.runs[0]).toMatchObject({
     status: "completed",

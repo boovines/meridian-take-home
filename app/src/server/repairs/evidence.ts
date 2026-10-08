@@ -41,7 +41,9 @@ export function inputInventory(bundles: Record<string, unknown>[]) {
       shipment_reference: bundle.shipment_reference,
       documents: Array.isArray(documents)
         ? documents
-            .filter((d) => d && typeof d === "object" && captured.has(d.artifact_id))
+            .filter(
+              (d) => d && typeof d === "object" && captured.has(d.artifact_id),
+            )
             .map((d) => ({
               artifact_id: d.artifact_id,
               name: d.name,
@@ -79,7 +81,10 @@ export function repairPrompt(
     );
   // Reserve a bounded trace pool alongside full source, case definitions and grades.
   // A multi-case suite can exceed 200 KB before any useful outputs are included.
-  let outputLimit = Math.min(6000, Math.floor(160000 / Math.max(1, traceCount)));
+  let outputLimit = Math.min(
+    6000,
+    Math.floor(160000 / Math.max(1, traceCount)),
+  );
   while (outputLimit >= 64) {
     const traces = (rows: Record<string, unknown>[]) =>
       rows.map(({ output_data, ...trace }) => ({
@@ -111,6 +116,9 @@ export function repairPrompt(
         "An omitted operator or equals uses exact JSON equality. contains_record requires an array containing an object with every expected top-level field exactly equal; extra fields on that record are allowed. excludes_record requires an array with no such record. Both record checks fail on missing or non-array output. Nested values compare exactly, with no normalization or fuzzy matching. Expectations are locked.",
       input_inventory: context.input_inventory,
       step_traces: traces(context.traces),
+      execution_audit_events: context.audit_events,
+      execution_audit_contract:
+        "Host-recorded invocation events preserve the generated initial output, actual model request with selected document hashes/configuration, raw parsed model response, postprocessing output, and failures. Use inspectExecutionAudit(event_id,path) to read payloads, at most three inspections per attempt; paths are JSON keys or array indexes. No audit for an older run means unavailable history, not that no model was called. Requests without later response events are incomplete. Audit is evidence, never a grading oracle. Lists include at most 300 events per evaluation; total_events reports coverage.",
       trace_coverage: coverage(context.traces),
       previous_attempts: context.previous_attempts.map(
         ({ candidate_traces, ...attempt }) => ({

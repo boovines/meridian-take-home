@@ -98,6 +98,9 @@ erDiagram
     evaluation_case_results o|--o| workflow_runs : workflow_case
     workflow_runs ||--o{ step_executions : visits
     step_executions ||--o| human_requests : awaits
+    step_executions ||--o{ execution_audit_events : records
+    evaluation_case_results ||--o{ execution_audit_events : records
+    artifacts ||--o| execution_audit_events : stores
 ```
 
 Artifacts are immutable file metadata referenced by code versions and captured input manifests; large diagnostic files can use the same registry. Manifests validate artifact existence, readiness, and ownership before sealing; JSON references do not have automatic foreign-key protection. `node_id` is a definition identity; `step_execution_id` is one visit. Each Temporal join belongs to one split visit so arrivals cannot leak across loop iterations. Step branch references include the split scheduling key and entry connection.
@@ -119,7 +122,7 @@ Unique request/scheduling keys prevent duplicate logical actions. Worker fencing
 
 ## Efficiency and scope
 
-The executable schema has 23 application tables: four canvas, four review, ten engineering/evaluation, and five runtime/artifact records. Temporal owns parallel coordination, so the two proposed coordination tables are omitted. One nodes table covers every primitive type; one discussion model covers notes and findings; one jobs mechanism admits expensive operations. This is a set of record boundaries, not 23 services.
+The executable schema has 24 application tables: four canvas, four review, ten engineering/evaluation, and six runtime/artifact records. Temporal owns parallel coordination, so the two proposed coordination tables are omitted. One nodes table covers every primitive type; one discussion model covers notes and findings; one jobs mechanism admits expensive operations. This is a set of record boundaries, not 24 services.
 
 One row per node does not by itself cause a scaling problem. Load a board with workflow-filtered queries; update a single node by key; query incoming/outgoing connections with endpoint indexes. An in-memory map helps rendering and traversal after loading the graph but does not replace persistent constraints or concurrency control. Do not store duplicate adjacency lists on nodes when connections already define the graph.
 

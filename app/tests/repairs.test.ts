@@ -11,6 +11,8 @@ import {
   EvaluationService,
   resultsByEvaluation,
 } from "../src/server/evaluations/evaluation-service";
+import { ExecutionAuditService } from "../src/server/runtime/audit-service";
+import { repairAuditBudget, RepairAuditReader } from "../src/server/repairs/audit";
 import { RepairService } from "../src/server/repairs/service";
 import { repairDocumentBudget, RepairDocumentReader } from "../src/server/repairs/documents";
 import { RepairGenerationService, type RepairGenerator } from "../src/server/repairs/generation-service";
@@ -69,15 +71,20 @@ const generator = {
     project: fixtureSources(c.spec.board, c.steps.filter(s => c.spec.board.nodes.some(n => n.id === s.node_id && n.type === "outcome"))),
   }),
 };
-async function record(jobId: string, evaluationId: string, actual: Json) {
+async function record(jobId: string, evaluationId: string, actual: Json, withAudit = false) {
   const ready = (await evals.prepare(jobId, evaluationId))!;
   for (const result of ready.results) {
     await evals.beginCase(result.id);
+    if (withAudit) {
+      const token = randomUUID();
+      await db.query("UPDATE evaluation_case_results SET attempt_token=$2 WHERE id=$1", [result.id, token]);
+      await new ExecutionAuditService(db, artifacts).recorder(result.workflow_id, { case_result_id: result.id }, token)("model_response", actual);
+    }
     await evals.recordCase(result.id, { actual });
   }
   await evals.finish(jobId, undefined, false, evaluationId);
 }
-async function prepared(withWorkflowCase = false, withDocument: boolean | Buffer = false) {
+async function prepared(withWorkflowCase = false, withDocument: boolean | Buffer = false, withAudit = false) {
   const f = await runtimeFixture(db, artifacts, ["trigger", "outcome"]);
   await f.runs.finish(f.job.id, { status: "cancelled" });
   if (withDocument) {
@@ -166,7 +173,7 @@ async function prepared(withWorkflowCase = false, withDocument: boolean | Buffer
   await record(initial.job.id, initial.evaluation.id, {
     shipment: "SYNTHETIC-001",
     failed_goods: 2,
-  });
+  }, withAudit);
   const request = {
     request_key: randomUUID(),
     baseline_evaluation_id: initial.evaluation.id,
@@ -479,9 +486,9 @@ it.each(["regressing", "still-failing"])(
     const evaluation = await repairs.createEvaluation(first.id);
     const ready = (await evals.prepare(job.id, evaluation.id))!;
     const versions = new VersionService(db, artifacts);
-    const execution = new EvaluationExecutionService(db, versions);
+    const execution = new EvaluationExecutionService(db, versions, artifacts);
     const runs = new RunService(db),
-      steps = new StepService(db, versions);
+      steps = new StepService(db, versions, artifacts);
     const actual = {
       shipment: scenario === "regressing" ? "WRONG" : "SYNTHETIC-001",
       failed_goods: scenario === "regressing" ? 1 : 2,
@@ -540,7 +547,7 @@ it.each(["regressing", "still-failing"])(
       second.id,
       {
         ...generator,
-        generate: async (context, baseline, _signal, sources) => {
+        generate: async (context, baseline, _signal, sources, _readDocument, readAudit) => {
           observed = true;
           expect(baseline).toEqual(retained);
           expect(sources).toEqual([
@@ -557,6 +564,10 @@ it.each(["regressing", "still-failing"])(
             },
           ]);
           const prior = context.previous_attempts[0];
+          const audit = prior.candidate_audit_events.find(event => event.node_id === changedNode && event.step_execution_id && event.kind === 'initial_output');
+          expect(audit).toBeDefined();
+          expect(await readAudit(String(audit!.id), ['output'])).toMatchObject({value: actual, truncated: false});
+          await expect(readAudit(randomUUID(), [])).rejects.toMatchObject({code: 'AUDIT_ACCESS_DENIED'});
           expect(prior.candidate_traces).toEqual(
             expect.arrayContaining([
               expect.objectContaining({
@@ -892,4 +903,60 @@ it("fences document reads from a superseded generation invocation", async () => 
   expect(read).toHaveBeenCalledTimes(1);
   expect(documents.inspected).toEqual([]);
   await repairs.finish(job.id, "cancelled", "Fencing verification completed");
+});
+
+
+it.each([1, 3])("shares audit allowance across generation retries after %i inspections", async (initialReads) => {
+  const { job } = await prepared(false, false, true);
+  const attempt = await repairs.beginAttempt(job.id, 1);
+  let invocation = 0;
+  const adapter: RepairGenerator = {
+    ...generator,
+    generate: async (context, _baseline, _signal, _previous, _documents, readAudit) => {
+      const id = String(context.audit_events[0].id);
+      if (++invocation === 1) {
+        for (let i = 0; i < initialReads; i++) await readAudit(id, []);
+        throw new Error("Transient failure after audit inspection");
+      }
+      const results = await Promise.allSettled(Array.from({ length: 3 }, () => readAudit(id, [])));
+      expect(results.filter(r => r.status === "fulfilled")).toHaveLength(3 - initialReads);
+      for (const result of results) {
+        if (result.status === "rejected") expect(result.reason).toMatchObject({ code: "AUDIT_READ_LIMIT" });
+      }
+      return generator.generate(context);
+    },
+  };
+  await expect(generation.run(attempt.id, adapter, AbortSignal.timeout(10000))).rejects.toThrow("Transient failure");
+  const recovered = await new RepairGenerationService(db, artifacts).run(attempt.id, adapter, AbortSignal.timeout(10000));
+  expect(recovered.candidate_version_id).toBeTruthy();
+  const row = (await db.query("SELECT invocation_count,audit_read_count FROM repair_attempts WHERE id=$1", [attempt.id])).rows[0];
+  expect(row).toMatchObject({ invocation_count: 2, audit_read_count: 3 });
+});
+
+it("blocks audit evidence returned after an invocation is superseded", async () => {
+  const { f, job } = await prepared(false, false, true);
+  const attempt = await repairs.beginAttempt(job.id, 1);
+  const first = await repairs.claimGeneration(attempt.id);
+  const context = await repairs.generationContext(attempt.id);
+  const id = String(context.audit_events[0].id);
+  let release!: () => void;
+  let started!: () => void;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  const reading = new Promise<void>(resolve => { started = resolve; });
+  const read = vi.fn(async () => {
+    started();
+    await pending;
+    return new ExecutionAuditService(db, artifacts).read(f.w.id, id);
+  });
+  const reader = new RepairAuditReader(f.w.id, new Set([id]), { read }, AbortSignal.timeout(10000), repairAuditBudget(db, attempt.id, first.token!));
+  const inFlight = reader.read(id, []);
+  await reading;
+  await repairs.claimGeneration(attempt.id);
+  const rejected = expect(inFlight).rejects.toMatchObject({ code: "STALE_REPAIR_RESULT" });
+  release();
+  await rejected;
+  await expect(reader.read(id, [])).rejects.toMatchObject({ code: "STALE_REPAIR_RESULT" });
+  expect(read).toHaveBeenCalledTimes(1);
+  expect(reader.inspected).toEqual([]);
+  await repairs.finish(job.id, "cancelled", "Audit fencing verified");
 });

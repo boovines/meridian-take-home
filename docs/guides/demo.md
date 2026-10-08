@@ -6,6 +6,8 @@ The demo uses the same whiteboard, generation, runtime and evaluation services a
 
 Follow [app setup](../../app/README.md). Start the web app and the Temporal worker in separate terminals. Use the configured Supabase database, OpenAI project, read-only Composio Gmail connection, and Vercel Sandbox project. Keep source documents and expected-answer manifests in ignored local storage. A local demo can use local artifacts; hosting needs the configured private Supabase storage and access protection.
 
+The successful October 7 supplied-suite run used `gpt-5.4` for both engineering and document interpretation. To reproduce that configuration, start the worker with `OPENAI_ENGINEERING_MODEL=gpt-5.4 OPENAI_RUNTIME_MODEL=gpt-5.4 npm run worker` (or set those values in `.env.local`). The example environment defaults to the cheaper `gpt-5.4-mini`; it is a different model configuration and does not inherit the measured result. A complete pass is evidence from that run, not a guarantee of identical future model responses.
+
 From `app/`, `npm run demo:seed -- --create --incomplete` creates an intentionally incomplete five-block draft. Omit `--incomplete` to start with the full example requirements. Each invocation creates a new workflow and prints its path. It does not review, freeze, capture mail, or execute anything automatically.
 
 ## Process-owner walkthrough
@@ -26,7 +28,7 @@ If a customer clarifies requirements after freeze, create a new workflow for thi
 1. Create an implementation plan. Request method suggestions, choose Agent for PDF interpretation and Code for deterministic validation/reporting, approve each choice, then approve the plan. Selecting the input packet already happens before execution; the trigger does not need an extra human approval merely because input selection was manual.
 2. Generate the agent. Show its actual background phase, code files, source history and download. Syntax validation is separate from business correctness.
 3. Under **Agent → Run workflow**, search existing Gmail, select all related invoice and certificate emails, enter the shipment reference, and capture them. Separate certificate replies belong in the same packet. Capture does not start a run.
-4. In **Evaluation**, create cases using fixed captured inputs and independently verified totals. Verify every case, then lock the suite. Run the full suite against the chosen code version. Each result includes expected/actual values and a step trace; independent cases continue after an error.
+4. In **Evaluation**, create cases using fixed captured inputs and independently verified totals. Verify every case, then lock the suite. Run the full suite against the chosen code version. Each result includes expected/actual values and a step trace; independent cases continue after an error. Expand **Execution audit** within a step to compare the recorded model request and selected documents, parsed response, and generated postprocessing output. Older runs may not have this evidence.
 5. Select an eligible failed evaluation and start **Repair and rerun**. Show the diagnosis, changed code, candidate results and retained baseline. The session stops after three attempts or earlier if it passes or needs an engineer decision. A regressing attempt remains visible but does not become the next baseline.
 6. Start a manual run using a captured packet and the chosen code version. Inspect the seven totals, error details and report preview. Nothing is sent. Human blocks, when present in a workflow, pause for a fresh response on every visit.
 

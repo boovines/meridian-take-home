@@ -8,7 +8,10 @@ import { StepService } from "../server/runtime/step-service";
 import { answerScriptedHuman as scriptedAnswer } from "../server/evaluations/scripted-human";
 import { HumanService } from "../server/runtime/human-service";
 import { invokeInSandbox } from "../server/integrations/sandbox-step";
-import { reasonForStep } from "../server/integrations/openai-step";
+import {
+  reasonForStep,
+  runtimeModelConfiguration,
+} from "../server/integrations/openai-step";
 export async function prepareExecution(id: string) {
   return new RunService(await getDatabase()).prepare(id);
 }
@@ -30,7 +33,11 @@ export async function executeOccurrence(data: ScheduleStep, resume = false) {
     heartbeat();
     return await new StepService(await getDatabase()).execute(
       data,
-      { invoke: invokeInSandbox, reason: reasonForStep },
+      {
+        invoke: invokeInSandbox,
+        reason: reasonForStep,
+        model: runtimeModelConfiguration(),
+      },
       AbortSignal.any([cancellationSignal(), AbortSignal.timeout(150000)]),
       resume,
     );

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { api, errorMessage } from "@/lib/api";
 import type { RunRecord, StepRecord, HumanRequest } from "@/domain/runtime";
 import "./runtime.css";
+import { AuditTrail } from "./audit-trail";
 export interface RunState {
   runs: RunRecord[];
   steps: StepRecord[];
@@ -69,6 +70,7 @@ export function RunTrace({
           )}
           <h4>Output</h4>
           <pre tabIndex={0}>{JSON.stringify(s.output_data, null, 2)}</pre>
+          <AuditTrail workflowId={workflowId} stepId={s.id} />
           {state.human_requests
             .filter((h) => h.step_execution_id === s.id)
             .map((h) => (

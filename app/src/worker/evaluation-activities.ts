@@ -6,7 +6,10 @@ import { EvaluationService } from "../server/evaluations/evaluation-service";
 import { EvaluationExecutionService } from "../server/evaluations/execution-service";
 import { validateInSandbox } from "../server/integrations/sandbox-project";
 import { invokeInSandbox } from "../server/integrations/sandbox-step";
-import { reasonForStep } from "../server/integrations/openai-step";
+import {
+  reasonForStep,
+  runtimeModelConfiguration,
+} from "../server/integrations/openai-step";
 export async function prepareEvaluation(id: string, evaluationId?: string) {
   const context = await new EvaluationService(await getDatabase()).prepare(
     id,
@@ -87,7 +90,11 @@ export async function evaluateStepCase(id: string) {
     heartbeat();
     await new EvaluationExecutionService(await getDatabase()).step(
       id,
-      { invoke: invokeInSandbox, reason: reasonForStep },
+      {
+        invoke: invokeInSandbox,
+        reason: reasonForStep,
+        model: runtimeModelConfiguration(),
+      },
       AbortSignal.any([cancellationSignal(), AbortSignal.timeout(150000)]),
     );
   } finally {
