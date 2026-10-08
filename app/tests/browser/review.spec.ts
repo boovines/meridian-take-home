@@ -157,7 +157,7 @@ test("one response composer replies, resolves, reopens and rejects with matching
     exact: true,
   });
   await response.fill("The five fields in our SOP are required.");
-  await thread.getByRole("button", { name: "Send reply", exact: true }).click();
+  await thread.getByRole("button", { name: "Send", exact: true }).click();
   await expect(thread.locator(".thread-status")).toHaveText("Answered");
   await response.fill(
     "This wording is already specified in the process; no change needed.",

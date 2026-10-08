@@ -210,7 +210,7 @@ export function ThreadCard({
                 {busy
                   ? "Sending…"
                   : responseType === "reply"
-                    ? "Send reply"
+                    ? "Send"
                     : responseType === "resolve"
                       ? "Resolve finding"
                       : "Reject suggestion"}
