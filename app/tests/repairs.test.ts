@@ -411,9 +411,11 @@ it("rejects regression by assertion identity, keeps rejected code, and repairs f
   expect(evidence.locked_cases).toEqual(
     JSON.parse(JSON.stringify(context.cases)),
   );
+  const { candidate_audit_events, ...priorEvidence } = context.previous_attempts[0];
   expect(evidence.previous_attempts[0]).toMatchObject(
-    JSON.parse(JSON.stringify(context.previous_attempts[0])),
+    JSON.parse(JSON.stringify(priorEvidence)),
   );
+  expect(evidence.previous_attempts[0].candidate_audit_events.included).toBe(candidate_audit_events.length);
   expect(evidence.step_traces[0].output_data.truncated).toBe(true);
   expect(evidence.trace_coverage).toMatchObject({ included: 40, total: 40 });
   expect(largeContext.traces[0].output_data.messages.length).toBe(320000);
@@ -464,6 +466,35 @@ it("rejects regression by assertion identity, keeps rejected code, and repairs f
       first.attempt.id,
     ]),
   ).rejects.toMatchObject({ code: "23514" });
+});
+it("retains one rejected candidate across an explicit restart only for the same baseline", async () => {
+  const { f, job, initial, session, suite } = await prepared();
+  const first = await candidate(job.id, 1, { shipment: "WRONG", failed_goods: 1 });
+  await repairs.decide(first.attempt.id);
+  await repairs.finish(job.id, "needs_attention", "Operational blocker after the rejected candidate.");
+  const restarted = await repairs.start(f.w.id, {
+    request_key: randomUUID(), baseline_evaluation_id: initial.evaluation.id,
+  });
+  await repairs.prepare(restarted.job.id);
+  const attempt = await repairs.beginAttempt(restarted.job.id, 1);
+  const context = await repairs.generationContext(attempt.id);
+  expect(context.previous_attempts).toHaveLength(1);
+  expect(context.previous_attempts[0]).toMatchObject({ session_id: session.id,
+    candidate_version_id: first.attempt.candidate_version_id, status: "rejected" });
+  expect(context.evaluation.id).toBe(initial.evaluation.id);
+  expect(context.attempt.attempt_number).toBe(1);
+  expect(context.previous_attempts[0].candidate_results[0].check_results).toContainEqual(
+    expect.objectContaining({ key: "shipment", passed: false, actual: "WRONG" }),
+  );
+  await repairs.finish(restarted.job.id, "cancelled", "Restart context verified.");
+  const fresh = await evals.start(f.w.id, { request_key: randomUUID(),
+    implementation_version_id: f.version.id, suite_version_id: suite.id });
+  await record(fresh.job.id, fresh.evaluation.id, { shipment: "SYNTHETIC-001", failed_goods: 2 });
+  const different = await repairs.start(f.w.id, { request_key: randomUUID(), baseline_evaluation_id: fresh.evaluation.id });
+  await repairs.prepare(different.job.id);
+  const differentAttempt = await repairs.beginAttempt(different.job.id, 1);
+  expect((await repairs.generationContext(differentAttempt.id)).previous_attempts).toHaveLength(0);
+  await repairs.finish(different.job.id, "cancelled", "Different evidence excludes historical candidate.");
 });
 it.each(["regressing", "still-failing"])(
   "supplies rejected candidate source and %s case traces without adopting it",

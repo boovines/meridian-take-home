@@ -352,11 +352,12 @@ export class RepairService {
     );
     const previous = (
       await this.db.query(
-        "SELECT attempt_number,candidate_version_id,baseline_evaluation_id,diagnosis,status,decision_reason,error_message,evaluation_run_id FROM repair_attempts WHERE session_id=$1 AND attempt_number<$2 ORDER BY attempt_number",
+        "SELECT session_id,attempt_number,candidate_version_id,baseline_evaluation_id,diagnosis,status,decision_reason,error_message,evaluation_run_id FROM repair_attempts WHERE session_id=$1 AND attempt_number<$2 ORDER BY attempt_number",
         [session.id, attempt.attempt_number],
       )
     ).rows as unknown as Pick<
       RepairAttempt,
+      | "session_id"
       | "attempt_number"
       | "candidate_version_id"
       | "baseline_evaluation_id"
@@ -366,8 +367,23 @@ export class RepairService {
       | "error_message"
       | "evaluation_run_id"
     >[];
-    // At most two earlier attempts exist. Keep their grades and traces as
-    // diagnostic evidence; rejected code never replaces the retained baseline.
+    // An explicit restart must not forget the completed candidate which exposed
+    // a harness/operational blocker. Keep one prior-session candidate only when
+    // this session has no candidate history, with exactly the same starting evidence.
+    if (!previous.length) {
+      const priorSession = await this.db.query(
+        `SELECT a.session_id,a.attempt_number,a.candidate_version_id,a.baseline_evaluation_id,a.diagnosis,a.status,a.decision_reason,a.error_message,a.evaluation_run_id
+         FROM repair_sessions s JOIN repair_attempts a ON a.session_id=s.id
+         WHERE s.workflow_id=$1 AND s.id<>$2 AND s.plan_version_id=$3 AND s.suite_version_id=$4
+         AND s.status NOT IN ('queued','running') AND a.baseline_evaluation_id=$5
+         AND a.status IN ('accepted','rejected') AND a.candidate_version_id IS NOT NULL AND a.evaluation_run_id IS NOT NULL
+         ORDER BY s.created_at DESC,a.attempt_number DESC LIMIT 1`,
+        [session.workflow_id, session.id, session.plan_version_id, session.suite_version_id, attempt.baseline_evaluation_id],
+      );
+      previous.push(...(priorSession.rows as unknown as typeof previous));
+    }
+    // Current-session history has at most two earlier candidates. Historical
+    // diagnostics never change the retained baseline or reset the attempt count.
     const baselineResults = await resultsByEvaluation(
       this.db,
       attempt.baseline_evaluation_id,
