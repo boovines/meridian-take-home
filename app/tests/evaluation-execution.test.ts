@@ -217,6 +217,24 @@ it("records a full suite with independent passes, assertion failures and executi
       evaluation.id,
     ]),
   ).rejects.toMatchObject({ code: "23514" });
+  // Latest evaluation state and prior build evidence have different lifetimes.
+  const rerun = await evals.start(f.w.id, {
+    request_key: randomUUID(),
+    implementation_version_id: f.version.id,
+    suite_version_id: evaluation.suite_version_id,
+  });
+  await evals.prepare(rerun.job.id);
+  const detail = await versions.inspect(f.w.id, f.version.id);
+  expect(detail.evaluation).toMatchObject({ status: "running" });
+  expect(detail.build_check_status).toBe("passed");
+  await evals.finish(rerun.job.id, {
+    code: "PROJECT_BUILD_FAILED",
+    message: "Later build check failed",
+    category: "implementation",
+  });
+  expect(
+    (await versions.inspect(f.w.id, f.version.id)).build_check_status,
+  ).toBe("failed");
 });
 it("a shared build blocker preserves coverage and marks unrun cases without inventing failures", async () => {
   const { f, job, evaluation } = await prepared();
@@ -230,6 +248,9 @@ it("a shared build blocker preserves coverage and marks unrun cases without inve
     status: "blocked",
     verdict: "inconclusive",
   });
+  expect(
+    (await versions.inspect(f.w.id, f.version.id)).build_check_status,
+  ).toBe("failed");
   expect(state.results).toHaveLength(4);
   expect(
     state.results.every(

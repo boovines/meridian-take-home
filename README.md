@@ -4,6 +4,8 @@ A process owner maps a workflow, resolves anchored AI findings, and freezes a ha
 
 Start with the [documentation index](docs/README.md), [app setup](app/README.md), the [demo walkthrough](docs/guides/demo.md), the [technical handoff](docs/guides/handoff.md), and [verified implementation status](docs/implementation-status.md). Live checks and fixture tests are reported separately.
 
+The [take-home minimum audit](docs/guides/take-home-minimum.md) maps the assignment to concrete product evidence and the recording sequence. The complete product loop is implemented and demonstrated; three-pass shipment repeatability remains unconfirmed. Historical full-suite passes should not be presented as a reliability guarantee.
+
 ## Run
 
 Use Node 24. From `app/`, run `npm ci`, configure `.env.local` using `.env.example`, and apply remote migrations with `npm run db:migrate`. Run `npm run dev` and `npm run worker` in separate terminals. The worker uses Temporal Cloud; generated code runs in Vercel Sandbox. See the app README for Supabase TLS, private artifact storage, provider setup, and local fixture development.

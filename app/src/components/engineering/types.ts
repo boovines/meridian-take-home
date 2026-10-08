@@ -15,6 +15,7 @@ export interface EngineeringState {
   jobs: WorkflowJob[];
 }
 export interface VersionDetail {
+  build_check_status: "passed" | "failed" | null;
   evaluation: {
     id: string;
     status: string;

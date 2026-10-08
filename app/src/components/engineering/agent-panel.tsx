@@ -62,14 +62,16 @@ export function AgentPanel({
   const buildLabel =
     job?.progress.engine === "fixture"
       ? "Fixture build result"
-      : detail?.evaluation?.status === "completed" ||
-          job?.progress.syntax_status === "passed" ||
-          (job?.status === "succeeded" && job.progress.check === "node --check")
-        ? "Syntax check passed"
-        : detail?.evaluation?.failure_code === "PROJECT_BUILD_FAILED" ||
-            job?.progress.syntax_status === "failed"
-          ? "Syntax check failed"
-          : "Build check incomplete";
+      : detail?.build_check_status === "failed"
+        ? "Syntax check failed"
+        : detail?.build_check_status === "passed" ||
+            job?.progress.syntax_status === "passed" ||
+            (job?.status === "succeeded" &&
+              job.progress.check === "node --check")
+          ? "Syntax check passed"
+          : job?.progress.syntax_status === "failed"
+            ? "Syntax check failed"
+            : "Build check incomplete";
   const fileLabel = (path: string) => {
     const nodeId = Object.entries(detail?.project.node_file_map || {}).find(
       ([, file]) => file === path,

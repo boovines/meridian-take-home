@@ -54,6 +54,8 @@ These are workflow inputs and expected results, not matching code in the platfor
 
 ## Current retained demonstration
 
+Use the [minimum requirement audit](take-home-minimum.md#exact-local-demonstration) for exact saved workflow and report locations. V17 has two full passes followed by an inconclusive confirmation; a later measurement also had an infrastructure error. The new source version is not a confirmed replacement for retained v12. Provider comparison is paused.
+
 Use shipment code **v12** with suite v5. It passed 24/24 twice, then 23/24 on the third fresh run, so it is **not confirmed**. V14 regressed; v13 and v15 were cancelled. Select v12 explicitly in Agent → Run workflow and choose the original Gmail packet for `020-07721814`, not the isolated source-check fixture. The fresh retained-code report shows 3 successful invoices and 4 batches, with 3 successful and 1 failed; it is not sent. Use the recorded failure history to demonstrate repair honestly, rather than representing this one-packet report as full-suite repeatability.
 
 ## Short recording sequence
