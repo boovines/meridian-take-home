@@ -1,3 +1,5 @@
+import { RepairStepReplay, type ReplayStep } from "./replay";
+import { invokeInSandbox } from "../integrations/sandbox-step";
 import type { z } from "zod";
 import { DomainError } from "../../domain/errors";
 import { repairSources } from "../../domain/repair";
@@ -24,6 +26,7 @@ export interface RepairGenerator {
     previousSources: PreviousSourceEvidence[],
     readDocument: ReadRepairDocument,
     readAudit: ReadRepairAudit,
+    replayStep: ReplayStep,
   ): Promise<z.infer<typeof repairSources>>;
 }
 export class RepairGenerationService {
@@ -105,6 +108,15 @@ export class RepairGenerationService {
         new ExecutionAuditService(this.db, this.artifacts),
         signal,
       );
+      const replay = new RepairStepReplay(
+        this.db,
+        context,
+        baseline,
+        claimed.token,
+        signal,
+        invokeInSandbox,
+        this.artifacts,
+      );
       const generated = repairSources.parse(
         await adapter.generate(
           context,
@@ -113,6 +125,7 @@ export class RepairGenerationService {
           previousSources,
           documents.read,
           audits.read,
+          replay.run,
         ),
       );
       signal.throwIfAborted();

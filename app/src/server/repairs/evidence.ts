@@ -103,6 +103,7 @@ export function repairPrompt(
       baseline_project: baseline,
       baseline_evaluation: context.evaluation,
       baseline_results: context.results.map((result) => ({
+        recorded_input_id: result.id,
         case_id: result.case_id,
         status: result.status,
         outcome: result.outcome,
@@ -112,6 +113,7 @@ export function repairPrompt(
         failure_category: result.failure_category,
       })),
       locked_cases: context.cases,
+      replay_contract: "replay_step(candidate_patch,recorded_input_id) tests a replacement for one approved Code step. Use occurrence_id from step_traces, or recorded_input_id from a baseline isolated step result. It reuses exact captured input and predecessor outputs. Maximum three replays per attempt. These diagnostics never establish a full-suite pass or authorize promotion. Workflow final assertions are not applied to intermediate steps.",
       assertion_contract:
         "An omitted operator or equals uses exact JSON equality. contains_record requires an array containing an object with every expected top-level field exactly equal; extra fields on that record are allowed. excludes_record requires an array with no such record. Both record checks fail on missing or non-array output. Nested values compare exactly, with no normalization or fuzzy matching. Expectations are locked.",
       input_inventory: context.input_inventory,
