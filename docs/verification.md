@@ -51,7 +51,7 @@ Start with one complete repeat of the supplied suite. Budget permitting, repeat 
 
 For another SOP, author its requirements and expected fixtures before generation, approve methods, generate once, and evaluate that fixed implementation repeatedly. Record who verified expectations and whether human responses were scripted. Simple text fixtures do not establish PDF extraction quality, and repeated execution of one artifact does not establish repeatability of the entire generation/repair trajectory. The [October 8 evidence](implementation-status.md#repeatability-measurement--october-8) demonstrates why a single perfect shipment evaluation cannot establish durable accuracy.
 
-Estimate API spend before starting and meter actual response usage. Prefer fewer controlled runs and isolated replays to unbounded repair sessions. Keep successful historical results while making later contradictory evidence visible. A future repeatability acceptance gate should require repeated checks on vulnerable steps and an independent full-suite confirmation before describing a candidate as stable; that gate is not currently implemented.
+Estimate API spend before starting and meter actual response usage. Prefer fewer controlled runs and isolated replays to unbounded repair sessions. Keep successful historical results while making later contradictory evidence visible. The implemented repair confirmation gate requires three consecutive complete full-suite passes of the same candidate, locked suite and execution configuration, with fresh extraction responses. It stops on the first failure or inconclusive result. Historical one-off passes are not confirmation; exposed regression suites are not independent held-out validation.
 
 ## Detailed acceptance checks
 
@@ -89,6 +89,7 @@ Independently verify supplied expected values before locking fixtures. Mismatche
 - Failed generation still leaves an attempt record. Three attempts stop the session; method, frozen-process, or expected-answer changes require engineer attention sooner.
 - A corrected suite creates a new version and requires a fresh baseline evaluation/session. Prior evidence remains intact.
 - Verify that candidate code cannot write trusted fixtures, evaluator code, or acceptance records. A prompt telling it not to is insufficient isolation.
+- Direct copies of distinctive test identifiers must be rejected before repair publication and diagnostic execution, including restored checkpoints. Keep the rejected source and error without publishing a runnable version. This lexical safeguard does not establish freedom from all benchmark memorization.
 
 ## Runtime and recovery checks
 

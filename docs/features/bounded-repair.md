@@ -34,6 +34,10 @@ Repair uses medium model reasoning effort with a 48,000-token response limit. Th
 
 ## Interface
 
+Before publishing a repair, the host checks changed executable source for distinctive identifiers copied from evaluation evidence. A direct, case-insensitive copy of an 8–128-character token containing at least three letters and three digits stops publication unless it already occurs in the frozen requirements or existing executable source. The rejected artifact remains available for diagnosis, including after checkpoint recovery; the session stops as Needs attention. Diagnostic replay retains the rejected request and an implementation error without executing it in Sandbox or counting it as acceptance.
+
+This is a conservative copy detector, not an overfitting proof. It does not detect numeric-only answers, short identifiers, encoded or computed copies, or facts visible only in document bytes and absent from recorded text evidence. Existing baseline copies are not retroactively audited. Legitimate new constants may require an engineer decision; the repair cannot silently add an exemption. Independent source review and evaluation remain necessary.
+
 Evaluation keeps its existing case/result inspector. Repair history adds a baseline sidebar and chronological attempts with acceptance reasons, diagnosis, changes, evaluation links and direct code inspection. The three explored layouts were Attempt ledger, Candidate cards and Baseline sidebar. Baseline sidebar was selected because it distinguishes retained code from candidate history without requiring the engineer to reconstruct the chain. All picker scaffolding was removed.
 
 ## Verification

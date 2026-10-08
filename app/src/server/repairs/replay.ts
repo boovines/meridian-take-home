@@ -2,6 +2,7 @@ import { z } from "zod";
 import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { DomainError } from "../../domain/errors";
+import { assertRepairEvidenceIntegrity } from "../../domain/repair-integrity";
 import { grade } from "../../domain/grading";
 import type { Project } from "../../domain/project";
 import type { Json } from "../../domain/runtime";
@@ -220,6 +221,10 @@ export class RepairStepReplay {
     });
     let report: Record<string, Json>;
     try {
+      // Retain the attempted patch and diagnostic rejection without buying a sandbox.
+      assertRepairEvidenceIntegrity(
+        project.files, this.baseline.files, c.spec.board, [c, executionContext],
+      );
       const result = await invokeApprovedStep(
         project,
         nodeId,
