@@ -287,6 +287,34 @@ test("verifies a suite, runs comparisons, and preserves results when expectation
   await expect(statistics).toHaveCount(0);
   await expect(statistics).toContainText("Assertions passed3 / 3");
   await page.unroute("**/evaluations/*");
+  // Deliver the old selection after the new one is already displayed.
+  let releaseOld!: () => void;
+  let capturedOld!: () => void;
+  const heldOld = new Promise<void>(resolve => { releaseOld = resolve; });
+  const oldReady = new Promise<void>(resolve => { capturedOld = resolve; });
+  let holdNext = true;
+  await page.route("**/evaluations/*", async route => {
+    if (!holdNext) return route.continue();
+    holdNext = false;
+    const response = await route.fetch();
+    const snapshot = await response.json();
+    capturedOld();
+    await heldOld;
+    await route.fulfill({ response, json: snapshot });
+  });
+  await firstRun.click();
+  await oldReady;
+  const newest = historyChart.getByRole("button", { name: /Inspect code v1, suite v2,/ });
+  await newest.click();
+  await expect(newest).toHaveAttribute("aria-pressed", "true");
+  await expect(statistics).toContainText("Assertions passed3 / 3");
+  const oldDelivered = page.waitForResponse(response => /\/evaluations\/[^/]+$/.test(response.url()));
+  releaseOld();
+  await oldDelivered;
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await expect(newest).toHaveAttribute("aria-pressed", "true");
+  await expect(statistics).toContainText("Assertions passed3 / 3");
+  await page.unroute("**/evaluations/*");
   await page.emulateMedia({ reducedMotion: "reduce" });
   await firstRun.click();
   await historyChart
