@@ -222,3 +222,7 @@ All 34 request payloads match across the three v17 runs, and the recorded config
 Read-only database checks also reconfirmed three same-code/suite passes and one independently regenerated pass for each earlier small returns and purchasing SOP. Those older evaluations have empty configuration snapshots, so configuration equivalence cannot be established retrospectively. The later Chrome-authored returns workflow has three complete passes with recorded configuration. These synthetic policies demonstrate repeated execution across different workflows, not cross-domain autonomous repair or held-out document generalization.
 
 A later historical read-only provider discovery succeeded after a credential replacement. No documents were uploaded or compared. Alternate-provider integration remains outside the supported implementation.
+
+### Bounded preflight recovery — October 8
+
+The v17 infrastructure failure motivated a generic token-count retry boundary, limited to three transient-failure attempts before any inference or budget reservation. Cancellation, permanent errors, invalid token counts and exhausted retries still fail closed. Successful reservations retain attempt counts and failure types. The retry policy is now part of the pinned evaluation configuration, so old passes cannot be combined with new-policy runs. Fixture validation passed 172 tests with one PostgreSQL-only skip, plus lint and typecheck. This addresses an observed execution failure; it does not alter generated business rules, cure the citation defect, or establish another live pass.

@@ -2,6 +2,7 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { createHash } from "node:crypto";
 import { configuredInferenceBudget } from "./inference-budget";
 import { DomainError } from "../../domain/errors";
+import { countOpenAIInputTokens } from "./openai-preflight";
 
 // Standard GPT-5.4 rates verified 2026-10-08:
 // https://developers.openai.com/api/docs/models/gpt-5.4
@@ -62,25 +63,10 @@ export function meteredOpenAIFetch(base: typeof fetch): typeof fetch {
         .filter((k) => r[k] !== undefined)
         .map((k) => [k, r[k]]),
     );
-    const preflight = await base(
-      "https://api.openai.com/v1/responses/input_tokens",
+    const { tokens, attempts, failures } = await countOpenAIInputTokens(
+      base,
       { ...init, body: JSON.stringify(countBody) },
     );
-    if (!preflight.ok) {
-      await preflight.body?.cancel().catch(() => {});
-      throw new DomainError(
-        503,
-        "BUDGET_UNAVAILABLE",
-        `Input-token preflight failed (${preflight.status}); inference was not started.`,
-      );
-    }
-    const { input_tokens: tokens } = await preflight.json();
-    if (!Number.isInteger(tokens) || tokens < 0 || tokens > 240000)
-      throw new DomainError(
-        503,
-        "BUDGET_UNAVAILABLE",
-        "Input exceeds the guard's priced context range.",
-      );
     const estimated =
       (Math.ceil(tokens * 1.15) * 2.5 + r.max_output_tokens * 15) / 1e6;
     const reservation = await budget.reserve(
@@ -89,6 +75,8 @@ export function meteredOpenAIFetch(base: typeof fetch): typeof fetch {
       {
         model: r.model,
         input_tokens_preflight: tokens,
+        preflight_attempts: attempts,
+        preflight_failures: failures,
         max_output_tokens: r.max_output_tokens,
         request_sha256: createHash("sha256").update(body).digest("hex"),
       },
