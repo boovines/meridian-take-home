@@ -4,7 +4,7 @@ import { isDeepStrictEqual } from "node:util";
 import { DomainError } from "../../domain/errors";
 import { grade } from "../../domain/grading";
 import type { Project } from "../../domain/project";
-import type { Json } from "../../domain/runtime";
+import { selectRoutes, type Json } from "../../domain/runtime";
 import type { Database, Queryable } from "../database";
 import { ArtifactService } from "../artifacts/service";
 import { workflow } from "../workflows/store";
@@ -233,8 +233,15 @@ export class RepairStepReplay {
         },
         this.signal,
       );
+      // Match runtime and isolated evaluations before presenting trusted checks.
+      const routes = selectRoutes(
+        c.spec.board.nodes.find((node) => node.id === nodeId)!,
+        c.spec.board.connections.filter((edge) => edge.source_node_id === nodeId),
+        result.matching_connection_ids,
+      ).map((edge) => edge.id);
       report = {
         status: "completed",
+        selected_connection_ids: routes,
         actual_output: result.output,
         changed_from_recording: !isDeepStrictEqual(
           recordedOutput,
