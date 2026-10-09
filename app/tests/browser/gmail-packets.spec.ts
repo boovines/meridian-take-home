@@ -1,16 +1,16 @@
 import { test, expect } from "@playwright/test";
 
 test("selects all pages and captures inferred packets separately, retaining successes on retry", async ({page}) => {
-  const wid=crypto.randomUUID(), version=crypto.randomUUID();
+  const wid=crypto.randomUUID(), version=crypto.randomUUID(), spec=crypto.randomUUID();
   const ids=Array.from({length:14},(_,i)=>i.toString(16).padStart(16,"0"));
   const emails=ids.map((id,i)=>({id,thread_id:id,subject:`Email ${i+1}`,sender:"demo@example.test",received_at:"2026-01-01T00:00:00Z"}));
   const packets: {id:string;shipment_reference:string;source_kind:string;created_at:string}[]=[];
   let firstCalls=0, secondCalls=0;
   await page.route(`**/api/workflows/${wid}/**`,async route=>{
     const u=new URL(route.request().url()), p=u.pathname;
-    if(p.endsWith("/engineering")) return route.fulfill({json:{workflow:{id:wid,name:"Packet capture demo",desired_outcome:"Read one shipment"},spec:{id:crypto.randomUUID(),board:{nodes:[],connections:[]}},plans:[],steps:[],versions:[{id:version,version_number:1,created_at:"2026-01-01T00:00:00Z"}],jobs:[]}});
+    if(p.endsWith("/engineering")) return route.fulfill({json:{workflow:{id:wid,name:"Packet capture demo",desired_outcome:"Read one shipment"},specs:[{id:spec,version_number:1,created_at:"2026-01-01T00:00:00Z"}],spec:{id:spec,version_number:1,board:{workflow:{id:wid,name:"Packet capture demo",desired_outcome:"Read one shipment"},nodes:[],connections:[]}},plans:[],steps:[],versions:[{id:version,version_number:1,created_at:"2026-01-01T00:00:00Z"}],jobs:[]}});
     if(p.endsWith("/input-bundles"))return route.fulfill({json:packets});
-    if(p.endsWith("/runs"))return route.fulfill({json:{runs:[],steps:[],human_requests:[]}});
+    if(p.endsWith("/runs"))return route.fulfill({json:{initial_manual_version_id:version,runs:[],steps:[],human_requests:[]}});
     if(p.endsWith("/gmail/messages"))return route.fulfill({json:{messages:u.searchParams.has("page_token")?emails.slice(10):emails.slice(0,10),next_page_token:u.searchParams.has("page_token")?null:"page-two"}});
     if(p.endsWith("/gmail/prepare")){
       expect(route.request().postDataJSON().message_ids).toEqual(ids);
@@ -27,6 +27,7 @@ test("selects all pages and captures inferred packets separately, retaining succ
   await page.goto(`/workflows/${wid}/engineer`);
   await page.getByRole("button",{name:"Agent",exact:true}).click();
   await page.getByRole("button",{name:"Run workflow",exact:true}).click();
+  await page.getByRole("button",{name:"Saved input",exact:true}).click();
   await page.getByText("Capture from Gmail",{exact:true}).click();
   await page.getByRole("button",{name:"Search emails",exact:true}).click();
   await page.getByRole("button",{name:"Select all results",exact:true}).click();
