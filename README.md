@@ -54,7 +54,7 @@ Follow [CONTRIBUTING.md](CONTRIBUTING.md): feature branches, focused PRs, actual
 
 ## Future work (outside demo scope)
 
-- **Revise a workflow after handoff.** For the demo, freezing locks the whiteboard; further edits are out of scope. Later, allow customers to create an editable draft from a frozen version while engineers continue working from that unchanged version. Freezing and handing off the revised draft would create a new version, without silently changing the engineer's existing implementation target.
+- **Branch and collaborate on process revisions.** One expert-controlled revision draft is implemented; simultaneous branches, merging, notifications and role permissions remain future work.
 - **Import IDE edits and connect repositories.** For the demo, engineers can preview generated code and diffs and download the project; evaluation and repair operate on app-managed code versions. Later, support importing external edits or synchronizing a Git repository, with each evaluation tied to the exact code version tested.
 - **Continuously monitor Gmail.** Demo runs start from an explicitly selected shipment email or shipment number. Automatic runs on new mail are deferred.
 - **Support multiple workflow triggers.** The demo requires exactly one active Trigger block when freezing a workflow. Later, support multiple entry points with explicit trigger selection and input contracts for each entry point.

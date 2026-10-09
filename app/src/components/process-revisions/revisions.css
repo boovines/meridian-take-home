@@ -1,0 +1,63 @@
+.process-request-form {
+  display: grid;
+  gap: 18px;
+}
+.process-request-form fieldset {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px;
+  min-width: 0;
+}
+.request-targets {
+  display: grid;
+  gap: 10px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.request-targets label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 450;
+}
+.request-targets input {
+  width: auto;
+}
+.process-request-form .button-row {
+  justify-content: flex-end;
+}
+.request-compact {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.request-link {
+  color: var(--accent);
+  text-decoration: underline;
+}
+.revision-notice {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 22px;
+  background: var(--accent-soft);
+  border-bottom: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+.revision-notice p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.revision-notice button {
+  margin-left: auto;
+}
+.process-request-form label {
+  margin: 0;
+}
+.process-request-form .request-targets input {
+  margin: 0;
+}
+.process-request-form > p {
+  margin: 0;
+}

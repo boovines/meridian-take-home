@@ -56,6 +56,28 @@ it("limits follow-ups to open findings and linked concerns to closed findings", 
     expect(schema.safeParse(finding(null, "new", id)).success).toBe(false);
   expect(schema.safeParse(finding(open, "new")).success).toBe(false);
   expect(schema.safeParse(finding(open, "followup", closed)).success).toBe(false);
-  // The exact provider schema must also be serializable for structured output.
-  expect(() => z.toJSONSchema(schema)).not.toThrow();
+  // OpenAI rejects oneOf even though it is valid JSON Schema. Open findings
+  // must use supported anyOf branches without widening eligible references.
+  const jsonSchema = JSON.stringify(z.toJSONSchema(schema));
+  expect(jsonSchema).not.toContain('"oneOf"');
+  expect(jsonSchema).toContain('"anyOf"');
+});
+
+it("reviews long acceptance histories without duplicating identical instruction snapshots", async () => {
+  const instructions = "Verify every required field and preserve the source evidence. ".repeat(230);
+  const input = {
+    run: { model: "fixture" },
+    board: { workflow: { desired_outcome: "Review requests" }, nodes: [{ id: randomUUID(), instructions }], connections: [] },
+    discussion: { threads: [{ id: "thread", kind: "note", status: "closed", resolution_note: "Approved these instructions." }], anchors: [],
+      messages: Array.from({ length: 8 }, (_, i) => ({ id: `message-${i}`, thread_id: "thread", author_kind: "customer", body: "Keep the source evidence.", event_data: { action: "reply_proposal_decided", decision: "accept", before: { instructions }, after: { instructions }, instructions } })),
+    },
+  } as unknown as Parameters<typeof reviewWithOpenAI>[0];
+  const unchanged = structuredClone(input);
+  await reviewWithOpenAI(input, AbortSignal.timeout(1000));
+  expect(generateText).toHaveBeenCalledOnce();
+  const prompt = String(vi.mocked(generateText).mock.calls[0][0].prompt);
+  expect(Buffer.byteLength(prompt)).toBeLessThan(180000);
+  expect(input).toEqual(unchanged);
+  expect(prompt).toContain("Keep the source evidence.");
+  expect(prompt).toContain("Approved these instructions.");
 });

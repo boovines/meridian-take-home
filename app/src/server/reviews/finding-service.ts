@@ -104,6 +104,12 @@ export class FindingService {
       )
         return thread;
       editable(w);
+      if (thread.process_version !== w.process_version)
+        throw new DomainError(
+          409,
+          "HISTORICAL_FINDING",
+          "This finding belongs to an earlier process revision and remains read-only.",
+        );
       expectRevision(thread, data.expected_revision);
       if (thread.kind !== "finding")
         throw new DomainError(
