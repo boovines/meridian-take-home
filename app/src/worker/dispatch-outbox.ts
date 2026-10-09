@@ -23,7 +23,7 @@ export async function deliverOutbox(db: Database) {
     });
   }
   const jobs = await db.query(
-    "SELECT * FROM workflow_jobs WHERE kind IN ('generation','execution','evaluation','repair') AND status IN ('queued','cancel_requested') ORDER BY created_at,id LIMIT 20",
+    "SELECT * FROM workflow_jobs WHERE parent_job_id IS NULL AND kind IN ('generation','execution','evaluation','repair','grouped') AND status IN ('queued','cancel_requested') ORDER BY created_at,id LIMIT 20",
   );
   for (const row of jobs.rows)
     await dispatchOperation(row as unknown as WorkflowJob);

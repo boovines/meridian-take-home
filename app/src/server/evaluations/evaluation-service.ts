@@ -1,6 +1,10 @@
 import { canRecoverCase } from "../../domain/evaluation-recovery";
 import { statisticsByEvaluation } from "./statistics";
-import { evaluationConfiguration, assertEvaluationConfiguration } from "./configuration";
+import { frozenSpec, specForPlan } from "../engineering/plan-service";
+import {
+  evaluationConfiguration,
+  assertEvaluationConfiguration,
+} from "./configuration";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import type { z } from "zod";
@@ -176,7 +180,9 @@ export class EvaluationService {
       suite.state !== "locked" ||
       job.suite_version_id !== suiteId ||
       !version ||
-      version.plan_version_id !== job.plan_version_id
+      version.plan_version_id !== job.plan_version_id ||
+      suite.frozen_spec_id !==
+        (await specForPlan(tx, job.workflow_id, job.plan_version_id)).id
     )
       throw new DomainError(
         422,
@@ -521,12 +527,13 @@ export class EvaluationService {
         ],
       );
   }
-  async state(wid: string, id?: string) {
+  async state(wid: string, id?: string, specId?: string) {
     await workflow(this.db, wid);
+    const spec = id ? null : await frozenSpec(this.db, wid, specId);
     const runs = (
       await this.db.query(
-        `SELECT e.*,v.version_number AS code_version_number,s.version_number AS suite_version_number FROM evaluation_runs e JOIN implementation_versions v ON v.id=e.implementation_version_id JOIN evaluation_suite_versions s ON s.id=e.suite_version_id WHERE e.workflow_id=$1 ${id ? "AND e.id=$2" : ""} ORDER BY e.created_at DESC,e.id DESC LIMIT 20`,
-        id ? [wid, id] : [wid],
+        `SELECT e.*,v.version_number AS code_version_number,s.version_number AS suite_version_number FROM evaluation_runs e JOIN implementation_versions v ON v.id=e.implementation_version_id JOIN evaluation_suite_versions s ON s.id=e.suite_version_id WHERE e.workflow_id=$1 ${id ? "AND e.id=$2" : "AND s.frozen_spec_id=$2"} ORDER BY e.created_at DESC,e.id DESC LIMIT 20`,
+        id ? [wid, id] : [wid, spec!.id],
       )
     ).rows as unknown as EvaluationRun[];
     if (id && !runs.length)

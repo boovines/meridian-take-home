@@ -16,7 +16,27 @@ export class GmailCaptureService {
     raw: z.infer<typeof gmailCapture>,
     signal: AbortSignal,
   ) {
-    const data = gmailCapture.parse(raw);
+    return this.captureInput(workflowId, gmailCapture.parse(raw), signal);
+  }
+  async captureSelection(
+    workflowId: string,
+    messageIds: string[],
+    signal: AbortSignal,
+  ) {
+    return this.captureInput(
+      workflowId,
+      {
+        message_ids: gmailCapture.shape.message_ids.parse(messageIds),
+        shipment_reference: null,
+      },
+      signal,
+    );
+  }
+  private async captureInput(
+    workflowId: string,
+    data: { message_ids: string[]; shipment_reference: string | null },
+    signal: AbortSignal,
+  ) {
     await workflow(this.db, workflowId);
     const messages = [],
       documents = [],

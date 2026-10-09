@@ -101,3 +101,7 @@ Runtime model audit summaries retain bounded provider-stage durations (preflight
 With the spending guard enabled, reconciliation reads the successful response body once, verifies usage, and settles the reservation before returning a fresh response with the same bytes to the SDK. It does not reserialize model output or rely on an unconsumed branch of a cloned stream surviving ledger writes. Invalid or unpriced responses retain their reservation and are not accepted as model output.
 
 Known worker failures carry their category through Temporal wrappers. A completed extraction validation diagnosis remains an implementation failure even if the surrounding deadline expires concurrently; unknown failures still require investigation. Isolated-case fallbacks preserve typed diagnoses as well. This classification allows actual implementation failures to reach repair without treating quota, timeouts or budget exhaustion as code defects.
+
+## Automatic implementation recovery
+
+Classified implementation failures hand off atomically to [bounded run recovery](bounded-repair.md#recovery-from-a-failed-manual-run). Existing failures can be diagnosed explicitly. A recovery rerun keeps the original captured input, uses its candidate code, and requests new human responses. Completed negative business results remain ordinary report outcomes. An accepted recovery becomes the visibly unverified manual-run default; Retry same inputs still uses that selected historical run's original code and bundle.
