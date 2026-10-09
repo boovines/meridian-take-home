@@ -56,7 +56,7 @@ export const extractionEnvelope = z
                   .object({
                     artifact_id: uuid,
                     page: z.number().int().positive(),
-                    text: z.string().trim().min(1).max(4000).optional(),
+                    text: z.string().trim().min(1).max(4000).nullable().optional(),
                     // Relative page coordinates, independent of provider pixel resolution.
                     bounding_box: z
                       .object({
@@ -66,6 +66,7 @@ export const extractionEnvelope = z
                         height: z.number().positive().max(1),
                       })
                       .strict()
+                      .nullable()
                       .optional(),
                   })
                   .strict(),

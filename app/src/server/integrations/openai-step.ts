@@ -9,6 +9,7 @@ import { DomainError } from "../../domain/errors";
 import type { Json } from "../../domain/runtime";
 import type { ReasoningDocument } from "../runtime/documents";
 import { modelOutput } from "./model-output";
+import { extractionOutput } from "./extraction-output";
 export const extractionResponseContract = `${extractionInstructions}\nThe task output_schema describes only the data property. The outer response must always contain data and fields, even when the task says to return only its requested shape. These host response requirements take precedence over task instructions.`;
 
 export function runtimeModelConfiguration() {
@@ -27,6 +28,7 @@ export async function reasonForStep(
   signal: AbortSignal,
   documents: ReasoningDocument[] = [],
   responseContract?: string,
+  extractionSchema?: ExtractionRequest["output_schema"],
 ): Promise<Json> {
   const configuration = runtimeModelConfiguration();
   const prompt = JSON.stringify({ task: instructions, data });
@@ -62,7 +64,7 @@ export async function reasonForStep(
       () =>
         generateText({
           model: runtimeOpenAI(configuration.name),
-          output: Output.json(),
+          output: extractionSchema ? extractionOutput(extractionSchema) : Output.json(),
           system: responseContract ? `${configuration.system}\n${responseContract}` : configuration.system,
           messages: [{ role: "user", content }],
           maxOutputTokens: configuration.max_output_tokens,
@@ -102,5 +104,6 @@ export async function extractForStep(
     signal,
     documents,
     extractionResponseContract,
+    request.output_schema,
   );
 }
