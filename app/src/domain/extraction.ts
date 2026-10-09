@@ -21,6 +21,12 @@ export const extractionRequest = z
   })
   .strict();
 export type ExtractionRequest = z.infer<typeof extractionRequest>;
+export const EXTRACTION_BATCH_POLICY = { version: 1, max_batches: 5, max_combined_result_bytes: 400000 } as const;
+export const extractionBatchRequest = z.object({
+  kind: z.literal("extract_batch"),
+  batches: z.array(extractionRequest).min(1).max(EXTRACTION_BATCH_POLICY.max_batches),
+}).strict();
+
 const scalar = z.union([
   z.string().max(20000),
   z.number().finite(),
