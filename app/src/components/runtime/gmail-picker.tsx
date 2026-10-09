@@ -8,10 +8,12 @@ export function GmailPicker({
   workflowId,
   disabled,
   onCaptured,
+  onSelected,
 }: {
   workflowId: string;
   disabled: boolean;
-  onCaptured: (id: string) => Promise<void>;
+  onCaptured?: (id: string) => Promise<void>;
+  onSelected?: (ids: string[]) => Promise<void>;
 }) {
   const [query, setQuery] = useState("has:attachment"),
     [searchedQuery, setSearchedQuery] = useState(""),
@@ -119,7 +121,7 @@ export function GmailPicker({
         });
         // Remember successful packets even when a later capture or UI refresh fails.
         setCaptured(current => ({ ...current, [group.reference]: packet.id }));
-        await onCaptured(packet.id);
+        await onCaptured?.(packet.id);
       }
     } catch (e) {
       setError(`Capture stopped. Packets already marked Captured remain saved; retry captures only the rest. ${errorMessage(e)}`);
@@ -127,16 +129,23 @@ export function GmailPicker({
   }
   async function capture() {
     setBusy(
-      "Capturing emails and attachments. Large packets can take a few minutes…",
+      onSelected
+        ? "Starting selected-email run…"
+        : "Capturing emails and attachments. Large packets can take a few minutes…",
     );
     setError("");
     try {
+      if (onSelected) {
+        await onSelected(selected);
+        setSelected([]);
+        return;
+      }
       const data = await api<{ id: string }>(
         `/api/workflows/${workflowId}/gmail/capture`,
         "POST",
         { message_ids: selected, shipment_reference: shipment.trim() },
       );
-      await onCaptured(data.id);
+      await onCaptured?.(data.id);
       select([]);
     } catch (e) {
       setError(errorMessage(e));
@@ -145,11 +154,12 @@ export function GmailPicker({
     }
   }
   return (
-    <details className="gmail-picker">
-      <summary>Capture from Gmail</summary>
+    <details className="gmail-picker" open={onSelected ? true : undefined}>
+      <summary>{onSelected ? "Select emails" : "Capture from Gmail"}</summary>
       <p className="field-help">
-        Select emails across shipments, including certificates sent separately.
-        We’ll suggest separate packets and read their references from email bodies. Gmail is read-only.
+        {onSelected
+          ? "Select all relevant emails. The workflow groups related work automatically and asks about ambiguous sources."
+          : "Select emails across shipments, including certificates sent separately. We’ll suggest separate packets and read their references from email bodies. Gmail is read-only."}
       </p>
       <form
         onSubmit={(e) => {
@@ -174,7 +184,9 @@ export function GmailPicker({
         </p>
       )}
       {!!searchedQuery && !messages.length && !busy && (
-        <p>No messages matched. Try the invoice number or a broader search.</p>
+        <p>
+          No messages matched. Try a different reference or a broader search.
+        </p>
       )}
       {!!messages.length && (
         <>
@@ -222,6 +234,7 @@ export function GmailPicker({
               Load more emails
             </button>
           )}
+          {!onSelected && <>
           <button disabled={!!busy || disabled || !selected.length} onClick={() => void prepare()}>
             Prepare shipment packets
           </button>
@@ -240,19 +253,23 @@ export function GmailPicker({
               disabled={!!busy || disabled}
             />
           </label>
+          </details>
+          </>}
           <button
             disabled={
-              !!busy || disabled || !selected.length || !shipment.trim()
+              !!busy ||
+              disabled ||
+              !selected.length ||
+              (!onSelected && !shipment.trim())
             }
             onClick={() => void capture()}
           >
-            Capture {selected.length || "selected"} email
-            {selected.length === 1 ? "" : "s"}
+            {onSelected
+              ? "Run selected emails"
+              : `Capture ${selected.length || "selected"} email${selected.length === 1 ? "" : "s"}`}
           </button>
-          </details>
           <p className="field-help">
-            Creates a fixed copy of the selected emails and every attachment.
-            Select related emails for one shipment per packet.
+            {onSelected ? "Captures the selected emails and attachments, then starts processing. Reports are previewed only." : "Creates a fixed copy of the selected emails and every attachment. Select related emails for one shipment per packet."}
           </p>
         </>
       )}

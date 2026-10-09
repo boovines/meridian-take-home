@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { mkdir, readFile, open, rename, rmdir, rm } from "node:fs/promises";
 import { z } from "zod";
 import { dirname, isAbsolute } from "node:path";
@@ -149,7 +150,68 @@ export class InferenceBudget {
     };
   }
 }
-export function configuredInferenceBudget() {
+export type InferenceReservation = Awaited<
+  ReturnType<InferenceBudget["reserve"]>
+>;
+export interface InferenceBudgetGuard {
+  reserve(
+    provider: string,
+    usd: number,
+    metadata: Record<string, unknown>,
+    signal?: AbortSignal,
+  ): Promise<InferenceReservation>;
+}
+const budgetContext = new AsyncLocalStorage<InferenceBudgetGuard>();
+export function withInferenceBudget<T>(
+  budget: InferenceBudgetGuard,
+  work: () => Promise<T>,
+): Promise<T> {
+  return budgetContext.run(budget, work);
+}
+export function configuredInferenceBudget(): InferenceBudgetGuard | null {
+  const scoped = budgetContext.getStore();
+  const operator = operatorBudget();
+  if (!scoped) return operator;
+  if (!operator) return scoped;
+  return combineInferenceBudgets(scoped, operator);
+}
+export function combineInferenceBudgets(primary: InferenceBudgetGuard, secondary: InferenceBudgetGuard): InferenceBudgetGuard {
+  return {
+    async reserve(provider, usd, metadata, signal) {
+      const first = await primary.reserve(provider, usd, metadata, signal);
+      let second: InferenceReservation;
+      try {
+        second = await secondary.reserve(provider, usd, metadata, signal);
+      } catch (error) {
+        // The provider has not been called: release only this known unused hold.
+        await first.settle(0, { secondary_reservation_rejected: true });
+        throw error;
+      }
+      return {
+        id: first.id,
+        async settle(actual, details) {
+          // Attempt both writes even if one store is unavailable. A failed write
+          // conservatively retains its hold; it never grants more allowance.
+          const results = await Promise.allSettled([
+            first.settle(actual, details),
+            second.settle(actual, details),
+          ]);
+          for (const result of results)
+            if (result.status === "rejected") throw result.reason;
+        },
+        async annotate(details) {
+          const results = await Promise.allSettled([
+            first.annotate(details),
+            second.annotate(details),
+          ]);
+          for (const result of results)
+            if (result.status === "rejected") throw result.reason;
+        },
+      };
+    },
+  };
+}
+function operatorBudget() {
   const path = process.env.INFERENCE_BUDGET_LEDGER,
     limit = process.env.INFERENCE_BUDGET_USD;
   if (!path && !limit) return null;

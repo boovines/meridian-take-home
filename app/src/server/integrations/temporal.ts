@@ -141,3 +141,18 @@ export async function cancelScopingWorkflow(id: string) {
     if (!(error instanceof WorkflowNotFoundError)) throw error;
   }
 }
+
+export async function startGroupedWorkflow(id: string) {
+  try {
+    await (
+      await temporalClient()
+    ).workflow.start("executeGroupedEmails", {
+      workflowId: `job-${id}`,
+      taskQueue: temporalConfig().taskQueue,
+      args: [id],
+      workflowIdReusePolicy: "REJECT_DUPLICATE",
+    });
+  } catch (error) {
+    if (!(error instanceof WorkflowExecutionAlreadyStartedError)) throw error;
+  }
+}

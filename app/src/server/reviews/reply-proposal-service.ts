@@ -1,3 +1,4 @@
+import { discussable } from "../process-revisions/conversation";
 import type { z } from "zod";
 import { DomainError } from "../../domain/errors";
 import {
@@ -47,7 +48,8 @@ export class ReplyProposalService {
           event.data.decision !== data.decision ||
           event.data.node_id !== data.node_id ||
           (data.decision === "accept" &&
-            event.data.instructions !== data.instructions)
+            (event.data.instructions !== data.instructions ||
+              event.data.title !== data.title))
         )
           throw new DomainError(
             409,
@@ -56,7 +58,8 @@ export class ReplyProposalService {
           );
         return previous;
       }
-      editable(w);
+      discussable(w, thread);
+      if (data.decision === "accept") editable(w);
       expectRevision(thread, data.expected_revision);
       const message = messages.find((m) => m.id === proposalId);
       const proposal = replyProposalEvent.safeParse(message?.event_data);
@@ -127,8 +130,8 @@ export class ReplyProposalService {
             "The board changed after this proposal. Send another reply to get a fresh diff; no changes were applied.",
           );
         await tx.query(
-          "UPDATE nodes SET instructions=$2,revision=revision+1,updated_at=now() WHERE workflow_id=$1 AND id=$3",
-          [workflowId, data.instructions, edit.node_id],
+          "UPDATE nodes SET instructions=$2,title=coalesce($4,title),revision=revision+1,updated_at=now() WHERE workflow_id=$1 AND id=$3",
+          [workflowId, data.instructions, edit.node_id, data.title ?? null],
         );
         await tx.query(
           "UPDATE workflows SET content_revision=content_revision+1,updated_at=now() WHERE id=$1",
@@ -150,9 +153,11 @@ export class ReplyProposalService {
           node_id: data.node_id,
           ...(data.decision === "accept"
             ? {
+                ...(data.title !== undefined ? { title: data.title } : {}),
                 instructions: data.instructions,
                 before: edit.before,
                 after: {
+                  title: data.title ?? title,
                   instructions: data.instructions,
                   revision: edit.before.revision + 1,
                 },

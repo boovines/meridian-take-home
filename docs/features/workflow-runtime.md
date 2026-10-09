@@ -83,3 +83,7 @@ The host checks schema conformance, field coverage, normalized-value consistency
 The first provider uses the existing OpenAI document interpreter. Existing implementations keep their earlier reasoning contract until regenerated or repaired to request extraction; this addition does not retroactively improve historical versions. Automatic reinspection and alternate-provider comparison are not part of this checkpoint.
 
 Extraction output schemas must use synchronous validation. Asynchronous schemas are rejected before a provider call, alongside references and regular expressions, so a validation Promise cannot bypass the output contract.
+
+## Automatic implementation recovery
+
+Classified implementation failures hand off atomically to [bounded run recovery](bounded-repair.md#recovery-from-a-failed-manual-run). Existing failures can be diagnosed explicitly. A recovery rerun keeps the original captured input, uses its candidate code, and requests new human responses. Completed negative business results remain ordinary report outcomes. An accepted recovery becomes the visibly unverified manual-run default; Retry same inputs still uses that selected historical run's original code and bundle.
