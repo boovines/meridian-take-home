@@ -1,6 +1,6 @@
 # Data model decisions and justification
 
-Audit date: October 8, 2026. Scope: the agreed take-home features, with growth considered but no claimed production capacity. This document explains the implemented tables, important field groups, relationships, and alternatives. Migrations 001–013 are the source of truth for exact fields and constraints; the earlier schema specifications preserve planning context. The migrations run against Supabase and PostgreSQL in CI. No production load test has been run.
+Audit date: October 8, 2026. Scope: the agreed take-home features, with growth considered but no claimed production capacity. This document explains the implemented tables, important field groups, relationships, and alternatives. Migrations 001–016 are the source of truth for exact fields and constraints; the earlier schema specifications preserve planning context. The migrations run against Supabase and PostgreSQL in CI. No production load test has been run.
 
 ## Audit conclusion
 
@@ -16,7 +16,7 @@ The main domain boundaries are justified by independently edited or versioned re
 | Model/settings sufficient to explain review behavior | Add `reviewer_version`, identifying the deployed prompt/application revision. | The same model can produce different review behavior with a changed prompt. This is provenance, not guaranteed reproducibility. |
 | Custom leases and parallel coordination implicitly required | Temporal owns scheduling and per-occurrence fork/join state; omit SQL coordination tables and leases. | The database stores inspection history and idempotent dispatch intents without becoming a second scheduler. |
 
-The executable schema has **26 application tables**: four canvas, four review, twelve engineering/evaluation/repair, and six runtime/artifact tables. The two proposed parallel coordination tables were intentionally omitted because Temporal owns that state. The count follows record lifecycles; it is not a scalability target or a count of services.
+The executable schema has **32 application tables**: the 26 original canvas/review/engineering/runtime tables plus six audit, recovery, clarification and process-request extensions documented below. The two proposed parallel coordination tables were intentionally omitted because Temporal owns that state. The count follows record lifecycles; it is not a scalability target or a count of services.
 
 ## How a table earns its place
 
@@ -46,7 +46,7 @@ Same-workflow endpoint foreign keys prevent cross-board edges. One active defaul
 
 ### 4. `frozen_specs` — keep
 
-One row preserves the complete, immutable handoff: graph, desired outcome, format version, reviewed decision evidence, and acknowledgment of unreviewed changes. The unique workflow relationship encodes the demo's one-freeze rule.
+One row preserves the complete, immutable handoff: graph, desired outcome, format version, reviewed decision evidence, and acknowledgment of unreviewed changes. Uniqueness is per workflow and process version; an immutable parent reference records the previous approved handoff.
 
 The snapshot intentionally duplicates draft data at a business boundary. Merely setting `workflows.state = frozen` would couple historical generation to live child rows. Separate frozen node/edge tables would be warranted if we needed cross-version relational graph queries; the current consumers read the whole snapshot, so JSON is sufficient.
 
@@ -216,7 +216,7 @@ Partial indexes must match the intended query predicates; verify actual query pl
 - No graph database: known board loading, node editing, and bounded traversal do not demonstrate a need for another datastore.
 - No per-node-type, per-file-format, per-code-file, or per-assertion tables without corresponding independent operations.
 - No user/team/permissions schema in the demo proposal; public multi-customer deployment requires an explicit isolation/access design first.
-- No generalized event sourcing, global test library, reused human approval cache, post-freeze revisions, or failed-step resume.
+- No generalized event sourcing, global test library, reused human approval cache, parallel draft branches, or failed-step resume.
 - No speculative JSON search indexes, partitioning, sharding, or assertion of production readiness based on row count.
 
 ## Remaining scale and deployment work
@@ -298,3 +298,39 @@ This is separate from `step_executions` because a model request, its answer and 
 ### Repeatability evidence
 
 Migration 013 adds `evaluation_runs.execution_configuration`, captured once before execution, and `repair_confirmations` keyed by attempt and round (1–3). A separate relation preserves every evaluation rather than overwriting an attempt’s latest-evaluation pointer. Same-workflow foreign keys and insertion guards tie each run to the candidate, approved plan and locked suite; prior success is required before another round. A session cannot transition to passed without three complete, matching-configuration passes. Completed history is immutable.
+
+### Run-origin recovery (migration 014)
+
+`repair_sessions.origin` distinguishes an evaluation repair from recovery of a failed manual run. Evaluation-origin sessions retain mandatory suite and initial/baseline evaluation references. Run-origin sessions instead require the source run and immutable captured bundle; their suite and comparable evaluation may be absent. Approved plan, initial version, execution settings and limits are immutable. A unique source-run index makes automatic handoff and repeated explicit requests idempotent. The same workflow job and active-operation constraint own recovery, reruns and regression checks; no second scheduler or repair engine is introduced.
+
+`repair_attempts` gains an internal rerun reference and durable build result alongside the existing candidate/evaluation references. A rerun has ordinary step occurrences, audit events and human requests; its distinct runtime kind prevents recursive recovery. Composite ownership constraints and SQL guards tie the run to the source input, candidate, plan and parent operation. Successful build/rerun evidence is required for an accepted recovery; the service also requires complete comparable regression evidence when a suite is pinned. Candidate, rerun and saved build references cannot be replaced after recording. Original runs and terminal attempts remain immutable.
+
+`workflow_run_defaults` has one row per workflow pointing to the accepted recovery version and its provenance. Separating this reference from newest-code and evaluation-baseline pointers prevents rejected candidates or one mechanically successful run from silently becoming confirmed evaluation evidence. The primary-key lookup supports run setup; only an accepted recovery can update it.
+
+`recovery_inference_charges` records individual provider reservations and settlements. Separate rows retain charges across lost responses and worker restarts without rewriting a growing session JSON blob. The session index supports bounded cost aggregation. Reservations serialize under the existing workflow lock; model calls happen outside transactions. Charges hold provider/usage metadata and request hashes, not source documents or credentials. Unknown usage retains the original hold. RLS denies direct anonymous REST access, as for the other application tables.
+
+A durable paused timestamp records human waiting. Resuming extends the same job deadline by elapsed waiting time; it does not create a fresh attempt, spend allowance or timer. Session histories remain bounded in the demo UI; production retention and measured traffic capacity remain future work.
+
+
+### Engineer clarification (migration 015)
+
+`engineer_questions` owns one durable question per recovery attempt, its affected nodes/source references, immutable answer, reuse choice and answer idempotency key. Separate rows let the app address and resume a specific question without conflating implementation discussion with runtime human approvals. Unique attempt and workflow/answer-key constraints bound questions and prevent duplicate submission. Session indexes support the history view. Same-workflow foreign keys and guards tie questions to run-origin attempts; the service validates reference ownership before writing.
+
+`workflow_clarifications` records only explicit reuse, linking a question to its immutable frozen spec. It duplicates neither the answer nor the process definition. Its scope index supports future recovery context selection; input-specific answers are selected by the originating session's captured bundle instead. Both answered questions and reuse provenance are immutable.
+
+`repair_clarification_contexts` freezes the exact context seen by each of at most two generation invocations per candidate. The continuation gets a new snapshot containing the answer; the original diagnosis snapshot remains unchanged. Attempt/invocation and token uniqueness prevent ambiguous provenance, while insertion guards require the active claimed invocation. Generated artifact metadata references the used snapshot. JSON is appropriate here because the bounded snapshot is immutable evidence, not independently editable discussion. All three tables enable RLS, matching server-only access elsewhere.
+
+
+## Process revision boundaries (migration 016)
+
+A workflow keeps one mutable canvas plus immutable frozen versions. `workflows.process_version` identifies a business-process revision; it is separate from row-level optimistic revisions and semantic content revisions. `base_frozen_spec_id` records the draft’s origin and `current_frozen_spec_id` identifies the most recently approved process. This avoids copying editable nodes for each draft while preserving old graph bytes in `frozen_specs`. Stable node identities connect conversations and historical plans; runtime reads the plan’s snapshot, never mutable node fields.
+
+`frozen_specs` is unique by workflow and version number, with a same-workflow parent reference. An insert guard enforces consecutive lineage and the current draft’s content revision. Existing immutable triggers prevent rewriting historical graph or review evidence. Migration backfills v1 pointers without rewriting sealed JSON.
+
+Reviews and findings carry `process_version`, assigned by the database on insertion. Partial indexes support current-revision completed-review and unresolved-finding lookups. Earlier approvals cannot satisfy the next freeze. Position-only edits retain their existing lightweight semantics.
+
+`engineer_change_requests` extends the existing discussion thread with immutable original wording, source frozen version, engineer attribution and idempotency key. A nullable target process version distinguishes a request awaiting a revision from one being addressed; the resulting frozen reference records handoff. Messages, anchors and per-block proposal decisions reuse their existing tables. A separate typed extension provides enforceable provenance without nullable request-specific columns on every customer note. Source and target indexes support the two lifecycle queries. Same-workflow foreign keys prevent cross-workflow references; RLS follows the server-only access model.
+
+Plan and suite draft uniqueness is per frozen version, while the expensive-operation limit stays per workflow. Human-method constraints consult the frozen graph. A handoff creates a new plan transactionally: only unchanged executable contexts retain method choices, and no approvals are copied. Code and execution artifacts remain linked through their original plan. Evaluation insertion rejects mismatched code/suite specifications so old test passes cannot validate a new process accidentally.
+
+`workflow_run_defaults` uses `(workflow_id, frozen_spec_id)` as its key. Recovery evidence must refer to that same specification. This allows an older operation to finish after a new handoff without replacing the current version’s run default. Version-specific history queries use the existing ownership relationships rather than copying code, runs or evaluations into new revision rows.

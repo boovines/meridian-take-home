@@ -1,3 +1,5 @@
+import { snapshotClarifications } from "./clarification-service";
+import { runRepairContext } from "./run-context";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import type { z } from "zod";
@@ -18,7 +20,7 @@ import type { Project } from "../../domain/project";
 import type { Database, Queryable } from "../database";
 import { workflow } from "../workflows/store";
 import { jobById } from "../engineering/job-service";
-import { planById, planSteps, frozenSpec } from "../engineering/plan-service";
+import { planById, planSteps, specForPlan } from "../engineering/plan-service";
 import {
   EvaluationService,
   evaluationById,
@@ -321,10 +323,23 @@ export class RepairService {
         "UPDATE repair_attempts SET invocation_count=invocation_count+1,attempt_token=$2 WHERE id=$1",
         [attemptId, token],
       );
+      if (session.origin === "run")
+        await snapshotClarifications(tx, attemptId, token);
       return { attempt, session, job, token };
     });
   }
-  async generationContext(attemptId: string) {
+  async generationContext(attemptId: string, token?: string) {
+    const attempt = await attemptById(this.db, attemptId);
+    const session = (
+      await this.db.query("SELECT origin FROM repair_sessions WHERE id=$1", [
+        attempt.session_id,
+      ])
+    ).rows[0];
+    return session.origin === "run"
+      ? runRepairContext(this.db, attemptId, token)
+      : this.evaluationGenerationContext(attemptId);
+  }
+  async evaluationGenerationContext(attemptId: string) {
     const attempt = await attemptById(this.db, attemptId),
       session = (
         await this.db.query("SELECT * FROM repair_sessions WHERE id=$1", [
@@ -336,6 +351,12 @@ export class RepairService {
       session.workflow_id,
       session.plan_version_id,
     );
+    if (!session.suite_version_id || !attempt.baseline_evaluation_id)
+      throw new DomainError(
+        422,
+        "EVALUATION_REQUIRED",
+        "Evaluation repair requires fixed suite evidence.",
+      );
     const cases = await suiteCases(this.db, session.suite_version_id);
     const bundleIds = [
       ...new Set(
@@ -378,7 +399,13 @@ export class RepairService {
          AND s.status NOT IN ('queued','running') AND a.baseline_evaluation_id=$5
          AND a.status IN ('accepted','rejected') AND a.candidate_version_id IS NOT NULL AND a.evaluation_run_id IS NOT NULL
          ORDER BY s.created_at DESC,a.attempt_number DESC LIMIT 1`,
-        [session.workflow_id, session.id, session.plan_version_id, session.suite_version_id, attempt.baseline_evaluation_id],
+        [
+          session.workflow_id,
+          session.id,
+          session.plan_version_id,
+          session.suite_version_id,
+          attempt.baseline_evaluation_id,
+        ],
       );
       previous.push(...(priorSession.rows as unknown as typeof previous));
     }
@@ -396,7 +423,7 @@ export class RepairService {
         const earlierBaseline =
           prior.baseline_evaluation_id === attempt.baseline_evaluation_id
             ? baselineResults
-            : await resultsByEvaluation(this.db, prior.baseline_evaluation_id);
+            : await resultsByEvaluation(this.db, prior.baseline_evaluation_id!);
         const priorPasses = new Map(
           earlierBaseline.map((result) => [
             result.case_id,
@@ -459,20 +486,46 @@ export class RepairService {
       `SELECT id,status,verdict FROM evaluation_runs WHERE workflow_id=$1 AND implementation_version_id=$2
        AND suite_version_id=$3 AND execution_configuration=$4::jsonb AND created_at<$5 AND status='completed'
        ORDER BY created_at DESC LIMIT 2`,
-      [session.workflow_id, attempt.baseline_version_id, session.suite_version_id, JSON.stringify(evaluation.execution_configuration), evaluation.created_at],
-    )).rows : [];
-    const baseline_repetitions = await Promise.all(earlierRuns.map(async run => ({
-      id: String(run.id), status: String(run.status), verdict: String(run.verdict),
-      traces: await evaluationTraces(this.db, session.workflow_id, String(run.id), failedCaseIds),
-      audit_events: await evaluationAudits(this.db, session.workflow_id, String(run.id), failedCaseIds),
-    })));
+            [
+              session.workflow_id,
+              attempt.baseline_version_id,
+              session.suite_version_id,
+              JSON.stringify(evaluation.execution_configuration),
+              evaluation.created_at,
+            ],
+          )
+        ).rows
+      : [];
+    const baseline_repetitions = await Promise.all(
+      earlierRuns.map(async (run) => ({
+        id: String(run.id),
+        status: String(run.status),
+        verdict: String(run.verdict),
+        traces: await evaluationTraces(
+          this.db,
+          session.workflow_id,
+          String(run.id),
+          failedCaseIds,
+        ),
+        audit_events: await evaluationAudits(
+          this.db,
+          session.workflow_id,
+          String(run.id),
+          failedCaseIds,
+        ),
+      })),
+    );
     return {
       attempt,
       session,
       plan,
       baseline_repetitions,
       steps: await planSteps(this.db, plan.id),
-      spec: await frozenSpec(this.db, session.workflow_id),
+      spec: await specForPlan(
+        this.db,
+        session.workflow_id,
+        session.plan_version_id,
+      ),
       evaluation,
       results: baselineResults,
       cases,
@@ -540,7 +593,7 @@ export class RepairService {
           "INVALID_CANDIDATE",
           "The candidate must belong to this repair attempt and its approved plan.",
         );
-      const spec = await frozenSpec(tx, job.workflow_id),
+      const spec = await specForPlan(tx, job.workflow_id, job.plan_version_id),
         steps = await planSteps(tx, job.plan_version_id);
       if (
         project.frozen_spec_id !== spec.id ||
@@ -576,7 +629,12 @@ export class RepairService {
     });
   }
   async createEvaluation(attemptId: string, round = 1) {
-    if (!Number.isInteger(round) || round < 1 || round > 3) throw new DomainError(422, "INVALID_CONFIRMATION", "Confirmation round must be 1, 2, or 3.");
+    if (!Number.isInteger(round) || round < 1 || round > 3)
+      throw new DomainError(
+        422,
+        "INVALID_CONFIRMATION",
+        "Confirmation round must be 1, 2, or 3.",
+      );
     return this.db.transaction(async (tx) => {
       const old = await attemptById(tx, attemptId);
       await workflow(tx, old.workflow_id, true);
@@ -588,7 +646,18 @@ export class RepairService {
         ).rows[0] as unknown as RepairSession,
         job = await jobById(tx, session.job_id);
       active(job, session);
-      const prior = (await tx.query("SELECT evaluation_run_id FROM repair_confirmations WHERE attempt_id=$1 AND round=$2", [attemptId, round])).rows[0];
+      if (session.origin !== "evaluation")
+        throw new DomainError(
+          422,
+          "WRONG_REPAIR_ORIGIN",
+          "Run recovery uses a single regression check, not automatic confirmation.",
+        );
+      const prior = (
+        await tx.query(
+          "SELECT evaluation_run_id FROM repair_confirmations WHERE attempt_id=$1 AND round=$2",
+          [attemptId, round],
+        )
+      ).rows[0];
       if (prior) return evaluationById(tx, String(prior.evaluation_run_id));
       if (attempt.status !== "running" || !attempt.candidate_version_id)
         throw new DomainError(
@@ -600,10 +669,13 @@ export class RepairService {
         tx,
         job,
         attempt.candidate_version_id,
-        session.suite_version_id,
+        session.suite_version_id!,
         `repair-${attempt.id}-confirmation-${round}`,
       );
-      await tx.query("INSERT INTO repair_confirmations(workflow_id,attempt_id,round,evaluation_run_id) VALUES($1,$2,$3,$4)", [attempt.workflow_id, attempt.id, round, evaluation.id]);
+      await tx.query(
+        "INSERT INTO repair_confirmations(workflow_id,attempt_id,round,evaluation_run_id) VALUES($1,$2,$3,$4)",
+        [attempt.workflow_id, attempt.id, round, evaluation.id],
+      );
       await tx.query(
         "UPDATE repair_attempts SET evaluation_run_id=$2 WHERE id=$1",
         [attempt.id, evaluation.id],
@@ -624,6 +696,12 @@ export class RepairService {
         job = await jobById(tx, session.job_id);
       if (attempt.status !== "running") return { attempt, session };
       active(job, session);
+      if (session.origin !== "evaluation")
+        throw new DomainError(
+          422,
+          "WRONG_REPAIR_ORIGIN",
+          "Use run recovery acceptance for this session.",
+        );
       if (!attempt.evaluation_run_id)
         throw new DomainError(
           409,
@@ -640,17 +718,47 @@ export class RepairService {
       const results = await resultsByEvaluation(tx, evaluation.id),
         baseline = await resultsByEvaluation(
           tx,
-          attempt.baseline_evaluation_id,
+          attempt.baseline_evaluation_id!,
         ),
-        expected = await suiteCases(tx, session.suite_version_id);
+        expected = await suiteCases(tx, session.suite_version_id!);
       const decision = regressionDecision(baseline, results, expected);
-      const confirmations = (await tx.query("SELECT c.round,e.status,e.verdict,e.execution_configuration FROM repair_confirmations c JOIN evaluation_runs e ON e.id=c.evaluation_run_id WHERE c.attempt_id=$1 ORDER BY c.round", [attempt.id])).rows;
-      const completePass = decision.accepted && evaluation.status === "completed" && evaluation.verdict === "passed";
+      const confirmations = (
+        await tx.query(
+          "SELECT c.round,e.status,e.verdict,e.execution_configuration FROM repair_confirmations c JOIN evaluation_runs e ON e.id=c.evaluation_run_id WHERE c.attempt_id=$1 ORDER BY c.round",
+          [attempt.id],
+        )
+      ).rows;
+      const completePass =
+        decision.accepted &&
+        evaluation.status === "completed" &&
+        evaluation.verdict === "passed";
       if (completePass && confirmations.length < 3) {
-        await tx.query("UPDATE workflow_jobs SET phase=$2,progress=$3,updated_at=now() WHERE id=$1", [job.id, `confirming repeatability ${confirmations.length}/3`, { session_id: session.id, attempt: attempt.attempt_number, confirmations_passed: confirmations.length, confirmations_required: 3 }]);
+        await tx.query(
+          "UPDATE workflow_jobs SET phase=$2,progress=$3,updated_at=now() WHERE id=$1",
+          [
+            job.id,
+            `confirming repeatability ${confirmations.length}/3`,
+            {
+              session_id: session.id,
+              attempt: attempt.attempt_number,
+              confirmations_passed: confirmations.length,
+              confirmations_required: 3,
+            },
+          ],
+        );
         return { attempt, session };
       }
-      const confirmed = completePass && confirmations.length === 3 && confirmations.every((c, i) => c.round === i + 1 && c.status === "completed" && c.verdict === "passed" && JSON.stringify(c.execution_configuration) === JSON.stringify(confirmations[0].execution_configuration));
+      const confirmed =
+        completePass &&
+        confirmations.length === 3 &&
+        confirmations.every(
+          (c, i) =>
+            c.round === i + 1 &&
+            c.status === "completed" &&
+            c.verdict === "passed" &&
+            JSON.stringify(c.execution_configuration) ===
+              JSON.stringify(confirmations[0].execution_configuration),
+        );
       await tx.query(
         "UPDATE repair_attempts SET status=$2,decision_reason=$3,finished_at=now(),attempt_token=NULL WHERE id=$1",
         [
@@ -741,6 +849,30 @@ export class RepairService {
           final === "cancelled",
           String(evaluation.id),
         );
+      await tx.query(
+        "UPDATE engineer_questions SET status='cancelled' WHERE session_id=$1 AND status='open'",
+        [session.id],
+      );
+      // Child workflow cancellation can race worker completion. Fence every
+      // unfinished occurrence before making the parent terminal; late replies
+      // cannot revive a cancelled recovery or publish a result.
+      await tx.query(
+        "UPDATE human_requests SET status='cancelled',cancelled_at=now() WHERE run_id IN (SELECT id FROM workflow_runs WHERE job_id=$1 AND kind='recovery') AND status='pending'",
+        [jobId],
+      );
+      await tx.query(
+        "UPDATE step_executions SET status='cancelled',finished_at=now(),updated_at=now(),attempt_token=NULL WHERE run_id IN (SELECT id FROM workflow_runs WHERE job_id=$1 AND kind='recovery') AND status IN ('running','waiting_for_human')",
+        [jobId],
+      );
+      await tx.query(
+        "UPDATE workflow_runs SET status=$2,failure_code=$3,failure_message=$4,failure_category='infrastructure',active_since=NULL,finished_at=now(),updated_at=now() WHERE job_id=$1 AND kind='recovery' AND status IN ('queued','running','waiting_for_human')",
+        [
+          jobId,
+          final === "cancelled" ? "cancelled" : "needs_attention",
+          code || "RECOVERY_STOPPED",
+          reason,
+        ],
+      );
       await tx.query(
         "UPDATE repair_attempts SET status=$2,error_code=$3,error_message=$4,finished_at=now(),attempt_token=NULL WHERE session_id=$1 AND status='running'",
         [

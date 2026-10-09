@@ -4,12 +4,16 @@ import { EvaluationService } from "@/server/evaluations/evaluation-service";
 import { startEvaluationInput } from "@/domain/evaluation";
 import { dispatchEvaluation } from "@/server/evaluations/dispatch";
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   return respond(async () =>
     new EvaluationService(await getDatabase()).state(
       parseId((await params).id),
+      undefined,
+      new URL(request.url).searchParams.has("spec")
+        ? parseId(new URL(request.url).searchParams.get("spec")!)
+        : undefined,
     ),
   );
 }

@@ -82,7 +82,7 @@ test("review twice, inspect and approve a detail edit, then freeze the handoff",
     .getByRole("button", { name: "Freeze and hand off", exact: true })
     .click();
   await expect(page.locator(".state-banner")).toContainText(
-    "Frozen for engineer handoff",
+    "Frozen v1 for engineer handoff",
   );
   await expect(
     page.getByRole("button", { name: "Add Task", exact: true }),
@@ -511,18 +511,24 @@ test("edits and decides each proposed block independently while preserving unsav
   expect(
     (await first.locator(".instruction-diff ins").allTextContents()).join(""),
   ).toContain("Include the required identifiers.");
-  await first.getByRole("textbox").fill("Check invoice");
+  await first
+    .getByRole("textbox", { name: /Proposed instructions for/ })
+    .fill("Check invoice");
   await expect(
     first.locator(".instruction-diff ins, .instruction-diff del"),
   ).toHaveCount(0);
   await first
-    .getByRole("textbox")
+    .getByRole("textbox", { name: /Proposed instructions for/ })
     .fill(
       "Require the five approved invoice identifiers. Include the required identifiers. Preserve source references.",
     );
-  await second.getByRole("textbox").fill("Keep this draft until I decide.");
+  await second
+    .getByRole("textbox", { name: /Proposed instructions for/ })
+    .fill("Keep this draft until I decide.");
   await thread.getByRole("button", { name: /Expand conversation:/ }).click();
-  await expect(first.getByRole("textbox")).toHaveValue(
+  await expect(
+    first.getByRole("textbox", { name: /Proposed instructions for/ }),
+  ).toHaveValue(
     "Require the five approved invoice identifiers. Include the required identifiers. Preserve source references.",
   );
   await expect(first.locator(".instruction-diff")).toBeVisible();
@@ -587,12 +593,14 @@ test("edits and decides each proposed block independently while preserving unsav
   await expect(thread.getByRole("alert")).toContainText(
     "Please retry this decision.",
   );
-  await expect(first.getByRole("textbox")).toHaveValue(
+  await expect(
+    first.getByRole("textbox", { name: /Proposed instructions for/ }),
+  ).toHaveValue(
     "Require the five approved invoice identifiers. Include the required identifiers. Preserve source references.",
   );
-  await expect(second.getByRole("textbox")).toHaveValue(
-    "Keep this draft until I decide.",
-  );
+  await expect(
+    second.getByRole("textbox", { name: /Proposed instructions for/ }),
+  ).toHaveValue("Keep this draft until I decide.");
   await page.unroute("**/proposals/*");
   const decisions: unknown[] = [];
   await page.route("**/proposals/*", async route => {
@@ -605,7 +613,7 @@ test("edits and decides each proposed block independently while preserving unsav
   });
   await first.getByRole("button", { name: "Accept changes", exact: true }).click();
   await expect(thread.getByRole("alert")).toContainText("Decision saved but response interrupted.");
-  await expect(second.getByRole("textbox")).toHaveValue("Keep this draft until I decide.");
+  await expect(second.getByRole("textbox", { name: /Proposed instructions for/ })).toHaveValue("Keep this draft until I decide.");
   await first
     .getByRole("button", { name: "Accept changes", exact: true })
     .click();
@@ -615,18 +623,18 @@ test("edits and decides each proposed block independently while preserving unsav
     "accepted",
   );
   await page.unroute("**/proposals/*");
-  await expect(second.getByRole("textbox")).toHaveValue(
-    "Keep this draft until I decide.",
-  );
+  await expect(
+    second.getByRole("textbox", { name: /Proposed instructions for/ }),
+  ).toHaveValue("Keep this draft until I decide.");
   await expect(
     second.getByRole("button", { name: "Accept changes", exact: true }),
   ).toBeEnabled();
   await page
     .getByRole("button", { name: "Close conversation", exact: true })
     .click();
-  await expect(second.getByRole("textbox")).toHaveValue(
-    "Keep this draft until I decide.",
-  );
+  await expect(
+    second.getByRole("textbox", { name: /Proposed instructions for/ }),
+  ).toHaveValue("Keep this draft until I decide.");
   await second
     .getByRole("button", { name: "Reject changes", exact: true })
     .click();
