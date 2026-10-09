@@ -298,3 +298,7 @@ This is separate from `step_executions` because a model request, its answer and 
 ### Repeatability evidence
 
 Migration 013 adds `evaluation_runs.execution_configuration`, captured once before execution, and `repair_confirmations` keyed by attempt and round (1–3). A separate relation preserves every evaluation rather than overwriting an attempt’s latest-evaluation pointer. Same-workflow foreign keys and insertion guards tie each run to the candidate, approved plan and locked suite; prior success is required before another round. A session cannot transition to passed without three complete, matching-configuration passes. Completed history is immutable.
+
+### Evaluation infrastructure recovery (migration 016)
+
+`evaluation_case_recoveries` stores one immutable failure record per case result, including its failed workflow run or isolated invocation token. `recovery_count` and `recovery_pending` persist the bounded handoff so delivery retries cannot reset it. Workflow runs are unique by case result and `evaluation_attempt`, replacing the former one-run-per-result constraint. A case retains one authoritative graded result; execution attempts retain distinct trace histories. This avoids rewriting a failed run or duplicating unaffected test cases just to recover a transient provider failure.

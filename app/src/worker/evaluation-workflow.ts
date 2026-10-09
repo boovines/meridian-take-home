@@ -17,6 +17,7 @@ const io = proxyActivities<
     | "beginEvaluationCase"
     | "scoreWorkflowCase"
     | "failEvaluationCase"
+    | "needsEvaluationCaseRecovery"
   >
 >({ startToCloseTimeout: "15 seconds", retry: { maximumAttempts: 5 } });
 const heavy = proxyActivities<
@@ -71,18 +72,25 @@ export async function evaluateSuite(jobId: string, evaluationId?: string) {
                 workflowIdReusePolicy: "REJECT_DUPLICATE",
                 ...(parallel ? { cancellationType: ChildWorkflowCancellationType.WAIT_CANCELLATION_COMPLETED } : {}),
               });
-              await io.scoreWorkflowCase(id);
+              if (context.case_recovery) await io.scoreWorkflowCase(id, task.run_id);
+              else await io.scoreWorkflowCase(id);
             } else await heavy.evaluateStepCase(id);
           } catch (error) {
             if (isCancellation(error)) throw error;
             await io.failEvaluationCase(id);
           }
         };
+        const runWithRecovery = async (id: string, parallel = false) => {
+          await runCase(id, parallel);
+          // Recorded prepare results without this flag retain their command order.
+          if (context.case_recovery && await io.needsEvaluationCaseRecovery(id))
+            await runCase(id, parallel);
+        };
         // Older activity results have no concurrency field. Their command order
         // remains unchanged on replay; new evaluations freeze their own setting.
         const concurrency = context.case_concurrency ?? 1;
         if (concurrency === 1) {
-          for (const id of context.result_ids) await runCase(id);
+          for (const id of context.result_ids) await runWithRecovery(id);
         } else {
           const casesScope = new CancellationScope();
           await casesScope.run(async () => {
@@ -92,7 +100,7 @@ export async function evaluateSuite(jobId: string, evaluationId?: string) {
               while (!stopped && next < context.result_ids.length) {
                 const id = context.result_ids[next++];
                 try {
-                  await runCase(id, true);
+                  await runWithRecovery(id, true);
                 } catch (error) {
                   stopped = true;
                   casesScope.cancel();

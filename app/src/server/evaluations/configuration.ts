@@ -1,3 +1,4 @@
+import { EVALUATION_RECOVERY_POLICY } from "../../domain/evaluation-recovery";
 import { isDeepStrictEqual } from "node:util";
 import { runtimeModelConfiguration } from "../integrations/openai-step";
 import { DomainError } from "../../domain/errors";
@@ -11,6 +12,7 @@ import { openAITokenPreflightPolicy } from "../integrations/openai-preflight";
 export function evaluationConfiguration(): Json {
   return {
     contract_version: 1,
+    case_recovery: JSON.parse(JSON.stringify(EVALUATION_RECOVERY_POLICY)),
     runtime: runtimeModelConfiguration(),
     extraction: { provider: "openai" },
     limits: { ...DEMO_LIMITS },
@@ -28,6 +30,7 @@ export function assertEvaluationConfiguration(recorded: Json) {
   // Historical evaluations did not record scheduling and ran sequentially.
   // Preserve that behavior across retries and all rounds of a confirmation.
   if (recorded && typeof recorded === "object" && !Array.isArray(recorded) && !("scheduling" in recorded)) delete current.scheduling;
+  if (recorded && typeof recorded === "object" && !Array.isArray(recorded) && !("case_recovery" in recorded)) delete current.case_recovery;
   if (!isDeepStrictEqual(recorded, current))
     throw new DomainError(
       409,

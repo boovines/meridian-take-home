@@ -18,6 +18,7 @@ afterAll(async () => { await env?.teardown(); });
 
 async function harness(options: {
   concurrency?: number;
+  recovery?: boolean;
   kind?: "step" | "workflow";
   work: (id: string) => Promise<void>;
   buildFailure?: boolean;
@@ -34,7 +35,7 @@ async function harness(options: {
     maxHeartbeatThrottleInterval:20,
     activities: {
       prepareEvaluation: async () => ({
-        evaluation_id:randomUUID(), result_ids:["0","1","2","3","4"],
+        case_recovery:options.recovery, evaluation_id:randomUUID(), result_ids:["0","1","2","3","4"],
         deadline_at:new Date(Date.now()+(options.deadlineMs ?? 60000)).toISOString(),
         ...(options.concurrency ? {case_concurrency:options.concurrency} : {}),
       }),
@@ -45,6 +46,7 @@ async function harness(options: {
         if(options.fatalBegin===id) throw ApplicationFailure.nonRetryable("Synthetic persistence error");
         return {kind:options.kind ?? (Number(id)%2 ? "workflow":"step"),run_id:`${taskQueue}:${id}`};
       },
+      needsEvaluationCaseRecovery: async(id:string)=>options.recovery && id==="0",
       evaluateStepCase: options.work,
       prepareCaseExecution: async (id:string) => ({
         run:{id}, definition:{board:{nodes:[node],connections:[]},methods:{[node.id]:"code"},limits:{step_attempts:10,active_ms:60000}},
@@ -156,4 +158,18 @@ it("the deadline stops both cases and never reports success",async()=>{
   expect(exited).toBe(2);
   expect(h.events.filter(e=>e.startsWith("begin:")).sort()).toEqual(["begin:0","begin:1"]);
   expect(h.ended).toEqual([{error:expect.objectContaining({code:"EVALUATION_LIMIT"}),cancelled:false}]);
+});
+
+
+it("retries only the selected transient case once and keeps replay deterministic",async()=>{
+  const calls:string[]=[];
+  const h=await harness({concurrency:2,kind:"step",recovery:true,work:async id=>{calls.push(id);}});
+  await h.worker.runUntil(async()=>{
+    const handle=await env.client.workflow.start("evaluateSuite",{workflowId:randomUUID(),taskQueue:h.taskQueue,args:[randomUUID()]});
+    await handle.result();
+    expect(calls.filter(id=>id==="0")).toHaveLength(2);
+    expect(calls.filter(id=>id!=="0").sort()).toEqual(["1","2","3","4"]);
+    expect(h.events.at(-1)).toBe("end");
+    await Worker.runReplayHistory({workflowBundle},await handle.fetchHistory());
+  });
 });
