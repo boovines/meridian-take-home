@@ -160,7 +160,8 @@ export function EngineerClient({ id }: { id: string }) {
                 : undefined
             }
             action={
-              state.jobs[0].error_code === "GENERATION_NEEDS_ATTENTION" ? (
+              state.jobs[0].error_code === "GENERATION_NEEDS_ATTENTION" &&
+              tab !== "Implementation" ? (
                 <button onClick={() => setTab("Implementation")}>
                   Review implementation
                 </button>
