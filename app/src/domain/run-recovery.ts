@@ -50,5 +50,6 @@ export interface RunRecoveryState {
   session: import("./repair").RepairSession;
   job: import("./engineering").WorkflowJob;
   attempts: import("./repair").RepairAttempt[];
+  questions: import("./clarification").EngineerQuestion[];
   spent_or_reserved_usd: number;
 }

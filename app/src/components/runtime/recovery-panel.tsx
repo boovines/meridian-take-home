@@ -1,4 +1,5 @@
 "use client";
+import { EngineerQuestionCard } from "./engineer-question";
 import type { RunRecord } from "@/domain/runtime";
 import type { RunRecoveryState } from "@/domain/run-recovery";
 import { recoveryEligibility } from "@/domain/run-recovery";
@@ -14,12 +15,14 @@ export function RecoveryPanel({
   onCancel,
   onInspectRun,
   onInspectCode,
+  onAnswered,
 }: {
   run: RunRecord;
   recovery: RunRecoveryState | null;
   busy: boolean;
   operationActive: boolean;
   nodeTitles: Record<string, string>;
+  onAnswered: () => Promise<void>;
   onRecover: () => void;
   onCancel: (jobId: string) => void;
   onInspectRun: (id: string) => void;
@@ -101,6 +104,14 @@ export function RecoveryPanel({
           Original failed run
         </button>
       )}
+      {(recovery.questions ?? []).map((question) => (
+        <EngineerQuestionCard
+          key={question.id}
+          question={question}
+          onAnswered={onAnswered}
+          onInspectEvidence={() => onInspectRun(session.source_run_id!)}
+        />
+      ))}
       <ol className="recovery-attempts">
         {attempts.map((attempt) => (
           <li key={attempt.id}>

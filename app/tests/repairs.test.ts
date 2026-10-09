@@ -713,7 +713,7 @@ it("stops at three full-suite attempts and permits a deliberate new session from
   const state = await repairs.state(f.w.id);
   const restarted = await repairs.start(f.w.id, {
     request_key: randomUUID(),
-    baseline_evaluation_id: state.sessions[0].baseline_evaluation_id,
+    baseline_evaluation_id: state.sessions[0].baseline_evaluation_id!,
   });
   expect(restarted.session.id).not.toBe(state.sessions[0].id);
   expect(state.attempts).toHaveLength(3);

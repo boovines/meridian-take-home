@@ -57,6 +57,12 @@ export class RunRecoveryService {
           [session.id],
         )
       ).rows as unknown as RepairAttempt[],
+      questions: (
+        await this.db.query(
+          "SELECT * FROM engineer_questions WHERE session_id=$1 ORDER BY created_at,id",
+          [session.id],
+        )
+      ).rows,
       spent_or_reserved_usd: Number(
         (
           await this.db.query(

@@ -332,6 +332,10 @@ export function RunPanel({
               void refresh(id).catch((e) => setError(errorMessage(e)));
             }}
             onInspectCode={onInspectCode}
+            onAnswered={async () => {
+              await refresh();
+              await onOperationStarted();
+            }}
             onRecover={() =>
               void act(async () => {
                 followRecovery.current = true;

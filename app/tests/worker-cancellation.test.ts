@@ -224,7 +224,13 @@ it.each([false, true])(
           calls.push("attempt");
           return randomUUID();
         },
-        generateRepairCandidate: async () => ({ ready: true }),
+        generateRepairCandidate: async () => {
+          calls.push("generate");
+          return hasSuite && calls.filter((c) => c === "generate").length === 1
+            ? { ready: false, waiting: true }
+            : { ready: true };
+        },
+        recoveryQuestionState: async () => "answered",
         createRecoveryRerun: async () => runId,
         prepareCaseExecution: async () => ({
           run: { id: runId },
@@ -280,6 +286,8 @@ it.each([false, true])(
     });
     expect(calls).toEqual([
       "attempt",
+      "generate",
+      ...(hasSuite ? ["generate"] : []),
       "build",
       "run:completed",
       "regression",

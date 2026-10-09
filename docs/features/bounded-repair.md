@@ -32,7 +32,7 @@ Each session records three attempts, two generation invocations per attempt, a t
 
 The **Attempt timeline** layout was selected after inspecting three local variants (status callout, attempt timeline and two-column ledger). Its stage line and ordered attempts preserve space for diagnosis and evidence. Picker scaffolding was removed.
 
-**Current boundary:** natural-language engineer questions, scoped reusable answers and continuation are a separate planned extension. Recovery presently stops with its retained explanation when the generator requires an engineer decision. A source run has one recovery session; rerunning the same source operation does not silently reset a spent or exhausted session.
+**Current boundary:** run-origin recovery supports the scoped engineer clarification flow below. Changes to the approved process or methods still stop with a retained explanation. A source run has one recovery session; rerunning the same source operation does not silently reset a spent or exhausted session.
 
 ## Persistence and execution
 
@@ -121,3 +121,14 @@ The repair document tool accepts up to three original PDF page numbers per read.
 Run-recovery verification uses isolated service fixtures for automatic/idempotent handoff, actual extraction evidence rejection and persisted audit inspection, immutable inputs, complete comparable regression, preserved existing failures, rejected regressions, unverified defaults, no recursive recovery, syntax failures, cancellation, spend reservation across restarts, three-attempt exhaustion and human-wait accounting. Its browser fixture follows failure → diagnosis → reload → repaired report, checks the default label, and revisits the original failure. Fixture model/step adapters do not establish autonomous repair quality. Live shipment recovery has not yet been verified for this extension.
 
 Before any recovery is accepted, manual version selection defaults to the latest original generation, not the newest repair candidate. The version list retains that selection even when more than twenty newer candidates exist. Rejected candidates remain inspectable and explicitly selectable without silently becoming the default.
+
+
+### Engineer clarification and continuation
+
+Run-origin diagnosis can ask one specific question per candidate, with affected blocks and references to its captured documents/audit events. The web view keeps that question across reloads, offers a text answer and **Submit and continue**, and retains cancellation. These questions are separate from human approvals in the frozen process. An answer applies to the captured input by default; **Use for future runs of this workflow** is explicitly opt-in.
+
+The answer transaction is idempotent, rejects closed/canceled sessions, extends the existing deadline only by durable waiting time and resumes the same candidate. It does not reset generation invocations, candidate attempts, or cost limits. Each candidate has two generation invocations total: if the first asks a question, the second must patch or stop. A worker polls the persisted answer while waiting, so a missed browser response or worker restart does not lose continuation. No model calls occur during the wait.
+
+Each invocation receives an immutable snapshot of input-scoped and explicitly reusable clarifications. The generated artifact records that snapshot and its source inspections. Answers guide inspection and cannot act as source evidence: a patch after an answer requires a compatibility assessment against frozen rules plus fresh inspection of the relevant current documents (or audit evidence for a workflow without documents). A process-changing or unsupported answer stops recovery. Compatibility classification is model-mediated, not a formal proof of semantic equivalence; frozen specs, approved methods, host evidence contracts and regression checks remain independent safeguards.
+
+Migration 015 stores questions, explicitly reusable provenance and invocation snapshots. `POST /api/workflows/:id/engineer-questions/:questionId/answer` accepts a request key, answer and reuse flag. Questions/history are returned in run recovery state. Persistence tests cover duplicate submission, cancellation, no evidence substitution, process-change rejection, immutable snapshots, waiting-time accounting and cross-input reuse boundaries. Browser fixtures cover question → reload → answer → continuation → repaired report. These fixtures do not establish live model accuracy.

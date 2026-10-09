@@ -84,13 +84,27 @@ export async function repairImplementation(jobId: string) {
         }
         for (let number = 1; number <= context.attempt_limit; number++) {
           const attemptId = await io.beginRepairAttempt(jobId, number);
-          const generated = await heavy.generateRepairCandidate(attemptId);
+          let generated = await heavy.generateRepairCandidate(attemptId);
+          if (context.origin === "run" && "waiting" in generated) {
+            // The answer is the durable resume intent. Polling survives a lost HTTP
+            // response or worker restart; no paid activity runs while waiting.
+            let question = await recovery.recoveryQuestionState(attemptId);
+            while (question === "open") {
+              await condition(() => false, 5000);
+              question = await recovery.recoveryQuestionState(attemptId);
+            }
+            if (question !== "answered")
+              throw new Error("Recovery question closed before continuation.");
+            generated = await heavy.generateRepairCandidate(attemptId);
+          }
           if (!generated.ready) {
             await cleanup.endRepair(
               jobId,
               "needs_attention",
-              generated.reason,
-              generated.code,
+              "reason" in generated && generated.reason
+                ? generated.reason
+                : "This candidate already used its clarification allowance.",
+              "code" in generated ? generated.code : "CLARIFICATION_LIMIT",
             );
             return;
           }

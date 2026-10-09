@@ -27,3 +27,14 @@ export async function remainingRecoveryTime(jobId: string) {
     ? null
     : Math.max(0, new Date(String(row.deadline_at)).getTime() - Date.now());
 }
+
+export async function recoveryQuestionState(attemptId: string) {
+  const db = await getDatabase();
+  const row = (
+    await db.query(
+      "SELECT status FROM engineer_questions WHERE attempt_id=$1",
+      [attemptId],
+    )
+  ).rows[0];
+  return row?.status ?? "missing";
+}

@@ -1,3 +1,4 @@
+import { snapshotClarifications } from "./clarification-service";
 import { runRepairContext } from "./run-context";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
@@ -322,10 +323,12 @@ export class RepairService {
         "UPDATE repair_attempts SET invocation_count=invocation_count+1,attempt_token=$2 WHERE id=$1",
         [attemptId, token],
       );
+      if (session.origin === "run")
+        await snapshotClarifications(tx, attemptId, token);
       return { attempt, session, job, token };
     });
   }
-  async generationContext(attemptId: string) {
+  async generationContext(attemptId: string, token?: string) {
     const attempt = await attemptById(this.db, attemptId);
     const session = (
       await this.db.query("SELECT origin FROM repair_sessions WHERE id=$1", [
@@ -333,7 +336,7 @@ export class RepairService {
       ])
     ).rows[0];
     return session.origin === "run"
-      ? runRepairContext(this.db, attemptId)
+      ? runRepairContext(this.db, attemptId, token)
       : this.evaluationGenerationContext(attemptId);
   }
   async evaluationGenerationContext(attemptId: string) {
@@ -849,6 +852,10 @@ export class RepairService {
           final === "cancelled",
           String(evaluation.id),
         );
+      await tx.query(
+        "UPDATE engineer_questions SET status='cancelled' WHERE session_id=$1 AND status='open'",
+        [session.id],
+      );
       // Child workflow cancellation can race worker completion. Fence every
       // unfinished occurrence before making the parent terminal; late replies
       // cannot revive a cancelled recovery or publish a result.

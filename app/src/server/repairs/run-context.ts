@@ -1,3 +1,4 @@
+import { clarificationSnapshot } from "./clarification-service";
 import type { Database } from "../database";
 import { RepairService } from "./service";
 import { attemptById, sessionByJob } from "./service";
@@ -15,7 +16,11 @@ import type { RunRecord } from "../../domain/runtime";
 export type RunRepairContext = Omit<
   Awaited<ReturnType<RepairService["evaluationGenerationContext"]>>,
   "evaluation"
-> & { evaluation: EvaluationRun | null; source_run: RunRecord };
+> & {
+  evaluation: EvaluationRun | null;
+  source_run: RunRecord;
+  clarification_context: Awaited<ReturnType<typeof clarificationSnapshot>>;
+};
 async function traces(db: Database, runId: string) {
   return (
     await db.query(
@@ -35,6 +40,7 @@ async function audits(db: Database, runId: string) {
 export async function runRepairContext(
   db: Database,
   attemptId: string,
+  token?: string,
 ): Promise<RunRepairContext> {
   const attempt = await attemptById(db, attemptId);
   const s = (
@@ -68,6 +74,7 @@ export async function runRepairContext(
   );
   return {
     attempt,
+    clarification_context: await clarificationSnapshot(db, attemptId, token),
     session,
     plan,
     source_run: source,

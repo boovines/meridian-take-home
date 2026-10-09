@@ -26,7 +26,7 @@ it.each(["application/pdf", "text/plain"])("feeds %s evidence back to the model,
   state.model = model;
   const bytes = Buffer.from(media === "application/pdf" ? "%PDF-1.7\nfixture" : "Verified source text");
   const read = vi.fn(async () => ({ artifact_id: id, name: "source", media_type: media, bytes }));
-  const result = await repairProjectSources({} as RepairContext, {} as Project, AbortSignal.timeout(10000), [], read, async()=>({}));
+  const result = await repairProjectSources({ session: { origin: "evaluation" } } as RepairContext, {} as Project, AbortSignal.timeout(10000), [], read, async()=>({}));
   expect(result).toEqual(answer);
   expect(read).toHaveBeenCalledTimes(3);
   expect(read).toHaveBeenCalledWith(id, undefined);
@@ -49,7 +49,7 @@ it('passes an exact audit subtree to repair without exposing unrelated artifacts
   state.model=model;
   const readAudit=vi.fn(async()=>({event_id:id,kind:'model_response',value:{date:'2026-10-09'},truncated:false}));
   const readDocument=vi.fn();
-  expect(await repairProjectSources({} as RepairContext,{} as Project,AbortSignal.timeout(10000),[],readDocument,readAudit)).toEqual(answer);
+  expect(await repairProjectSources({ session: { origin: "evaluation" } } as RepairContext,{} as Project,AbortSignal.timeout(10000),[],readDocument,readAudit)).toEqual(answer);
   expect(readAudit).toHaveBeenCalledWith(id,['records','0']);
   expect(readDocument).not.toHaveBeenCalled();
   expect(JSON.stringify(model.doGenerateCalls[1].prompt.find(m=>m.role==='tool'))).toContain('2026-10-09');
@@ -67,7 +67,15 @@ it("passes selected original page numbers to the source reader and back to the m
   }) });
   state.model = model;
   const read = vi.fn(async () => ({ artifact_id: id, name: "selected.pdf", media_type: "application/pdf", bytes: Buffer.from("%PDF-1.7 fixture"), source_page_numbers: [44] }));
-  await repairProjectSources({} as RepairContext, {} as Project, AbortSignal.timeout(10000), [], read, async () => ({}));
+  await repairProjectSources({ session: { origin: "evaluation" } } as RepairContext, {} as Project, AbortSignal.timeout(10000), [], read, async () => ({}));
   expect(read).toHaveBeenCalledWith(id, [44]);
   expect(JSON.stringify(model.doGenerateCalls[1].prompt.find(m => m.role === "tool"))).toContain("original source pages 44");
+});
+
+
+it("returns a structured engineer question for run-origin recovery without pretending it generated code", async()=>{
+ const node=randomUUID();
+ const answer={diagnosis:{summary:"Clarify a source label",affected_node_ids:[node],changes:[]},project:{status:"needs_attention",explanation:"Clarification required",steps:[]},clarification:{question:"Does REG mean registration?",why_needed:"The existing requirement uses a different label.",node_ids:[node],source_artifact_ids:[],audit_event_ids:[]},clarification_assessment:null};
+ state.model=new MockLanguageModelV4({doGenerate:async()=>({content:[{type:"text",text:JSON.stringify(answer)}],finishReason:{unified:"stop",raw:undefined},usage:{inputTokens:{total:1,noCache:1,cacheRead:undefined,cacheWrite:undefined},outputTokens:{total:1,text:1,reasoning:undefined}},warnings:[]})});
+ expect(await repairProjectSources({session:{origin:"run"}} as RepairContext,{} as Project,AbortSignal.timeout(10000),[],async()=>{throw new Error("No source read expected for a question.")},async()=>({}))).toEqual(answer);
 });
