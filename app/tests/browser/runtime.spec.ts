@@ -22,6 +22,7 @@ test("captures a packet, records a human decision, previews a report, and retrie
   const auditId = crypto.randomUUID();
   let auditReads = 0;
   const state = () => ({
+    initial_manual_version_id: versionId,
     runs,
     steps: runs.length
       ? [
@@ -264,7 +265,9 @@ test("captures a packet, records a human decision, previews a report, and retrie
     page.locator("pre").filter({ hasText: "schedule.pdf" }),
   ).toContainText("2026-10-09");
   expect(auditReads).toBe(1);
-  await page.locator('.run-trace').screenshot({path:testInfo.outputPath('execution-audit.png')});
+  await page
+    .locator(".run-trace")
+    .screenshot({ path: testInfo.outputPath("execution-audit.png") });
   await page.setViewportSize({ width: 390, height: 844 });
   expect(
     await page

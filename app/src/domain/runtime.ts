@@ -81,7 +81,8 @@ export interface RunRecord {
   job_id: string;
   implementation_version_id: string;
   input_bundle_id: string;
-  kind: "manual" | "evaluation";
+  kind: "manual" | "evaluation" | "recovery";
+  failure_category: RuntimeError["category"] | null;
   rerun_of_id: string | null;
   status: RunStatus;
   limits: { step_attempts: number; active_ms: number };

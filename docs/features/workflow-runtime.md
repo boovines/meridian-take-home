@@ -20,7 +20,7 @@ Live verification on October 7: run `8f8debcc-95ce-4baa-a2f6-ec0b73de3111` compl
 
 ## Inspect and respond
 
-The input sidebar keeps code/input selection next to the selected run. Recent runs shows manually started runs; evaluation case traces remain in Evaluation. A run displays its code version, input label, status, visit history and applied limits. The step-history disclosure exposes per-visit inputs, outputs, errors and human responses.
+The input sidebar keeps code/input selection next to the selected run. Recent runs shows manually started runs and their recovery reruns; evaluation case traces remain in Evaluation. A run displays its code version, input label, status, visit history and applied limits. The step-history disclosure exposes per-visit inputs, outputs, errors and human responses.
 
 A Human step presents the frozen question with text entry or Approve/Reject controls. Submission records the response for that visit, then the worker resumes. A subsequent visit asks again. Ordinary inspection remains available while an operation is active; cancellation uses the shared operation control.
 
@@ -89,3 +89,7 @@ Evidence-aware extraction can use OpenAI or LlamaCloud, selected by the operator
 Optional reinspection makes at most one additional call after a concrete evidence-contract failure. It requires exact affected fields and valid source references covering at most three complete pages. Unlocalizable omissions and larger evidence searches remain unresolved. Only those scalar fields can change; other returned edits are ignored. Both responses, requested correction, field changes and remaining issues are retained in the existing audit. No expected test answer enters the runtime extraction prompt. This is source reinspection, separate from code repair.
 
 An optional local experiment budget uses a shared durable reservation ledger. Calls reserve estimated maximum cost before dispatch; reported usage settles the reservation. Transport failures and missing usage retain reserved amounts. The OpenAI guard currently supports bounded, non-streaming GPT-5.4 Responses requests; an unpriced configuration is blocked. LlamaCloud reserves its configured extraction plus parsing rate with headroom. These safeguards exclude Sandbox and unrelated account usage and do not change provider billing settings.
+
+## Automatic implementation recovery
+
+Classified implementation failures hand off atomically to [bounded run recovery](bounded-repair.md#recovery-from-a-failed-manual-run). Existing failures can be diagnosed explicitly. A recovery rerun keeps the original captured input, uses its candidate code, and requests new human responses. Completed negative business results remain ordinary report outcomes. An accepted recovery becomes the visibly unverified manual-run default; Retry same inputs still uses that selected historical run's original code and bundle.

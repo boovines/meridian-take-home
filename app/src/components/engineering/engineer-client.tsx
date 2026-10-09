@@ -207,6 +207,10 @@ export function EngineerClient({ id }: { id: string }) {
                 state={state}
                 operationActive={!!activeJob}
                 onOperationStarted={load}
+                onInspectCode={(id) => {
+                  setSelectedCode(id);
+                  setAgentView("Code");
+                }}
               />
             ) : (
               <AgentPanel

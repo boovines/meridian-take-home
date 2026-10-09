@@ -7,6 +7,8 @@ import { RunTrace, type RunState } from "./run-trace";
 import { GmailPicker } from "./gmail-picker";
 import { HumanResponseForm } from "./human-response";
 import { RunResult } from "./run-result";
+import { RecoveryPanel } from "./recovery-panel";
+import type { ManualRunDefault } from "@/domain/run-recovery";
 import { RunWorkbench } from "./run-workbench";
 import "./run-panel.css";
 interface Bundle {
@@ -20,22 +22,32 @@ export function RunPanel({
   state,
   operationActive,
   onOperationStarted,
+  onInspectCode,
 }: {
   state: EngineeringState;
   operationActive: boolean;
   onOperationStarted: () => Promise<void>;
+  onInspectCode: (id: string) => void;
 }) {
   const refreshSequence = useRef(0);
+  const followRecovery = useRef(true);
   const base = `/api/workflows/${state.workflow.id}`;
   const [bundles, setBundles] = useState<Bundle[]>([]),
     [bundleId, setBundleId] = useState(""),
-    [versionId, setVersionId] = useState(state.versions[0]?.id || ""),
+    [chosenVersionId, setVersionId] = useState(""),
+    [initialVersionId, setInitialVersionId] = useState(""),
+    [manualDefault, setManualDefault] = useState<ManualRunDefault | null>(null),
     [history, setHistory] = useState<RunRecord[]>([]),
     [selected, setSelected] = useState(""),
     [detail, setDetail] = useState<RunState | null>(null),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     [message, setMessage] = useState("");
+  const versionId =
+    chosenVersionId ||
+    manualDefault?.implementation_version_id ||
+    initialVersionId ||
+    "";
   const loadBundles = useCallback(async () => {
     const rows = await api<Bundle[]>(`${base}/input-bundles`);
     setBundles(rows);
@@ -45,12 +57,17 @@ export function RunPanel({
     async (id?: string) => {
       const sequence = ++refreshSequence.current;
       const list = await api<RunState>(`${base}/runs?kind=manual`);
-      const chosen = id || selected || list.runs[0]?.id;
-      const next = chosen
+      let chosen = id || selected || list.runs[0]?.id;
+      let next = chosen
         ? list.runs[0]?.id === chosen
           ? list
           : await api<RunState>(`${base}/runs/${chosen}`)
         : null;
+      const rerun = next?.recovery?.attempts.at(-1)?.rerun_id;
+      if (followRecovery.current && rerun && rerun !== chosen) {
+        chosen = rerun;
+        next = await api<RunState>(`${base}/runs/${rerun}`);
+      }
       return { sequence, list, chosen, next };
     },
     [base, selected],
@@ -59,6 +76,8 @@ export function RunPanel({
     (value: Awaited<ReturnType<typeof readState>>) => {
       if (value.sequence !== refreshSequence.current) return;
       setHistory(value.list.runs);
+      setManualDefault(value.list.manual_default ?? null);
+      setInitialVersionId(value.list.initial_manual_version_id ?? "");
       setDetail(value.next);
       if (value.chosen) setSelected(value.chosen);
     },
@@ -99,7 +118,12 @@ export function RunPanel({
   }, [readState, publishState]);
   const run = detail?.runs[0];
   const polling =
-    operationActive || (!!run && activeStatuses.includes(run.status));
+    operationActive ||
+    (!!run && activeStatuses.includes(run.status)) ||
+    (!!detail?.recovery &&
+      ["queued", "running", "waiting_for_human", "cancel_requested"].includes(
+        detail.recovery.job.status,
+      ));
   useEffect(() => {
     if (!polling) return;
     const timer = setInterval(() => {
@@ -120,6 +144,7 @@ export function RunPanel({
     }
   }
   async function start(retry?: RunRecord) {
+    followRecovery.current = true;
     const result = await api<{ run: RunRecord }>(`${base}/runs`, "POST", {
       request_key: crypto.randomUUID(),
       implementation_version_id: retry?.implementation_version_id || versionId,
@@ -170,11 +195,20 @@ export function RunPanel({
           </option>
           {state.versions.map((v) => (
             <option key={v.id} value={v.id}>
-              v{v.version_number} · {new Date(v.created_at).toLocaleString()}
+              v{v.version_number}
+              {manualDefault?.implementation_version_id === v.id
+                ? " · Default · unverified"
+                : ""}{" "}
+              · {new Date(v.created_at).toLocaleString()}
             </option>
           ))}
         </select>
       </label>
+      {manualDefault?.implementation_version_id === versionId && (
+        <p className="field-help">
+          Recovered default. Business results remain unverified.
+        </p>
+      )}
       <label>
         Captured input
         <select
@@ -236,6 +270,7 @@ export function RunPanel({
             onClick={() => {
               setError("");
               setMessage("");
+              followRecovery.current = false;
               void refresh(r.id).catch((e) => setError(errorMessage(e)));
             }}
           >
@@ -246,7 +281,10 @@ export function RunPanel({
               </strong>
               <small>{new Date(r.created_at).toLocaleString()}</small>
             </span>
-            <span>{r.status.replaceAll("_", " ")}</span>
+            <span>
+              {r.kind === "recovery" ? "Repair rerun · " : ""}
+              {r.status.replaceAll("_", " ")}
+            </span>
           </button>
         ))
       )}
@@ -283,6 +321,35 @@ export function RunPanel({
               </button>
             )}
           </div>
+          <RecoveryPanel
+            run={run}
+            recovery={detail?.recovery ?? null}
+            busy={busy}
+            operationActive={operationActive}
+            nodeTitles={nodeTitles}
+            onInspectRun={(id) => {
+              followRecovery.current = false;
+              void refresh(id).catch((e) => setError(errorMessage(e)));
+            }}
+            onInspectCode={onInspectCode}
+            onRecover={() =>
+              void act(async () => {
+                followRecovery.current = true;
+                await api(`${base}/runs/${run.id}/recovery`, "POST", {
+                  request_key: crypto.randomUUID(),
+                });
+                await refresh();
+                await onOperationStarted();
+              })
+            }
+            onCancel={(jobId) =>
+              void act(async () => {
+                await api(`${base}/jobs/${jobId}/cancel`, "POST", {});
+                await refresh();
+                await onOperationStarted();
+              })
+            }
+          />
           {run.failure_message && (
             <p role="alert" className="inline-error">
               {run.failure_message}
@@ -290,8 +357,9 @@ export function RunPanel({
           )}
           {run.rerun_of_id && (
             <p className="field-help">
-              New run linked to a previous attempt. The code and input packet
-              are unchanged; human responses are requested again.
+              {run.kind === "recovery"
+                ? "Repair rerun with the original captured input and a new code version. Human responses are requested again."
+                : "New run linked to a previous attempt. The code and input packet are unchanged; human responses are requested again."}
             </p>
           )}
           {pending.map((h) => (

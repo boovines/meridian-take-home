@@ -81,7 +81,7 @@ The first command bundles workflows without credentials and runs in CI. The last
 | `src/components/reviews/conversation-message.tsx`, `src/components/reviews/instruction-diff.tsx`, `src/components/reviews/reply-changes.tsx`, `src/components/reviews/thread-card.tsx` | Conversation rendering, word diffs and a shared inline/expanded response flow |
 | `src/server/engineering` | Versioned plans, generation lifecycle, project assembly and source/download inspection |
 | `src/server/evaluations` | Verified suites, trusted grading, case execution and result history |
-| `src/server/repairs` | Bounded sessions, candidate ancestry, diagnostic evidence projection and repeated-output field differences, bounded recorded-input replay, focused source patches, generation checkpoints and three-run confirmation |
+| `src/server/repairs` | Shared repair sessions and generation; run-origin recovery, retained candidates, audit/document/replay evidence, durable build/cost/wait records, regression checks and explicit evaluation confirmation |
 | `src/server/inputs` | Capture existing Gmail messages and attachment evidence into immutable input bundles |
 | `src/server/runtime` | Run/visit history, immutable interaction audit, run-scoped document access, isolated step contracts and human responses |
 | `src/server/artifacts` | Immutable file records, integrity checks and local/private Supabase storage |
@@ -148,3 +148,7 @@ For bounded paid verification, set `INFERENCE_BUDGET_USD` and an absolute `INFER
 `EXTRACTION_PROVIDER=openai` remains the default. The optional `llamacloud` choice requires `LLAMA_CLOUD_API_KEY` and `LLAMA_CLOUD_PROJECT_ID`, uses Extract Agentic 2.5 with Agentic parsing and disables extraction-response caching. `EXTRACTION_REINSPECTION=1` permits one source-localized correction call. These settings apply to the new `extract` contract, not older generated `reason` requests. Live provider selection must follow measured results, not fixture success.
 
 The LlamaCloud adapter accepts opaque provider IDs (including UUIDs), removes unused recursive JSON-schema definitions after binding the concrete output schema, and rejects combined instructions/context exceeding 10,000 characters before upload. It does not silently shorten required context. Provider comparison must account for this limit; whole email packets may need an explicitly smaller generated extraction request.
+
+## Run recovery
+
+Migration 014 extends the shared repair lifecycle to failed manual runs. Apply it with the matching web app and worker deployed together; an older worker cannot execute run-origin repair jobs. The existing durable outbox queues automatic recovery after failure. Its default limits are recorded per session: three candidates, two hours of active work, and $5 reserved/recorded inference usage. The optional operator inference ledger remains an additional limit. GPT-5.4 and the app's default GPT-5.4 mini are priced for the standard endpoint; unsupported settings fail before paid inference. See the [recovery contract](../docs/features/bounded-repair.md#recovery-from-a-failed-manual-run) for acceptance, version selection and current limitations.

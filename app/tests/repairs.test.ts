@@ -381,7 +381,7 @@ it("rejects regression by assertion identity, keeps rejected code, and repairs f
   });
   expect(second.attempt.baseline_evaluation_id).toBe(initial.evaluation.id);
   const context = await repairs.generationContext(second.attempt.id);
-  expect(context.evaluation.id).toBe(initial.evaluation.id);
+  expect(context.evaluation!.id).toBe(initial.evaluation.id);
   expect(context.previous_attempts[0].candidate_results[0]).toMatchObject({
     outcome: "failed",
     check_results: expect.arrayContaining([
@@ -481,7 +481,7 @@ it("retains one rejected candidate across an explicit restart only for the same 
   expect(context.previous_attempts).toHaveLength(1);
   expect(context.previous_attempts[0]).toMatchObject({ session_id: session.id,
     candidate_version_id: first.attempt.candidate_version_id, status: "rejected" });
-  expect(context.evaluation.id).toBe(initial.evaluation.id);
+  expect(context.evaluation!.id).toBe(initial.evaluation.id);
   expect(context.attempt.attempt_number).toBe(1);
   expect(context.previous_attempts[0].candidate_results[0].check_results).toContainEqual(
     expect.objectContaining({ key: "shipment", passed: false, actual: "WRONG" }),
@@ -900,7 +900,7 @@ it("stops confirmation at its first failure and keeps all fresh runs", async () 
   await expect(repairs.createEvaluation(attempt.id, 3)).rejects.toMatchObject({code:"NO_CANDIDATE"});
   const next = await repairs.beginAttempt(job.id, 2);
   const diagnosisContext = await repairs.generationContext(next.id);
-  expect(diagnosisContext.evaluation.id).toBe(two.id);
+  expect(diagnosisContext.evaluation!.id).toBe(two.id);
   expect(diagnosisContext.baseline_repetitions.map(run => run.id)).toEqual([one.id]);
   expect(diagnosisContext.baseline_repetitions[0].verdict).toBe("passed");
   await expect(generation.run(next.id, { ...generator, generate: c => generator.generate({ ...c, attempt: { ...c.attempt, attempt_number: 1 } }) }, AbortSignal.timeout(10000))).rejects.toMatchObject({ code: "UNCHANGED_REPAIR_CANDIDATE" });
