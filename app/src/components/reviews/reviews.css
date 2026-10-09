@@ -470,3 +470,79 @@
 .review-thread[open] > summary .thread-chevron {
   transform: rotate(90deg);
 }
+
+.block-diff > summary .proposal-state {
+  display: block;
+  margin-top: 3px;
+  font-weight: 400;
+}
+.block-proposal-editor {
+  padding: 12px;
+}
+.block-proposal-editor textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 130px;
+  font-size: 12px;
+  line-height: 1.65;
+}
+.review-dialog .block-proposal-editor textarea {
+  font-size: 14px;
+}
+.proposal-original > summary {
+  padding: 8px 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+.proposal-original p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.65;
+}
+.block-proposal-editor .instruction-diff {
+  padding: 8px 0;
+}
+
+.proposal-edit-comparison {
+  display: grid;
+  gap: 14px;
+}
+.proposal-edit-comparison > label {
+  margin: 0;
+}
+.proposal-diff-preview {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 12px;
+}
+.proposal-diff-preview > strong {
+  display: block;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+.diff-legend .diff-removed-label {
+  color: var(--danger);
+  text-decoration: line-through;
+}
+.diff-legend .diff-added-label {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.review-dialog .proposal-edit-comparison.editable {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: start;
+}
+.review-dialog .proposal-edit-comparison.editable textarea {
+  min-height: 240px;
+}
+@media (max-width: 700px) {
+  .review-dialog .proposal-edit-comparison.editable {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.instruction-diff del + ins {
+  margin-left: 0.15em;
+}

@@ -11,6 +11,8 @@ import { nodeInput, connectionInput, type Board } from "../src/domain/canvas";
 import { messageInput, noteInput, findingAction } from "../src/domain/review";
 import {
   replyProposalEvent,
+  replyProposalDecision,
+  proposalStatus,
   type ReplyRewriter,
 } from "../src/domain/review-reply";
 let db: Database, canvas: CanvasService, reviews: ReviewService;
@@ -104,7 +106,7 @@ const rewrite: ReplyRewriter = async ({ targets }) => ({
     instructions: `${n.instructions} Require a batch number.`,
   })),
 });
-it("proposes without editing, then atomically accepts multiple blocks and freezes accepted instructions", async () => {
+it("proposes without editing, independently accepts blocks and freezes human-edited instructions", async () => {
   const { w, first, second, thread, data } = await setup();
   const before = await canvas.load(w.id),
     provider = vi.fn(rewrite),
@@ -118,6 +120,8 @@ it("proposes without editing, then atomically accepts multiple blocks and freeze
   expect(proposalMessage.author_kind).toBe("ai");
   const decision = {
     decision: "accept" as const,
+    node_id: first.id,
+    instructions: `${first.instructions} Require a batch number.`,
     expected_revision: proposedState.threads[0].revision,
     request_key: randomUUID(),
   };
@@ -131,20 +135,44 @@ it("proposes without editing, then atomically accepts multiple blocks and freeze
   expect(
     (await proposals.decide(w.id, thread.id, proposalMessage.id, decision)).id,
   ).toBe(accepted.id);
+  const partial = await canvas.load(w.id);
+  expect(partial.nodes.find((n) => n.id === second.id)?.instructions).toBe(
+    second.instructions,
+  );
+  const partialState = await reviews.state(w.id);
+  expect(
+    proposalStatus(
+      proposalMessage,
+      partialState.messages,
+      partial,
+      partialState.threads[0],
+      second.id,
+    ),
+  ).toBe("pending");
+  await proposals.decide(w.id, thread.id, proposalMessage.id, {
+    ...decision,
+    node_id: second.id,
+    instructions: "Human-edited reporting language.",
+    expected_revision: partialState.threads[0].revision,
+    request_key: randomUUID(),
+  });
   const board = await canvas.load(w.id);
   expect(board.workflow.content_revision).toBe(
-    before.workflow.content_revision + 1,
+    before.workflow.content_revision + 2,
   );
   for (const n of [first, second])
     expect(board.nodes.find((v) => v.id === n.id)).toMatchObject({
-      instructions: `${n.instructions} Require a batch number.`,
+      instructions:
+        n.id === second.id
+          ? "Human-edited reporting language."
+          : `${n.instructions} Require a batch number.`,
       revision: n.revision + 1,
     });
   const state = await reviews.state(w.id);
   expect(state.threads[0].status).toBe("open");
   expect(
     state.messages.filter((m) => m.author_kind === "customer"),
-  ).toHaveLength(2);
+  ).toHaveLength(3);
   const audit = replyProposalEvent.parse(proposalMessage.event_data);
   expect(audit.reply_message_id).toBe(reply.id);
   expect(audit.edits).toHaveLength(2);
@@ -169,6 +197,9 @@ it("proposes without editing, then atomically accepts multiple blocks and freeze
     (spec.graph as Board).nodes.find((n) => n.id === first.id)?.instructions,
   ).toContain("Require a batch number");
   expect(JSON.stringify(spec.review_evidence)).toContain(reply.id);
+  expect(JSON.stringify(spec.review_evidence)).toContain(
+    "Human-edited reporting language.",
+  );
 });
 it("leaves both blocks and the discussion untouched when inference fails", async () => {
   const { w, thread, data } = await setup(),
@@ -355,114 +386,198 @@ async function proposed() {
     revision: state.threads[0].revision,
   };
 }
-it("rejects a proposal without changing any blocks and retains the decision", async () => {
-  const { w, thread, proposal, revision } = await proposed();
+it("rejects one block and accepts the other without changing rejected instructions", async () => {
+  const { w, first, second, thread, proposal, revision } = await proposed();
+  const service = new ReplyProposalService(db);
   const before = await canvas.load(w.id);
-  await new ReplyProposalService(db).decide(w.id, thread.id, proposal.id, {
+  await service.decide(w.id, thread.id, proposal.id, {
     decision: "reject",
+    node_id: first.id,
     expected_revision: revision,
     request_key: randomUUID(),
   });
   expect(await canvas.load(w.id)).toEqual(before);
   const state = await reviews.state(w.id);
-  expect(state.messages.at(-1)?.event_data).toMatchObject({
-    action: "reply_proposal_decided",
-    decision: "reject",
-    proposal_message_id: proposal.id,
+  await service.decide(w.id, thread.id, proposal.id, {
+    decision: "accept",
+    node_id: second.id,
+    instructions: "Use my exact wording.",
+    expected_revision: state.threads[0].revision,
+    request_key: randomUUID(),
   });
-  expect(state.threads[0].status).toBe("open");
+  const board = await canvas.load(w.id);
+  expect(board.nodes.find((n) => n.id === first.id)?.instructions).toBe(
+    first.instructions,
+  );
+  expect(board.nodes.find((n) => n.id === second.id)?.instructions).toBe(
+    "Use my exact wording.",
+  );
+  const latest = await reviews.state(w.id);
+  expect(latest.messages.at(-1)?.event_data).toMatchObject({
+    node_id: second.id,
+    instructions: "Use my exact wording.",
+    before: { instructions: second.instructions },
+    after: { instructions: "Use my exact wording." },
+  });
+  expect(latest.threads[0].status).toBe("open");
   await expect(
-    new ReplyProposalService(db).decide(w.id, thread.id, proposal.id, {
+    service.decide(w.id, thread.id, proposal.id, {
       decision: "accept",
-      expected_revision: state.threads[0].revision,
+      node_id: first.id,
+      instructions: "No",
+      expected_revision: latest.threads[0].revision,
       request_key: randomUUID(),
     }),
   ).rejects.toMatchObject({ code: "PROPOSAL_DECIDED" });
 });
-it("rejects all proposed edits if one target changes before acceptance", async () => {
+it("does not mistake unrelated edits for accepted sibling changes", async () => {
   const { w, first, second, thread, proposal, revision } = await proposed();
+  const service = new ReplyProposalService(db);
+  await service.decide(w.id, thread.id, proposal.id, {
+    decision: "accept",
+    node_id: first.id,
+    instructions: "First accepted",
+    expected_revision: revision,
+    request_key: randomUUID(),
+  });
   await canvas.editNode(w.id, first.id, {
-    expected_revision: first.revision,
+    expected_revision: first.revision + 1,
     instructions: "Concurrent edit",
   });
   const before = await canvas.load(w.id);
+  const state = await reviews.state(w.id);
+  expect(
+    proposalStatus(
+      proposal,
+      state.messages,
+      before,
+      state.threads[0],
+      second.id,
+    ),
+  ).toBe("stale");
   await expect(
-    new ReplyProposalService(db).decide(w.id, thread.id, proposal.id, {
+    service.decide(w.id, thread.id, proposal.id, {
       decision: "accept",
-      expected_revision: revision,
+      node_id: second.id,
+      instructions: "Second accepted",
+      expected_revision: state.threads[0].revision,
       request_key: randomUUID(),
     }),
   ).rejects.toMatchObject({ code: "STALE_PROPOSAL" });
   expect(await canvas.load(w.id)).toEqual(before);
-  expect(before.nodes.find((n) => n.id === second.id)?.instructions).toBe(
-    second.instructions,
-  );
-  await new ReplyProposalService(db).decide(w.id, thread.id, proposal.id, {
-    decision: "reject",
+});
+it("protects target revisions even when only a position changes", async () => {
+  const { w, first, thread, proposal, revision } = await proposed();
+  await canvas.editNode(w.id, first.id, {
+    expected_revision: first.revision,
+    x: 100,
+  });
+  await expect(
+    new ReplyProposalService(db).decide(w.id, thread.id, proposal.id, {
+      decision: "accept",
+      node_id: first.id,
+      instructions: "New",
+      expected_revision: revision,
+      request_key: randomUUID(),
+    }),
+  ).rejects.toMatchObject({ code: "STALE_PROPOSAL" });
+});
+it("deduplicates an accepted block but rejects changed wording with the same request key", async () => {
+  const { w, first, thread, proposal, revision } = await proposed();
+  const service = new ReplyProposalService(db);
+  const data = {
+    decision: "accept" as const,
+    node_id: first.id,
+    instructions: "Human revision",
     expected_revision: revision,
     request_key: randomUUID(),
-  });
+  };
+  const result = await service.decide(w.id, thread.id, proposal.id, data);
+  expect((await service.decide(w.id, thread.id, proposal.id, data)).id).toBe(
+    result.id,
+  );
+  await expect(
+    service.decide(w.id, thread.id, proposal.id, {
+      ...data,
+      instructions: "Other revision",
+    }),
+  ).rejects.toMatchObject({ code: "REQUEST_REUSED" });
 });
-it("supersedes earlier proposals after a follow-up and refuses cross-thread decisions", async () => {
-  const { w, thread, proposal, revision, data } = await proposed();
+it("refuses unknown blocks, cross-thread proposals, superseded proposals and locked workflows", async () => {
+  const { w, first, thread, proposal, revision, data } = await proposed();
+  const service = new ReplyProposalService(db);
+  const decision = {
+    decision: "accept" as const,
+    node_id: first.id,
+    instructions: "New",
+    expected_revision: revision,
+    request_key: randomUUID(),
+  };
+  await expect(
+    service.decide(w.id, thread.id, proposal.id, {
+      ...decision,
+      node_id: randomUUID(),
+    }),
+  ).rejects.toMatchObject({ code: "PROPOSAL_NOT_FOUND" });
+  const other = await setup();
+  await expect(
+    service.decide(other.w.id, other.thread.id, proposal.id, {
+      ...decision,
+      expected_revision: other.thread.revision,
+    }),
+  ).rejects.toMatchObject({ code: "PROPOSAL_NOT_FOUND" });
   await new ReplyService(db, rewrite).reply(w.id, thread.id, {
     ...data,
-    body: "Also clarify the report",
     expected_revision: revision,
     request_key: randomUUID(),
   });
   const state = await reviews.state(w.id);
   await expect(
-    new ReplyProposalService(db).decide(w.id, thread.id, proposal.id, {
-      decision: "accept",
+    service.decide(w.id, thread.id, proposal.id, {
+      ...decision,
       expected_revision: state.threads[0].revision,
-      request_key: randomUUID(),
     }),
   ).rejects.toMatchObject({ code: "PROPOSAL_SUPERSEDED" });
-  const other = await setup();
-  await expect(
-    new ReplyProposalService(db).decide(
-      other.w.id,
-      other.thread.id,
-      proposal.id,
-      {
-        decision: "accept",
-        expected_revision: other.thread.revision,
-        request_key: randomUUID(),
-      },
-    ),
-  ).rejects.toMatchObject({ code: "PROPOSAL_NOT_FOUND" });
-});
-it("cannot accept while review locks the workflow", async () => {
-  const { w, thread, proposal, revision } = await proposed();
-  const before = (await canvas.load(w.id)).nodes;
   await reviews.start(w.id, { request_key: randomUUID() });
   await expect(
-    new ReplyProposalService(db).decide(w.id, thread.id, proposal.id, {
-      decision: "accept",
-      expected_revision: revision,
-      request_key: randomUUID(),
+    service.decide(w.id, thread.id, state.messages.at(-1)!.id, {
+      ...decision,
+      expected_revision: state.threads[0].revision,
     }),
   ).rejects.toMatchObject({ code: "WORKFLOW_LOCKED" });
-  expect((await canvas.load(w.id)).nodes).toEqual(before);
 });
-it("serializes competing accept and reject decisions", async () => {
-  const { w, thread, proposal, revision } = await proposed();
+it("serializes competing decisions on the same block", async () => {
+  const { w, first, thread, proposal, revision } = await proposed();
   const service = new ReplyProposalService(db);
-  const outcomes = await Promise.allSettled(
+  const results = await Promise.allSettled(
     (["accept", "reject"] as const).map((decision) =>
       service.decide(w.id, thread.id, proposal.id, {
         decision,
+        node_id: first.id,
+        instructions: "New",
         expected_revision: revision,
         request_key: randomUUID(),
       }),
     ),
   );
-  expect(outcomes.filter((r) => r.status === "fulfilled")).toHaveLength(1);
-  const state = await reviews.state(w.id);
+  expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+});
+it("requires a block and nonblank bounded instructions for acceptance", () => {
+  const data = {
+    decision: "accept",
+    node_id: randomUUID(),
+    expected_revision: 1,
+    request_key: randomUUID(),
+  };
+  for (const instructions of [undefined, "  ", "x".repeat(20001)])
+    expect(
+      replyProposalDecision.safeParse({ ...data, instructions }).success,
+    ).toBe(false);
   expect(
-    state.messages.filter(
-      (m) => m.event_data?.action === "reply_proposal_decided",
-    ),
-  ).toHaveLength(1);
+    replyProposalDecision.safeParse({ ...data, instructions: "Human wording" })
+      .success,
+  ).toBe(true);
+  expect(
+    replyProposalDecision.safeParse({ ...data, decision: "reject" }).success,
+  ).toBe(true);
 });
