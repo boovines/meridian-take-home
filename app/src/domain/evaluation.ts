@@ -11,14 +11,27 @@ export const assertionSchema = z
     label: z.string().trim().min(1).max(300),
     path: z.array(z.string().max(200)).max(20),
     operator: z
-      .enum(["equals", "contains_record", "excludes_record", "text_includes", "array_includes"])
+      .enum([
+        "equals",
+        "contains_record",
+        "excludes_record",
+        "text_includes",
+        "array_includes",
+      ])
       .optional(),
     expected: z.json(),
   })
   .strict()
   .superRefine((a, ctx) => {
-    if (a.operator === "text_includes" && (typeof a.expected !== "string" || !a.expected.trim()))
-      ctx.addIssue({ code: "custom", path: ["expected"], message: "Text checks require a nonempty expected string." });
+    if (
+      a.operator === "text_includes" &&
+      (typeof a.expected !== "string" || !a.expected.trim())
+    )
+      ctx.addIssue({
+        code: "custom",
+        path: ["expected"],
+        message: "Text checks require a nonempty expected string.",
+      });
     if (
       (a.operator === "contains_record" || a.operator === "excludes_record") &&
       (a.expected === null ||
@@ -51,6 +64,7 @@ export const caseInput = z
       .object({
         input: z.json(),
         steps: z.record(uuid, z.json()),
+        execution: z.object({ mode: z.literal("aggregate") }).strict().optional(),
         human_response: humanResponse.optional(),
       })
       .strict()
@@ -64,9 +78,7 @@ export const caseInput = z
     if (
       c.kind === "workflow"
         ? !c.input_bundle_id || c.node_id !== null || c.input_data !== null
-        : !c.node_id ||
-          !c.input_data ||
-          c.human_responses.length > 0
+        : !c.node_id || !c.input_data || c.human_responses.length > 0
     )
       ctx.addIssue({
         code: "custom",
@@ -96,6 +108,7 @@ export const createSuiteInput = z
     request_key: uuid,
     name: z.string().trim().min(1).max(200),
     parent_suite_version_id: uuid.nullable().default(null),
+    frozen_spec_id: uuid.optional(),
   })
   .strict();
 export const editCaseInput = z

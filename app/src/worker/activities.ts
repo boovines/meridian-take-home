@@ -7,6 +7,7 @@ export {
   endExecution,
   readHumanResponse,
   executeOccurrence,
+  checkRecoveryCandidate,
   prepareCaseExecution,
   endCaseExecution,
   answerScriptedHuman,
@@ -22,6 +23,31 @@ export {
   failEvaluationCase,
 } from "./evaluation-activities";
 
-export { prepareRepair, beginRepairAttempt, generateRepairCandidate, createRepairEvaluation, decideRepairAttempt, endRepair } from "./repair-activities";
+export {
+  prepareRepair,
+  beginRepairAttempt,
+  generateRepairCandidate,
+  createRepairEvaluation,
+  decideRepairAttempt,
+  endRepair,
+} from "./repair-activities";
+
+export {
+  recoveryQuestionState,
+  recoveryBaseline,
+  recordRecoveryBaseline,
+  createRecoveryRerun,
+  createRecoveryRegression,
+  decideRecovery,
+  remainingRecoveryTime,
+} from "./recovery-activities";
+
+export {
+  advanceGroupedExecution,
+  captureGroupedEmails,
+  endGroupedExecution,
+  fenceGroupedExecution,
+  endOwnedJob,
+} from "./grouped-activities";
 
 export { performScoping, endScoping } from "./scoping-activities";
