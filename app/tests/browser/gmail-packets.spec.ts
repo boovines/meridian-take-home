@@ -8,7 +8,7 @@ test("selects all pages and captures inferred packets separately, retaining succ
   let firstCalls=0, secondCalls=0;
   await page.route(`**/api/workflows/${wid}/**`,async route=>{
     const u=new URL(route.request().url()), p=u.pathname;
-    if(p.endsWith("/engineering")) return route.fulfill({json:{workflow:{id:wid,name:"Packet capture demo",desired_outcome:"Read one shipment"},specs:[{id:spec,version_number:1,created_at:"2026-01-01T00:00:00Z"}],spec:{id:spec,version_number:1,board:{nodes:[],connections:[]}},plans:[],steps:[],versions:[{id:version,version_number:1,created_at:"2026-01-01T00:00:00Z"}],jobs:[]}});
+    if(p.endsWith("/engineering")) return route.fulfill({json:{workflow:{id:wid,name:"Packet capture demo",desired_outcome:"Read one shipment"},specs:[{id:spec,version_number:1,created_at:"2026-01-01T00:00:00Z"}],spec:{id:spec,version_number:1,board:{workflow:{id:wid,name:"Packet capture demo",desired_outcome:"Read one shipment"},nodes:[],connections:[]}},plans:[],steps:[],versions:[{id:version,version_number:1,created_at:"2026-01-01T00:00:00Z"}],jobs:[]}});
     if(p.endsWith("/input-bundles"))return route.fulfill({json:packets});
     if(p.endsWith("/runs"))return route.fulfill({json:{initial_manual_version_id:version,runs:[],steps:[],human_requests:[]}});
     if(p.endsWith("/gmail/messages"))return route.fulfill({json:{messages:u.searchParams.has("page_token")?emails.slice(10):emails.slice(0,10),next_page_token:u.searchParams.has("page_token")?null:"page-two"}});
