@@ -119,6 +119,29 @@ export async function startRepairWorkflow(id: string) {
   }
 }
 
+export async function startScopingWorkflow(id: string) {
+  try {
+    await (
+      await temporalClient()
+    ).workflow.start("scopeWorkflow", {
+      workflowId: `scope-${id}`,
+      taskQueue: temporalConfig().taskQueue,
+      args: [id],
+      workflowExecutionTimeout: "5 minutes",
+      workflowIdReusePolicy: "REJECT_DUPLICATE",
+    });
+  } catch (error) {
+    if (!(error instanceof WorkflowExecutionAlreadyStartedError)) throw error;
+  }
+}
+export async function cancelScopingWorkflow(id: string) {
+  try {
+    await (await temporalClient()).workflow.getHandle(`scope-${id}`).cancel();
+  } catch (error) {
+    if (!(error instanceof WorkflowNotFoundError)) throw error;
+  }
+}
+
 export async function startGroupedWorkflow(id: string) {
   try {
     await (

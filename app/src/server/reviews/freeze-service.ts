@@ -1,3 +1,4 @@
+import { scopingFreezeEvidence } from "../scoping/review-obligations";
 import { createHandoffPlan } from "../process-revisions/plan-handoff";
 import type { z } from "zod";
 import { DomainError } from "../../domain/errors";
@@ -11,7 +12,7 @@ export class FreezeService {
     const board = await readBoard(tx, id);
     const review = (
       await tx.query(
-        "SELECT id,analyzed_content_revision,model,reviewer_version FROM review_runs WHERE workflow_id=$1 AND process_version=(SELECT process_version FROM workflows WHERE id=$1) AND status='completed' ORDER BY finished_at DESC,id DESC LIMIT 1",
+        "SELECT id,analyzed_content_revision,model,reviewer_version FROM review_runs WHERE workflow_id=$1 AND process_version=(SELECT process_version FROM workflows WHERE id=$1) AND status='completed' AND analyzed_content_revision >= coalesce((SELECT applied_content_revision FROM scoping_sessions WHERE workflow_id=$1),0) ORDER BY finished_at DESC,id DESC LIMIT 1",
         [id],
       )
     ).rows[0];
@@ -27,10 +28,11 @@ export class FreezeService {
         [id, board.workflow.process_version],
       )
     ).rows;
+    const pending = (await tx.query("SELECT id,question AS title FROM scoping_obligations WHERE workflow_id=$1 AND thread_id IS NULL", [id])).rows;
     return {
       board,
       issues: validateGraph(board),
-      open_findings: [...open, ...requests],
+      open_findings: [...open, ...requests, ...pending],
       completed_review_id: review?.id || null,
       unreviewed_changes:
         !!review &&
@@ -117,7 +119,7 @@ export class FreezeService {
             id,
             w.content_revision,
             ready.board,
-            { reviews, threads, messages, anchors, requests },
+            { reviews, threads, messages, anchors, requests, scoping: await scopingFreezeEvidence(tx, id) },
             ready.unreviewed_changes && data.acknowledge_unreviewed,
             w.process_version,
             w.base_frozen_spec_id,

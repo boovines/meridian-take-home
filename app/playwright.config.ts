@@ -21,6 +21,7 @@ export default defineConfig({
       MERIDIAN_DATABASE: "local",
       MERIDIAN_LOCAL_DEMO: "true",
       MERIDIAN_REVIEW_PROVIDER: "fixture",
+      MERIDIAN_SCOPING_PROVIDER: "fixture",
       MERIDIAN_ENGINEERING_PROVIDER: "fixture",
       LOCAL_ARTIFACT_PATH: path.resolve("../.runtime/browser-artifacts"),
       LOCAL_DATABASE_PATH: path.resolve("../.runtime/browser-tests"),

@@ -1,3 +1,4 @@
+import { carryScopingQuestions } from "../scoping/review-obligations";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import type { z } from "zod";
@@ -284,6 +285,7 @@ export class ReviewService {
         [id, snapshot, run.analyzed_content_revision ?? w.content_revision],
       );
       run = await reviewById(tx, id);
+      await carryScopingQuestions(tx, run, snapshot);
       return {
         run,
         board: snapshot,
@@ -325,6 +327,7 @@ export class ReviewService {
           "The analyzed draft is no longer current.",
         );
       const board = run.analyzed_snapshot;
+      await carryScopingQuestions(tx, run, board);
       for (let i = 0; i < result.findings.length; i++)
         await this.publishFinding(tx, run, board, result.findings[i], i);
       await terminateReview(tx, run, "completed");
