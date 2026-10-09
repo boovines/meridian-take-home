@@ -388,7 +388,7 @@
   margin-bottom: 0;
 }
 .review-dialog {
-  width: min(800px, calc(100vw - 32px));
+  width: min(1120px, calc(100vw - 32px));
   max-width: none;
   height: min(840px, calc(100dvh - 48px));
   max-height: calc(100dvh - 48px);
@@ -532,10 +532,7 @@
 }
 .review-dialog .proposal-edit-comparison.editable {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  align-items: start;
-}
-.review-dialog .proposal-edit-comparison.editable textarea {
-  min-height: 240px;
+  align-items: stretch;
 }
 @media (max-width: 700px) {
   .review-dialog .proposal-edit-comparison.editable {
@@ -545,4 +542,53 @@
 
 .instruction-diff del + ins {
   margin-left: 0.15em;
+}
+
+/* Both comparison panes share a frame and header; long content scrolls inside. */
+.proposal-edit-comparison.editable > .proposal-text-editor,
+.proposal-edit-comparison.editable > .proposal-diff-preview {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: clamp(280px, 48dvh, 500px);
+  padding: 0;
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.proposal-pane-heading,
+.proposal-edit-comparison.editable .proposal-diff-preview > strong {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--paper);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+}
+.proposal-edit-comparison.editable .proposal-text-editor textarea {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+  margin: 0;
+  padding: 12px;
+  border: 0;
+  border-radius: 0;
+  resize: none;
+  overflow: auto;
+  outline-offset: -2px;
+}
+.proposal-edit-comparison.editable .instruction-diff {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 12px;
+}
+
+.instruction-diff:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: -2px;
 }

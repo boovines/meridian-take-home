@@ -85,8 +85,10 @@ export function ReplyChanges({
                 className={`proposal-edit-comparison${pending ? " editable" : ""}`}
               >
                 {pending ? (
-                  <label>
-                    Proposed instructions
+                  <label className="proposal-text-editor">
+                    <span className="proposal-pane-heading">
+                      Proposed instructions
+                    </span>
                     <textarea
                       aria-label={`Proposed instructions for ${title}`}
                       value={text}

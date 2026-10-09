@@ -546,6 +546,28 @@ test("edits and decides each proposed block independently while preserving unsav
   expect(await proposedText(first)).toBe(
     "Require the five approved invoice identifiers. Include the required identifiers. Preserve source references.",
   );
+  const editorPane = await first.locator(".proposal-text-editor").boundingBox();
+  const diffPane = await first.locator(".proposal-diff-preview").boundingBox();
+  expect(Math.abs(editorPane!.height - diffPane!.height)).toBeLessThan(1);
+  expect(Math.abs(editorPane!.width - diffPane!.width)).toBeLessThan(1);
+  expect(Math.abs(editorPane!.y - diffPane!.y)).toBeLessThan(1);
+  expect(diffPane!.x).toBeGreaterThan(editorPane!.x + editorPane!.width);
+  // Fixed-height comparison panes must remain readable without a pointer.
+  const acceptedWording = await first.getByRole("textbox").inputValue();
+  await first.getByRole("textbox").fill("Review this requirement carefully. ".repeat(100));
+  await first.getByRole("textbox").focus();
+  await page.keyboard.press("Tab");
+  const diffRegion = first.getByRole("region", { name: "Instruction changes", exact: true });
+  await expect(diffRegion).toBeFocused();
+  await page.keyboard.press("PageDown");
+  await expect.poll(() => diffRegion.evaluate(element => element.scrollTop)).toBeGreaterThan(0);
+  await first.getByRole("textbox").fill(acceptedWording);
+  await page.setViewportSize({ width: 390, height: 844 });
+  const narrowEditor = (await first.locator(".proposal-text-editor").boundingBox())!;
+  const narrowDiff = (await first.locator(".proposal-diff-preview").boundingBox())!;
+  expect(narrowDiff.y).toBeGreaterThanOrEqual(narrowEditor.y + narrowEditor.height);
+  expect(Math.abs(narrowEditor.width - narrowDiff.width)).toBeLessThan(1);
+  await page.setViewportSize({ width: 1280, height: 720 });
   await first.scrollIntoViewIfNeeded();
   await page.screenshot({
     path: testInfo.outputPath("editable-block-proposals.png"),
