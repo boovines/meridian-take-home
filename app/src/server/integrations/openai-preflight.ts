@@ -1,3 +1,4 @@
+import { annotateInferenceTrace } from "./inference-trace";
 import { setTimeout as delay } from "node:timers/promises";
 import { DomainError } from "../../domain/errors";
 
@@ -122,5 +123,7 @@ export async function countOpenAIInputTokens(
       throw unavailable("Input-token preflight exceeded its shared deadline");
     }
     throw error;
+  } finally {
+    annotateInferenceTrace({ preflight_attempts: attempts, preflight_failures: [...failures] });
   }
 }

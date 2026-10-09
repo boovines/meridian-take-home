@@ -1,3 +1,4 @@
+import { annotateInferenceTrace, inferenceStage } from "./inference-trace";
 import { fetchOpenAIResponse } from "./openai-response";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createHash } from "node:crypto";
@@ -9,7 +10,7 @@ import { countOpenAIInputTokens } from "./openai-preflight";
 // https://developers.openai.com/api/docs/models/gpt-5.4
 const pricedModels = ["gpt-5.4", "gpt-5.4-2026-03-05"];
 
-export function meteredOpenAIFetch(base: typeof fetch): typeof fetch {
+export function meteredOpenAIFetch(base: typeof fetch, responseDeadline = false): typeof fetch {
   return async (input, init) => {
     const budget = configuredInferenceBudget();
     const url = new URL(
@@ -19,8 +20,9 @@ export function meteredOpenAIFetch(base: typeof fetch): typeof fetch {
           ? input
           : input.url,
     );
+    const dispatch = (request: RequestInit | undefined) => inferenceStage("response", () => responseDeadline ? fetchOpenAIResponse(base, input, request) : base(input, request));
     if (!budget) return url.origin === "https://api.openai.com" && url.pathname === "/v1/responses"
-      ? fetchOpenAIResponse(base, input, init) : base(input, init);
+      ? dispatch(init) : base(input, init);
     if (
       url.origin !== "https://api.openai.com" ||
       url.pathname !== "/v1/responses" ||
@@ -65,13 +67,14 @@ export function meteredOpenAIFetch(base: typeof fetch): typeof fetch {
         .filter((k) => r[k] !== undefined)
         .map((k) => [k, r[k]]),
     );
-    const { tokens, attempts, failures } = await countOpenAIInputTokens(
+    const { tokens, attempts, failures } = await inferenceStage("preflight", () => countOpenAIInputTokens(
       base,
       { ...init, body: JSON.stringify(countBody) },
-    );
+    ));
+    annotateInferenceTrace({ input_tokens: tokens, preflight_attempts: attempts, preflight_failures: failures });
     const estimated =
       (Math.ceil(tokens * 1.15) * 2.5 + r.max_output_tokens * 15) / 1e6;
-    const reservation = await budget.reserve(
+    const reservation = await inferenceStage("reservation", () => budget.reserve(
       "openai",
       estimated,
       {
@@ -83,14 +86,17 @@ export function meteredOpenAIFetch(base: typeof fetch): typeof fetch {
         request_sha256: createHash("sha256").update(body).digest("hex"),
       },
       init.signal || undefined,
-    );
+    ));
+    annotateInferenceTrace({ reservation_id: reservation.id, reserved_usd: estimated });
     // A transport error, timeout or missing usage may still be billed. Leave the
     // reservation intact; every SDK retry must obtain a separate reservation.
-    const response = await fetchOpenAIResponse(base, input, { ...init, body });
+    const response = await dispatch({ ...init, body });
+    annotateInferenceTrace({ http_status: response.status });
     if (!response.ok) {
       await reservation.annotate({ http_status: response.status });
       return response;
     }
+    return inferenceStage("reconciliation", async () => {
     const result = await response.clone().json(),
       u = result.usage,
       cached = u?.input_tokens_details?.cached_tokens || 0;
@@ -121,9 +127,16 @@ export function meteredOpenAIFetch(base: typeof fetch): typeof fetch {
       service_tier: result.service_tier,
       usage: u,
     });
+    annotateInferenceTrace({ input_tokens: u.input_tokens, output_tokens: u.output_tokens, actual_usd: actual });
     return response;
+    });
   };
 }
 export const openai = createOpenAI({
   fetch: meteredOpenAIFetch((...args) => globalThis.fetch(...args)),
+});
+
+// Extraction has a shorter response allowance than code generation/repair.
+export const runtimeOpenAI = createOpenAI({
+  fetch: meteredOpenAIFetch((...args) => globalThis.fetch(...args), true),
 });

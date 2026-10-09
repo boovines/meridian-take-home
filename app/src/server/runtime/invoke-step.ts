@@ -5,7 +5,7 @@ import {
 } from "../../domain/extraction";
 import { agentInteraction } from "./agent-interaction";
 import { DomainError } from "../../domain/errors";
-import type { RecordAudit } from "../../domain/execution-audit";
+import type { RecordAudit, ProviderTrace } from "../../domain/execution-audit";
 import type { Method } from "../../domain/engineering";
 import { stepResult, type Project } from "../../domain/project";
 import type { Json, RuntimeError } from "../../domain/runtime";
@@ -47,6 +47,8 @@ export async function invokeApprovedStep(
   audit?: RecordAudit,
 ) {
   let batchIndex: number | undefined;
+  let providerTrace: ProviderTrace | undefined;
+  const saveProviderTrace = (trace: ProviderTrace) => { providerTrace = trace; };
   try {
     signal.throwIfAborted();
     if (method === "human" && !Object.hasOwn(context, "human_response"))
@@ -76,8 +78,9 @@ export async function invokeApprovedStep(
         const outputs: Json[] = [], fields: Json[] = [];
         for (const [index, request] of result.batches.entries()) {
           batchIndex = index;
+          providerTrace = undefined;
           signal.throwIfAborted();
-          const value = await agentInteraction(request, adapters, signal, readDocuments, audit, index);
+          const value = await agentInteraction(request, adapters, signal, readDocuments, audit, index, saveProviderTrace);
           outputs.push(value.tool_result);
           fields.push(value.envelope!.fields);
           if (Buffer.byteLength(JSON.stringify({ outputs, fields })) > EXTRACTION_BATCH_POLICY.max_combined_result_bytes)
@@ -86,7 +89,7 @@ export async function invokeApprovedStep(
         tool_result = { batches: outputs };
         evidence = { batches: fields };
       } else {
-        const value = await agentInteraction(result, adapters, signal, readDocuments, audit);
+        const value = await agentInteraction(result, adapters, signal, readDocuments, audit, undefined, saveProviderTrace);
         tool_result = value.tool_result;
         evidence = value.envelope?.fields;
       }
@@ -129,11 +132,14 @@ export async function invokeApprovedStep(
       await audit?.("failure", {
         code: failure.code,
         category: failure.category,
+        ...(providerTrace ? { provider_trace: providerTrace } : {}),
         ...(error instanceof DomainError && error.code === "MODEL_RESPONSE_TIMEOUT" ? { timing: error.details } : {}),
         ...(error instanceof DomainError && error.code.startsWith("EXTRACTION_")
           ? { evidence_issues: error.details ?? null }
           : {}),
       }, {
+        failure_code: failure.code, failure_category: failure.category,
+        ...(providerTrace ? { provider_trace: providerTrace } : {}),
         ...(batchIndex === undefined ? {} : { batch_index: batchIndex }),
         ...(error instanceof DomainError && error.code === "MODEL_RESPONSE_TIMEOUT" ? { timing: error.details } : {}),
         ...(issues.length ? {

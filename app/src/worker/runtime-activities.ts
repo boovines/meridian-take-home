@@ -1,3 +1,4 @@
+import { invocationFailure } from "../server/runtime/invoke-step";
 import { cancellationSignal, heartbeat } from "@temporalio/activity";
 import { ApplicationFailure } from "@temporalio/common";
 import { DomainError } from "../domain/errors";
@@ -50,7 +51,7 @@ export async function executeOccurrence(data: ScheduleStep, resume = false) {
     );
   } catch (error) {
     if (cancellationSignal().aborted) throw error;
-    if (deadline.aborted) throw ApplicationFailure.nonRetryable(
+    if (deadline.aborted && !(error instanceof DomainError)) throw ApplicationFailure.nonRetryable(
       "The step exceeded its 12-minute execution allowance. No incomplete result was accepted; inspect its last recorded stage and reduce work per step.",
       "STEP_EXECUTION_TIMEOUT",
     );
@@ -61,6 +62,7 @@ export async function executeOccurrence(data: ScheduleStep, resume = false) {
           : "The execution worker failed.",
       type: error instanceof DomainError ? error.code : "ExecutionFailure",
       nonRetryable: error instanceof DomainError,
+      details: [{ failure_category: error instanceof DomainError ? invocationFailure(error).category : "infrastructure" }],
     });
   } finally {
     clearInterval(timer);

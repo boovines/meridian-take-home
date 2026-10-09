@@ -22,7 +22,7 @@ it("bounds a stalled response body and preserves the unknown charge without retr
     return new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode("{")); } }));
   };
   try {
-    const pending = meteredOpenAIFetch(base)("https://api.openai.com/v1/responses", request).catch(e => { failure = e; });
+    const pending = meteredOpenAIFetch(base, true)("https://api.openai.com/v1/responses", request).catch(e => { failure = e; });
     await started;
     await vi.advanceTimersByTimeAsync(180001);
     expect(failure).toMatchObject({ code: "MODEL_RESPONSE_TIMEOUT", details: { stage: "model_response", timeout_ms: 180000 } });
@@ -37,7 +37,7 @@ it("enforces a response deadline even without the optional spend guard", async (
   vi.stubEnv("INFERENCE_BUDGET_LEDGER", ""); vi.stubEnv("INFERENCE_BUDGET_USD", ""); vi.useFakeTimers();
   let failure: unknown;
   const base = vi.fn<typeof fetch>(() => new Promise(() => {}));
-  const pending = meteredOpenAIFetch(base)("https://api.openai.com/v1/responses", request).catch(e => { failure = e; });
+  const pending = meteredOpenAIFetch(base, true)("https://api.openai.com/v1/responses", request).catch(e => { failure = e; });
   await vi.advanceTimersByTimeAsync(180001);
   expect(failure).toMatchObject({ code: "MODEL_RESPONSE_TIMEOUT" }); await pending;
   expect(base).toHaveBeenCalledTimes(1);
@@ -48,7 +48,7 @@ it("preserves caller cancellation instead of reporting a provider timeout", asyn
   const controller = new AbortController(), reason = new Error("User cancelled");
   const pending = meteredOpenAIFetch(async (_url, init) => {
     controller.abort(reason); init?.signal?.throwIfAborted(); return Response.json({});
-  })("https://api.openai.com/v1/responses", { ...request, signal: controller.signal });
+  }, true)("https://api.openai.com/v1/responses", { ...request, signal: controller.signal });
   await expect(pending).rejects.toBe(reason);
 });
 
@@ -78,7 +78,7 @@ it("gives the response its full allowance after a slow preflight and settles onc
     return Response.json({ id: "fixture", model: "gpt-5.4", service_tier: "default", usage: { input_tokens: 10, output_tokens: 5 } });
   };
   try {
-    const pending = meteredOpenAIFetch(base)("https://api.openai.com/v1/responses", request);
+    const pending = meteredOpenAIFetch(base, true)("https://api.openai.com/v1/responses", request);
     await vi.advanceTimersByTimeAsync(30000); await started;
     await vi.advanceTimersByTimeAsync(170000);
     expect((await pending).ok).toBe(true);

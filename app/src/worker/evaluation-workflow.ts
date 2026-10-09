@@ -1,3 +1,4 @@
+import { describeExecutionFailure } from "./execution-failure";
 import {
   proxyActivities,
   executeChild,
@@ -77,7 +78,7 @@ export async function evaluateSuite(jobId: string, evaluationId?: string) {
             } else await heavy.evaluateStepCase(id);
           } catch (error) {
             if (isCancellation(error)) throw error;
-            await io.failEvaluationCase(id);
+            await io.failEvaluationCase(id, describeExecutionFailure(error));
           }
         };
         const runWithRecovery = async (id: string, parallel = false) => {

@@ -165,3 +165,5 @@ Evaluation scheduling uses `domain/runtime-policy.ts`: two concurrent cases per 
 `server/runtime/agent-interaction.ts` executes one audited Agent request. `invoke-step.ts` owns method checks, bounded extraction batches and generated postprocessing. The batch policy lives in `domain/extraction.ts`; migration 017 expands per-invocation audit capacity. Extraction field diagnostics are included in the bounded repair catalogue without changing locked grades.
 
 The OpenAI integration keeps token preflight (`server/integrations/openai-preflight.ts`) separate from bounded response transport (`server/integrations/openai-response.ts`). Shared runtime deadline values live in `domain/runtime-policy.ts` and are recorded with evaluation settings.
+
+`server/integrations/inference-trace.ts` collects safe provider-stage metrics per runtime interaction. They flow into immutable execution audit summaries and the repair evidence catalogue. `worker/execution-failure.ts` preserves trusted failure categories through Temporal wrappers.

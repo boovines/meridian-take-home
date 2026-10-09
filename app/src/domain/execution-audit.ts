@@ -1,3 +1,16 @@
+export interface ProviderTrace {
+  version: 1;
+  stages: { stage: "preflight" | "reservation" | "response" | "reconciliation"; elapsed_ms: number; outcome: "completed" | "failed"; code?: string }[];
+  stages_omitted?: number;
+  preflight_attempts?: number;
+  preflight_failures?: string[];
+  input_tokens?: number;
+  output_tokens?: number;
+  reservation_id?: string;
+  reserved_usd?: number;
+  actual_usd?: number;
+  http_status?: number;
+}
 export const auditKinds = [
   "initial_output",
   "model_request",
@@ -8,6 +21,13 @@ export const auditKinds = [
 export type AuditKind = (typeof auditKinds)[number];
 export interface AuditSummary {
   model?: string;
+  provider_trace?: ProviderTrace;
+  document_count?: number;
+  document_bytes?: number;
+  page_count?: number;
+  failure_code?: string;
+  failure_category?: string;
+  timing?: unknown;
   document_ids?: string[];
   batch_index?: number;
   evidence_issues?: { path: string[]; reason: string }[];

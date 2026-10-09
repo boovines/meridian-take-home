@@ -1,3 +1,4 @@
+import { invocationFailure } from "../server/runtime/invoke-step";
 import { hasCaseRecovery } from "../domain/evaluation-recovery";
 import { finishEvaluationWithRepair } from "../server/evaluations/automatic-repair";
 import { evaluationCaseConcurrency } from "../server/evaluations/configuration";
@@ -117,6 +118,10 @@ export async function evaluateStepCase(id: string) {
     );
   } catch (error) {
     if (cancellationSignal().aborted) throw error;
+    if (error instanceof DomainError) {
+      await new EvaluationService(await getDatabase()).recordCase(id, { error: invocationFailure(error) });
+      return;
+    }
     if (!deadline.aborted) throw error;
     await new EvaluationService(await getDatabase()).recordCase(id, { error: {
       code: "STEP_EXECUTION_TIMEOUT", category: "infrastructure",
@@ -127,9 +132,9 @@ export async function evaluateStepCase(id: string) {
   }
 }
 
-export async function failEvaluationCase(id: string) {
+export async function failEvaluationCase(id: string, failure?: RuntimeError) {
   return new EvaluationService(await getDatabase()).recordCase(id, {
-    error: {
+    error: failure ?? {
       code: "CASE_EXECUTION_ERROR",
       message:
         "This case's worker could not finish. Other independent cases can still run.",
