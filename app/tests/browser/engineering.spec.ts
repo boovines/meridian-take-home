@@ -159,5 +159,8 @@ test("approves a plan, downloads generated source, and keeps previous versions o
   await expect(
     page.getByRole("button", { name: "Implementation", exact: true }),
   ).toHaveAttribute("aria-current", "page");
+  await expect(
+    notice.getByRole("button", { name: "Review implementation", exact: true }),
+  ).toHaveCount(0);
   expect(errors).toEqual([]);
 });

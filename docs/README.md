@@ -15,6 +15,10 @@ Start here when working on Meridian Studio. Use the [application setup and modul
 | Check what has actually been verified | [Implementation evidence](implementation-status.md), [verification commands](verification.md) |
 | Recover original interview rationale | [Archived interview decisions](archive/interviews/README.md) |
 
+## Approved feature specifications
+
+- [Guided workflow scaffolding](product/guided-workflow-scaffolding-spec.md): persistent notes, scoping interview and an approved initial graph; implementation pending.
+
 ## Implemented features
 
 Each feature document combines usage, rules, failure handling and verification references in one place.
