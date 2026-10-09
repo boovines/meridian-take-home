@@ -1,10 +1,14 @@
 # Meridian Studio technical handoff
 
+The v17 results below are historical measurements under their recorded configuration. Subsequent reviewed changes include preflight policy v2 and removal of experimental provider/reinspection settings. Those passes do not establish a confirmation sequence for the current configuration; no new live measurement was run during this review.
+
 Meridian Studio captures a process owner's requirements in a whiteboard, preserves their decisions in a frozen specification, and generates versioned code for an engineer to evaluate and repair. The import-receiving example reads existing Gmail packets and previews a report. The workflow platform remains reusable: invoice rules are supplied requirements for generated modules.
 
 ## Run the project
 
 Use Node 24. In `app/`, run `npm ci`, configure `.env.local` from `.env.example`, and run `npm run db:migrate`. Start `npm run dev` and `npm run worker` in separate terminals. The app defaults to `http://127.0.0.1:3000`; use `npm run dev -- --port 3100` if needed. See `app/README.md` for the complete environment and TLS instructions.
+
+The existing verified laptop setup uses `SUPABASE_DB_PORT=6543 npm run dev -- --port 3100` and `SUPABASE_DB_PORT=6543 npm run worker`, each run from `app/`. Open `http://127.0.0.1:3100`. Keep the configured local secrets and artifact directory. Do not restart the worker or start a second copy while an evaluation is active. `SUPABASE_DB_PORT=6543 npm run db:check` is a read-only connection check; a configured `DATABASE_URL` takes precedence over the port override.
 
 Supabase stores application records. Temporal Cloud schedules durable work; its Node worker must keep running. OpenAI reviews, generates, interprets documents and repairs code. Composio reads the configured Gmail account. Vercel Sandbox runs generated code with denied network egress and no application credentials. Local artifact storage supports a laptop demo; hosting needs shared private storage, a persistent worker and access protection.
 
@@ -54,7 +58,11 @@ The host deliberately retains control of routing, approvals and evaluation. That
 
 Required CI runs lint, type checking, a production build, Temporal workflow bundling, PostgreSQL persistence/domain tests and browser journeys with sanitized fixtures. Live provider checks are separate. The real shipment board completed three live review rounds; the accepted report clarification is present in its frozen Outcome. The smaller returns workflow completed two consequential review rounds and three full six-case passes under recorded configuration.
 
-Shipment repeatability remains unconfirmed. Candidate v17 passed the expanded fixed suite twice (24/24 cases, 207/207 assertions), then its third confirmation stopped with a token-count HTTP 500. A later measurement with bounded preflight retries completed 23/24 with one Temporal heartbeat timeout. No further rounds were started. V12 remains the retained repair baseline; select its saved manual report for the saved passing-control shipment: three successful invoices and four batches, three successful and one failed. The report is not sent. A source-page citation error also remains outside the locked assertions. Neither infrastructure errors nor uncovered citation errors are successes.
+Shipment v17 met the demo's three-pass gate: three consecutive fresh evaluations each passed 24/24 cases and 207/207 assertions under identical recorded settings. All 34 request payloads matched across rounds, while 22 response-payload groups varied; the 102 provider response IDs were distinct. The deterministic validator is unchanged from v12's twelve successful recorded-input replays. This establishes repeatability on the locked, exposed suite, not a population accuracy estimate or fresh OCR guarantee.
+
+Earlier sequences remain recorded: v12 changed a batch result on its third run; v17 later encountered token-count and heartbeat interruptions. Generic bounded preflight recovery and a tested heartbeat-policy change preceded the successful new sequence, which started from zero. These independent measurements do not rewrite the earlier repair session or promote its candidate; that history still retains v12. A source-page citation error remains outside the locked assertions. Keep that limitation visible and do not describe all extracted evidence as verified.
+
+A final Chrome-started manual run of v17 on the original Gmail packet for the saved passing-control shipment completed all five steps and produced the expected report: three successful invoices, four batches, three successful and one failed. The unsent preview identifies the missing certificate. This demonstration is separate from the full-suite measurements.
 
 The expanded suite preserves the original checks and adds source-inspected extraction diagnostics. These observations were authored by Codex and are labeled accordingly, not claimed as independent human verification. See the requirement-to-evidence audit in docs/guides/take-home-minimum.md and the dated implementation log for exact workflow identities, evidence and limits.
 

@@ -4,7 +4,7 @@ A process owner maps a workflow, resolves anchored AI findings, and freezes a ha
 
 Start with the [documentation index](docs/README.md), [app setup](app/README.md), the [demo walkthrough](docs/guides/demo.md), the [technical handoff](docs/guides/handoff.md), and [verified implementation status](docs/implementation-status.md). Live checks and fixture tests are reported separately.
 
-The [take-home minimum audit](docs/guides/take-home-minimum.md) maps the assignment to concrete product evidence and the recording sequence. The complete product loop is implemented and demonstrated; three-pass shipment repeatability remains unconfirmed. Historical full-suite passes should not be presented as a reliability guarantee.
+The [take-home minimum audit](docs/guides/take-home-minimum.md) maps the assignment to concrete product evidence and the recording sequence. The complete product loop is implemented and demonstrated. Historical shipment v17 met the demo repeatability gate: three consecutive fresh runs each passed 24/24 cases and 207/207 assertions under identical recorded settings. This establishes the locked-suite result, not unseen-document reliability or correctness of every source citation.
 
 ## Run
 

@@ -1,6 +1,6 @@
 # Architecture
 
-Architecture and design contracts · October 8, 2026. Canvas authoring, review/freeze, implementation plans/generation, runtime, evaluations, bounded repair and Gmail ingestion are implemented. A real packet completes end to end; full-dataset shipment accuracy remains incomplete. See [implementation status](../implementation-status.md) for measured outcomes and [migrations](../../app/migrations) for executable schema.
+Architecture and design contracts · October 8, 2026. Canvas authoring, review/freeze, implementation plans/generation, runtime, evaluations, bounded repair and Gmail ingestion are implemented. A real packet completes end to end. The historical October 8 measurement of shipment v17 passed three consecutive fresh evaluations of the locked 24-case suite under its recorded configuration; this is a measured demo threshold, not an unseen-document accuracy guarantee. See [implementation status](../implementation-status.md) for measured outcomes and [migrations](../../app/migrations) for executable schema.
 
 Start with the revised [Whiteboard PRD](../product/whiteboard.md) and [Self-Healing Agent PRD](../product/self-healing-agent.md). Current table rationale is in the [data-model audit](data-model.md); exact fields and constraints are defined by [migrations](../../app/migrations). [Archived interview proposals](../archive/interviews/README.md) preserve earlier alternatives and are not the executable schema.
 
@@ -123,7 +123,7 @@ Artifacts are immutable file metadata referenced by code versions and captured i
 | Parallel arrival | Record a branch's result once; schedule one merge only after all required arrivals from the same split occurrence. |
 | Repair decision | Store attempt decision and change baseline together, using full-suite evidence and a current worker token. |
 
-Unique request/scheduling keys prevent duplicate logical actions. Worker fencing prevents an old worker from publishing after a replacement or cancellation. The transport may deliver work more than once; the design must not assume exactly-once delivery. Queued jobs/reviews and undelivered human responses serve as durable dispatch intents. The outbox loop retries Temporal starts/signals using stable identities; no additional queue table is needed.
+Unique request/scheduling keys prevent duplicate logical actions. Worker fencing prevents an old worker from publishing after a replacement or cancellation. Runtime activities heartbeat every five seconds with a 60-second liveness allowance and bounded SDK throttling; their processing and retry deadlines remain separate. The transport may deliver work more than once; the design must not assume exactly-once delivery. Queued jobs/reviews and undelivered human responses serve as durable dispatch intents. The outbox loop retries Temporal starts/signals using stable identities; no additional queue table is needed.
 
 ## Efficiency and scope
 

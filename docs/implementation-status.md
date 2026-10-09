@@ -1,8 +1,10 @@
 # Implementation scope and evidence
 
+The v17 results below are historical measurements under their recorded configuration. Subsequent reviewed changes include preflight policy v2 and removal of experimental provider/reinspection settings. Those passes do not establish a confirmation sequence for the current configuration; no new live measurement was run during this review.
+
 Updated as features land. An unchecked item is not complete, even if supporting code exists.
 
-**Current minimum and accuracy evidence, October 8:** the required product loop is demonstrated; use the [minimum audit](guides/take-home-minimum.md) for exact evidence and the local demo route. Shipment v17 passed suite v5 twice at **24/24 cases and 207/207 assertions**, then its third confirmation was inconclusive due to a token-count HTTP 500. A fresh measurement after bounded preflight recovery completed **23/24, with one Temporal heartbeat timeout** and no assertion failures; no next round was started. V12 remains the retained repair baseline. Shipment repeatability is still unconfirmed, and the known citation defect is outside the scored checks.
+**Recorded minimum and accuracy evidence, October 8:** the required product loop is demonstrated; use the [minimum audit](guides/take-home-minimum.md) for the recorded demo. Early v17 sequences ended on token-count and heartbeat infrastructure errors. A later independent sequence under its recorded policy passed all three runs at **24/24 cases and 207/207 assertions**. This historical result does not confirm the current configuration or retroactively promote the candidate in its earlier repair session, which retains v12. The known citation defect remains outside the scored checks. All earlier failures and inconclusive results remain below.
 
 Historical provider experiments are retained below; alternate-provider integration is outside the supported implementation. At that earlier checkpoint, the partial document-only comparison completed four Llama calls (46/46 selected checks) and eight OpenAI calls (92/92). It is incomplete and establishes neither a winner nor full workflow accuracy. The live returns journey completed three consecutive six-case passes with recorded configuration; that narrower text-input result does not establish PDF reliability.
 
@@ -146,7 +148,7 @@ Invoice extraction changed manufacturer fields to null in four failing shipments
 
 The same platform created and generated two new synthetic workflows without handwritten step implementations: **returns eligibility** (`64516d24-39b8-4287-a9f7-38989f7bb7b7`) and **purchase approval** (`4624949e-861f-408e-9865-890fa2c603d1`). Both completed a live AI review before freezing; review clarifications were incorporated before generation. Fixed expected values were derived from the fictional policies before generation, independently of the generated code; these operator-authored fixtures have not had separate human review. Each workflow's first generated version passed all six cases on three consecutive live evaluations: returns **90/90 assertions**, purchasing **72/72 assertions**. Purchasing exercised the actual human gate with six separately recorded, scripted responses across the three evaluations. These small text-input SOPs demonstrate reuse and measured execution consistency, not unseen-document accuracy or repeated self-healing from scratch.
 
-Two further full executions each of unstable packets MCAU6047165 and TTNU8982561 and passing control 020-07721814 were graded using their unchanged suite assertions. MCAU6047165 failed both repeats; TTNU8982561 and the control passed both. These six diagnostic runs were selected after observing the full-suite failures and are not an unbiased accuracy sample. Each is a fresh linked run with the same code and immutable input bundle, preserved in manual-run history; its experiment grading is separate from the original evaluation record.
+Two further full executions each of unstable packets MCAU6047165 and TTNU8982561 and passing control the saved passing-control shipment were graded using their unchanged suite assertions. MCAU6047165 failed both repeats; TTNU8982561 and the control passed both. These six diagnostic runs were selected after observing the full-suite failures and are not an unbiased accuracy sample. Each is a fresh linked run with the same code and immutable input bundle, preserved in manual-run history; its experiment grading is separate from the original evaluation record.
 
 Each small SOP was also independently regenerated once from the same frozen specification and approved plan, without previous source or expected fixtures in the generator prompt. Both new v2 artifacts passed the existing six-case suite on their first evaluation (returns **30/30 assertions**, purchasing **24/24**). Generation request hashes matched the earlier requests while resulting project hashes differed. This is a limited successful repeat of generation on two simple processes, not a repeated repair benchmark.
 
@@ -237,3 +239,31 @@ The first successful live comparison used one complete source-inspected invoice,
 
 - Minimum audit follow-up: re-read the original assignment and updated notes in Chrome; verified three completed shipment reviews, a consequential report-instruction revision carried into the frozen spec, approved methods and generated source. Inspected the saved shipment report and separate returns workflow. Provider comparison paused with all in-flight calls drained; no new reliability rounds started.
 - Engineer source status: an in-flight evaluation no longer hides earlier definitive syntax evidence for the same immutable code version. Latest evaluation status remains separate, and a later build failure takes precedence. Persistence regression coverage now requires explicit compiler evidence, preserves it through reruns and cancellation, and excludes fixture completion as proof of syntax.
+
+- Heartbeat interruption diagnosis: saved Temporal history for the latest inconclusive shipment run shows attempt 2 of the certificate activity exhausting its heartbeat timeout before a second database invocation was recorded. The worker logged heartbeat RPC timeouts; no matching laptop sleep event was found. A local Temporal test reproduced a 30-second delivery gap causing the old 20-second policy to fail. Runtime/evaluation heartbeat tolerance is now 60 seconds with a five-second throttle cap, retaining all processing/retry limits and recording the policy with evaluation settings. This addresses the reproduced failure class, not proof of the original external outage cause; no new live accuracy claim follows from it.
+
+### Heartbeat-policy measurement — October 8, 16:07 UTC
+
+The first new-policy evaluation (`44afbdd2-ac6a-4607-a11f-670fbfe90c06`) completed **24/24 cases and 207/207 assertions passing**, using unchanged v17 and locked suite v5. The recorded policy starts a separate confirmation sequence; previous passes are excluded. All 34 accepted model responses have distinct provider response IDs. Model usage was approximately $0.9677, plus a $0.3190 unresolved reservation; attribution uses request timestamps within the evaluation interval. Wall time was about 41 minutes including connection interruptions. Provider-internal parsing freshness remains unknown.
+
+Round two (`f3920765-29e0-46bd-b9d4-bbe775e14434`) started with identical configuration at 16:07:46 UTC. This remains one of three required passes. These independent evaluations measure repeatability without rewriting the earlier repair attempt or promoting v17; the retained repair baseline remains v12. LlamaCloud comparison remains paused. Combined-stack validation passed 179 local tests with one PostgreSQL-only skip, and all PR 47 CI jobs passed, including PostgreSQL and production browser journeys.
+
+
+### Completed independent repeatability measurement — October 8, 16:52 UTC
+
+Under the recorded heartbeat/preflight policy, unchanged v17 and locked suite v5 passed all three consecutive fresh evaluations:
+
+| Round | Evaluation | Cases | Assertions | Wall time | Model estimate |
+| --- | --- | --- | --- | --- | --- |
+| 1 | `44afbdd2-ac6a-4607-a11f-670fbfe90c06` | 24/24 | 207/207 | 41.0 min | $0.9677 |
+| 2 | `f3920765-29e0-46bd-b9d4-bbe775e14434` | 24/24 | 207/207 | 21.6 min | $0.8093 |
+| 3 | `53d2e944-8a85-43a3-9c9c-7664a17891b9` | 24/24 | 207/207 | 21.3 min | $0.8074 |
+
+The first round additionally retains an unresolved $0.3190 call reservation. Costs are estimates, not invoices. Each round has 34 audited request/response pairs; all 34 request payloads match across rounds, 22 response-payload groups vary, and all 102 settled provider response IDs are distinct. Returned model names match `gpt-5.4-2026-03-05`. The application does not reuse extraction answers; provider-internal parsing freshness is unknown.
+
+Read-only database comparison confirms all original 20 cases/161 assertions, input references and human-response fixtures are unchanged. Artifact integrity checks reconfirm the v17 validator matches the v12 source used in twelve successful fixed-input replays; only the CoA reader module changed. These results establish the requested locked-suite demo threshold, not unseen-data accuracy or source-citation correctness. The known ungraded citation defect and every earlier failed/inconclusive result remain documented. The earlier repair session still retains v12; the independent measurement does not retroactively promote it. No further full-suite experiment is planned.
+
+
+### Final v17 report verification — October 8
+
+Chrome started manual run `af569501-47b1-4756-b864-0863fdb46c59` with v17 and the original Gmail input bundle for the saved passing-control shipment. It completed all five visits and showed the expected seven totals: invoices 3 processed / 3 successful / 0 failed, goods 0 failed, batches 4 processed / 3 successful / 1 failed. The unsent preview identifies one invoice/batch relationship as lacking a CoA or supported relationship. The result was verified both in the UI and persisted output. This manual demonstration does not count as another full-suite pass.

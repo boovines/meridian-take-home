@@ -10,6 +10,7 @@ import {
 import { ApplicationFailure } from "@temporalio/common";
 import type * as activities from "./runtime-activities";
 import { RuntimeEngine } from "../domain/runtime-engine";
+import { RUNTIME_HEARTBEAT_POLICY } from "../domain/runtime-policy";
 const io = proxyActivities<
   Pick<
     typeof activities,
@@ -29,7 +30,7 @@ const cleanup = proxyActivities<
 const steps = proxyActivities<Pick<typeof activities, "executeOccurrence">>({
   startToCloseTimeout: "3 minutes",
   scheduleToCloseTimeout: "7 minutes",
-  heartbeatTimeout: "20 seconds",
+  heartbeatTimeout: RUNTIME_HEARTBEAT_POLICY.timeout_ms,
   cancellationType: ActivityCancellationType.WAIT_CANCELLATION_COMPLETED,
   retry: { maximumAttempts: 2, initialInterval: "3 seconds" },
 });

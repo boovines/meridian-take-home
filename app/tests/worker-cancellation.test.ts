@@ -10,6 +10,7 @@ import {
 } from "@temporalio/worker";
 import { cancellationSignal, heartbeat } from "@temporalio/activity";
 import { nodeInput } from "../src/domain/canvas";
+import { RUNTIME_HEARTBEAT_POLICY } from "../src/domain/runtime-policy";
 
 let env: TestWorkflowEnvironment;
 let workflowBundle: WorkflowBundle;
@@ -27,6 +28,7 @@ afterAll(async () => {
 
 it.each([
   ["evaluateSuite", "checkEvaluationBuild"],
+  ["evaluateSuite", "evaluateStepCase"],
   ["repairImplementation", "generateRepairCandidate"],
   ["executeWorkflow", "executeOccurrence"],
 ])(
@@ -61,12 +63,14 @@ it.each([
       connection: env.nativeConnection,
       taskQueue,
       workflowBundle,
-      maxHeartbeatThrottleInterval: 50,
+      maxHeartbeatThrottleInterval: RUNTIME_HEARTBEAT_POLICY.max_throttle_ms,
       activities: {
+        checkEvaluationBuild: async () => ({ ok: true }),
+        beginEvaluationCase: async () => ({ kind: "step" }),
         prepareEvaluation: async () => ({
           deadline_at: new Date(Date.now() + 600000).toISOString(),
           evaluation_id: randomUUID(),
-          result_ids: [],
+          result_ids: [randomUUID()],
         }),
         prepareRepair: async () => ({
           deadline_at: new Date(Date.now() + 600000).toISOString(),
@@ -108,11 +112,20 @@ it.each([
       await handle.cancel();
       await Promise.race([
         handle.result(),
-        delay(5000).then(() => {
-          throw new Error("Cancellation failed to finish within five seconds.");
+        delay(10000).then(() => {
+          throw new Error("Cancellation failed to finish within ten seconds.");
         }),
       ]);
       const history = await handle.fetchHistory();
+      if (activityName !== "generateRepairCandidate") {
+        const scheduled = history.events?.map(e => e.activityTaskScheduledEventAttributes)
+          .find(e => e?.activityType?.name === activityName);
+        expect(scheduled).toBeDefined();
+        expect(String(scheduled?.heartbeatTimeout?.seconds)).toBe("60");
+        expect(String(scheduled?.startToCloseTimeout?.seconds)).toBe("180");
+        expect(String(scheduled?.scheduleToCloseTimeout?.seconds)).toBe("420");
+        expect(scheduled?.retryPolicy?.maximumAttempts).toBe(2);
+      }
       expect(
         history.events?.filter((e) => e.workflowTaskFailedEventAttributes),
       ).toHaveLength(0);
@@ -121,3 +134,79 @@ it.each([
   },
   20000,
 );
+
+it("survives a brief heartbeat-delivery gap without repeating the business invocation", async () => {
+  const taskQueue = `heartbeat-gap-${randomUUID()}`;
+  const trigger = {
+    ...nodeInput.parse({ type: "trigger", title: "Start" }),
+    id: randomUUID(),
+  };
+  const outcome = {
+    ...nodeInput.parse({ type: "outcome", title: "Done" }),
+    id: randomUUID(),
+  };
+  const edge = {
+    id: randomUUID(),
+    source_node_id: trigger.id,
+    target_node_id: outcome.id,
+  };
+  const calls: string[] = [];
+  const ended: string[] = [];
+  const worker = await Worker.create({
+    connection: env.nativeConnection,
+    taskQueue,
+    workflowBundle,
+    maxHeartbeatThrottleInterval: RUNTIME_HEARTBEAT_POLICY.max_throttle_ms,
+    activities: {
+      prepareExecution: async () => ({
+        run: { id: randomUUID() },
+        definition: {
+          board: { nodes: [trigger, outcome], connections: [edge] },
+          methods: { [trigger.id]: "code", [outcome.id]: "code" },
+          limits: { step_attempts: 100, active_ms: 900000 },
+        },
+      }),
+      projectExecution: async () => {},
+      executeOccurrence: async (data: { node_id: string }) => {
+        calls.push(data.node_id);
+        heartbeat();
+        if (data.node_id === trigger.id) {
+          // Model a delivery gap using a local activity timer; no cloud or paid call.
+          await delay(30000, undefined, { signal: cancellationSignal() });
+          heartbeat();
+        }
+        return {
+          kind: "complete",
+          step_id: randomUUID(),
+          connection_ids: data.node_id === trigger.id ? [edge.id] : [],
+        };
+      },
+      endExecution: async (_id: string, result: { status: string }) => {
+        ended.push(result.status);
+      },
+    },
+  });
+  await worker.runUntil(async () => {
+    const handle = await env.client.workflow.start("executeWorkflow", {
+      workflowId: randomUUID(),
+      taskQueue,
+      args: [randomUUID()],
+    });
+    await handle.result();
+  });
+  expect(ended).toEqual(["completed"]);
+  expect(calls).toEqual([trigger.id, outcome.id]);
+}, 75000);
+
+
+it("captures heartbeat settings and rejects missing or changed measurement policies", async () => {
+  const { evaluationConfiguration, assertEvaluationConfiguration } = await import("../src/server/evaluations/configuration");
+  const current = evaluationConfiguration() as Record<string, unknown>;
+  expect(current.activity_heartbeat).toEqual(RUNTIME_HEARTBEAT_POLICY);
+  const legacy = { ...current }; delete legacy.activity_heartbeat;
+  for (const settings of [legacy, { ...current, activity_heartbeat: { ...RUNTIME_HEARTBEAT_POLICY, timeout_ms: 20000 } }]) {
+    expect(() => assertEvaluationConfiguration(settings as Parameters<typeof assertEvaluationConfiguration>[0]))
+      .toThrow("Execution settings changed");
+  }
+  expect(() => assertEvaluationConfiguration(current as Parameters<typeof assertEvaluationConfiguration>[0])).not.toThrow();
+});

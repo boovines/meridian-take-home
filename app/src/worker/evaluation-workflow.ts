@@ -8,6 +8,7 @@ import {
 } from "@temporalio/workflow";
 import type * as activities from "./evaluation-activities";
 import { executeEvaluationCase } from "./execution-workflow";
+import { RUNTIME_HEARTBEAT_POLICY } from "../domain/runtime-policy";
 const io = proxyActivities<
   Pick<
     typeof activities,
@@ -22,7 +23,7 @@ const heavy = proxyActivities<
 >({
   startToCloseTimeout: "3 minutes",
   scheduleToCloseTimeout: "7 minutes",
-  heartbeatTimeout: "20 seconds",
+  heartbeatTimeout: RUNTIME_HEARTBEAT_POLICY.timeout_ms,
   cancellationType: ActivityCancellationType.WAIT_CANCELLATION_COMPLETED,
   retry: { maximumAttempts: 2, initialInterval: "3 seconds" },
 });
