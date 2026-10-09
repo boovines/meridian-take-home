@@ -3,20 +3,16 @@ import { runtimeModelConfiguration } from "../integrations/openai-step";
 import { DomainError } from "../../domain/errors";
 import {
   DEMO_LIMITS,
-  RUNTIME_HEARTBEAT_POLICY,
   type Json,
 } from "../../domain/runtime";
+import { RUNTIME_HEARTBEAT_POLICY } from "../../domain/runtime-policy";
 import { openAITokenPreflightPolicy } from "../integrations/openai-preflight";
 /** Snapshot non-secret execution settings. Generated prompts/schemas are fixed by the immutable code version. */
 export function evaluationConfiguration(): Json {
   return {
     contract_version: 1,
     runtime: runtimeModelConfiguration(),
-    extraction: {
-      provider: process.env.EXTRACTION_PROVIDER || "openai",
-      reinspection: process.env.EXTRACTION_REINSPECTION === "1",
-      llama_configuration: "agentic-2.5-parse-agentic-disable-extract-cache-v1",
-    },
+    extraction: { provider: "openai" },
     limits: { ...DEMO_LIMITS },
     activity_heartbeat: { ...RUNTIME_HEARTBEAT_POLICY },
     fresh_extraction: true,

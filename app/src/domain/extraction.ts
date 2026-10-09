@@ -71,10 +71,10 @@ export interface EvidenceDocument {
   artifact_id: string;
   page_count: number;
 }
-export type ExtractionIssue = {
+export interface ExtractionIssue {
   path: string[];
   reason: string;
-};
+}
 function invalid(
   issues: ExtractionIssue[],
   code = "EXTRACTION_EVIDENCE_INVALID",
@@ -108,12 +108,12 @@ export function validateExtractionSchema(
     if (value && typeof value === "object")
       for (const [key, item] of Object.entries(value)) {
         if (
-          ["$ref", "$dynamicRef", "pattern", "patternProperties"].includes(key)
+          ["$async", "$ref", "$dynamicRef", "pattern", "patternProperties"].includes(key)
         )
           throw new DomainError(
             422,
             "EXTRACTION_SCHEMA_INVALID",
-            "Extraction schemas cannot contain references or regular expressions.",
+            "Extraction schemas must be synchronous and cannot contain references or regular expressions.",
           );
         inspect(item, depth + 1);
       }
