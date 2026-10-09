@@ -71,7 +71,7 @@ function preview(value: unknown, limit: number) {
 
 // Group repeated ownership/visit metadata once; retain every allowed event ID.
 // Bounded extraction diagnostics accompany the catalogue; full payloads and timing stay in the immutable audit store.
-function auditCatalogue(rows: Record<string, unknown>[]) {
+function auditCatalogue(rows: Record<string, unknown>[], compact = false) {
   const groups = new Map<
     string,
     {
@@ -104,10 +104,15 @@ function auditCatalogue(rows: Record<string, unknown>[]) {
       groups.set(key, group);
     }
     const summary = row.summary as (AuditSummary & { elapsed_ms?: number }) | undefined;
+    const omitProviderTrace = compact && row.kind === "model_response"
+      && summary?.provider_trace
+      && (!summary.provider_trace.response_status || summary.provider_trace.response_status === "completed")
+      && !summary.provider_trace.sdk_error_types?.length;
     const diagnostic = summary ? {
       batch_index: summary.batch_index, evidence_issues: summary.evidence_issues,
       evidence_issues_omitted: summary.evidence_issues_omitted, timing: summary.timing,
-      elapsed_ms: summary.elapsed_ms, provider_trace: summary.provider_trace,
+      elapsed_ms: summary.elapsed_ms,
+      ...(omitProviderTrace ? { provider_trace_omitted: true } : { provider_trace: summary.provider_trace }),
       document_count: summary.document_count, document_bytes: summary.document_bytes,
       page_count: summary.page_count, failure_code: summary.failure_code,
       failure_category: summary.failure_category,
@@ -200,12 +205,12 @@ export function repairPrompt(
           "An omitted operator or equals uses exact JSON equality. contains_record requires an array containing an object with every expected top-level field exactly equal; extra fields on that record are allowed. excludes_record requires an array with no such record. Both record checks fail on missing or non-array output. Nested values compare exactly, with no normalization or fuzzy matching. text_includes requires the expected nonempty string as a substring after lowercasing and removing whitespace only. array_includes requires one exact deep-equal member of the selected array. Expectations are locked.",
         input_inventory: context.input_inventory,
         step_traces: traces(context.traces),
-        execution_audit_events: auditCatalogue(context.audit_events),
+        execution_audit_events: auditCatalogue(context.audit_events, compactChecks),
         baseline_repetitions: repetitions.map(
           ({ traces: priorTraces, audit_events, ...run }) => ({
             ...run,
             traces: traces(priorTraces),
-            audit_events: auditCatalogue(audit_events),
+            audit_events: auditCatalogue(audit_events, compactChecks),
             trace_coverage: coverage(priorTraces),
           }),
         ),
@@ -223,7 +228,7 @@ export function repairPrompt(
           }) => ({
             ...attempt,
             candidate_traces: traces(candidate_traces),
-            candidate_audit_events: auditCatalogue(candidate_audit_events),
+            candidate_audit_events: auditCatalogue(candidate_audit_events, compactChecks),
             candidate_results: candidate_results.map((result) => ({
               ...result,
               check_results: checkEvidence(result.check_results, compactChecks),
@@ -234,6 +239,9 @@ export function repairPrompt(
         previous_candidate_sources: previousSources,
         candidate_source_scope:
           "Complete changed step source for the most recent earlier candidate only, relative to baseline_project. Older source remains stored for inspection. A session_id different from the current session identifies the most recent completed candidate from an earlier session restarted from this exact baseline evaluation; it is diagnostic history, not an adopted implementation.",
+        provider_trace_scope: compactChecks
+          ? "Completed model-response timing/token/cost metadata may be omitted from this diagnostic catalogue, marked provider_trace_omitted. Event IDs, ownership, batch indexes and extraction issues remain. Failure provider traces remain complete. Original summaries and payloads remain in the immutable audit store; omitted successful timing is not missing extraction evidence."
+          : "Provider traces are included when available in the recorded audit summary.",
         check_evidence_scope: compactChecks
           ? "Every assertion key, pass/fail and missing flag is included. Passing actual values and duplicated labels are omitted from this diagnostic projection only; actual_omitted marks this explicitly. Use locked_cases for labels and expected values, and the retained audit/trace to inspect exact outputs. A passing contains/text check does not imply the entire actual value equals its expected fragment. Failed actual values remain complete. Stored grades and acceptance use the original results."
           : "Complete check results are included.",

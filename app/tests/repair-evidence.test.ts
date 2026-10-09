@@ -171,3 +171,41 @@ it("keeps exact field diagnostics and batch ownership in the repair catalogue",(
   const prompt=JSON.parse(repairPrompt(context,{files:{}} as Project));
   expect(prompt.execution_audit_events.invocations[0].events[0]).toEqual({id:"failure",kind:"failure",sequence:5,diagnostic:{...diagnostic,elapsed_ms:10}});
 });
+
+it("compacts successful provider metadata across attempts while preserving every audit reference and failure trace", () => {
+  const provider = {
+    version: 1, reservation_id: randomUUID(), input_tokens: 15000, output_tokens: 4000,
+    reserved_usd: 0.3, actual_usd: 0.09, http_status: 200, response_status: "completed",
+    response_output_types: ["reasoning", "message"], response_content_types: ["output_text"],
+    preflight_attempts: 3, preflight_failures: ["attempt_timeout", "attempt_timeout"],
+    stages: ["preflight", "reservation", "response", "reconciliation"].map(stage => ({ stage, elapsed_ms: 30000, outcome: "completed" })),
+  };
+  const audits = Array.from({ length: 300 }, (_, n) => ({
+    id: randomUUID(), kind: n ? "model_response" : "failure", sequence: n,
+    case_id: `case-${n % 11}`, node_id: "extract", step_execution_id: `step-${Math.floor(n / 3)}`,
+    attempt_token: "attempt", total_events: 300,
+    summary: { batch_index: n % 3, provider_trace: n ? { ...provider, response_status: n % 2 ? undefined : "completed" } : { ...provider, sdk_error_types: ["AI_JSONParseError"] },
+      ...(n ? {} : { failure_code: "MODEL_UNAVAILABLE", failure_category: "infrastructure" }) },
+  }));
+  const cases = [{ id: "case", input_data: { fixed: "input" }, assertions: [{ key: "count", expected: 7 }] }];
+  const results = [{ id: "result", case_id: "case", outcome: "failed", check_results: [{key: "count", passed: false, missing: false, actual: 2}] }];
+  const context = { spec: {board: {}}, steps: [], cases, results, traces: [], input_inventory: [], audit_events: audits,
+    previous_attempts: [1,2].map(attempt_number => ({attempt_number, candidate_traces: [], candidate_audit_events: audits, candidate_results: results})),
+  } as unknown as RepairContext;
+  const baseline = {files: {"step.mjs": "// retained baseline source\n".repeat(2500)}} as unknown as Project;
+  const before = JSON.stringify(context);
+  const prompt = JSON.parse(repairPrompt(context, baseline));
+  expect(Buffer.byteLength(JSON.stringify(prompt))).toBeLessThanOrEqual(400000);
+  expect(prompt.locked_cases).toEqual(cases);
+  expect(prompt.baseline_project).toEqual(baseline);
+  expect(prompt.baseline_results[0].check_results[0].actual).toBe(2);
+  for (const catalogue of [prompt.execution_audit_events, ...prompt.previous_attempts.map((p: {candidate_audit_events: unknown}) => p.candidate_audit_events)]) {
+    const events = catalogue.invocations.flatMap((g: {events: {id: string; diagnostic: Record<string, unknown>}[]}) => g.events);
+    expect(events.map((e: {id: string}) => e.id).sort()).toEqual(audits.map(e => e.id).sort());
+    expect(events[0].diagnostic.provider_trace).toEqual(audits[0].summary.provider_trace);
+    expect(events[0].diagnostic.failure_code).toBe("MODEL_UNAVAILABLE");
+    expect(events[1].diagnostic).toMatchObject({batch_index: 1, provider_trace_omitted: true});
+    expect(events[1].diagnostic).not.toHaveProperty("provider_trace");
+  }
+  expect(JSON.stringify(context)).toBe(before);
+});
