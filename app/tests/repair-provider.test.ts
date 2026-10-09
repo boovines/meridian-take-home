@@ -78,4 +78,9 @@ it("returns a structured engineer question for run-origin recovery without prete
  const answer={diagnosis:{summary:"Clarify a source label",affected_node_ids:[node],changes:[]},project:{status:"needs_attention",explanation:"Clarification required",steps:[]},clarification:{question:"Does REG mean registration?",why_needed:"The existing requirement uses a different label.",node_ids:[node],source_artifact_ids:[],audit_event_ids:[]},clarification_assessment:null};
  state.model=new MockLanguageModelV4({doGenerate:async()=>({content:[{type:"text",text:JSON.stringify(answer)}],finishReason:{unified:"stop",raw:undefined},usage:{inputTokens:{total:1,noCache:1,cacheRead:undefined,cacheWrite:undefined},outputTokens:{total:1,text:1,reasoning:undefined}},warnings:[]})});
  expect(await repairProjectSources({session:{origin:"run"}} as RepairContext,{} as Project,AbortSignal.timeout(10000),[],async()=>{throw new Error("No source read expected for a question.")},async()=>({}))).toEqual(answer);
+ const model=state.model as MockLanguageModelV4;
+ const format=model.doGenerateCalls[0].responseFormat;
+ expect(format?.type).toBe("json");
+ if(format?.type!=="json") throw new Error("Structured output required");
+ expect(format.schema?.required).toEqual(expect.arrayContaining(["diagnosis","project","clarification","clarification_assessment"]));
 });

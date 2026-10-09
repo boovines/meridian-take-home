@@ -87,7 +87,7 @@ The [architecture](../architecture/overview.md) and [verification plan](../verif
 
 ## Current implementation checkpoint
 
-The proposed run-recovery extension below is not implemented. It changes manual-run recovery only; the explicit evaluation-driven repair behavior described above remains the current implementation.
+The run-recovery extension below is implemented in the open PR stack and is undergoing live acceptance. It changes manual-run recovery only; evaluation-driven repair still requires an explicit action.
 
 The [generation](../features/engineer-generation.md), [runtime](../features/workflow-runtime.md), and [evaluation](../features/trusted-evaluations.md) guides describe implemented behavior and routes. The evaluation screen supports full-workflow and JSON-output step checks, explicit verification, sealed suite revisions, full-suite execution, comparison details and visit traces. Arbitrary unit-test code and broad OCR benchmarks remain deferred. Evaluation starts explicitly. Bounded repair is implemented; automatic first evaluation, arbitrary test-code execution and broad OCR benchmarking remain deferred.
 

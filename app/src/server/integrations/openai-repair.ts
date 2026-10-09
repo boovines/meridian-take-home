@@ -26,7 +26,9 @@ export async function repairProjectSources(
     () =>
       generateText({
         model: openai(engineeringModel()),
-        output: Output.object({ schema: context.session.origin === "run" ? recoverySources : repairSources }),
+        // Strict OpenAI output requires every property, using null for no question.
+        // Keep the service parser defaults for older/fixture adapter responses.
+        output: Output.object({ schema: context.session.origin === "run" ? recoverySources.required() : repairSources }),
         tools: {
           ...(replayStep
             ? {
