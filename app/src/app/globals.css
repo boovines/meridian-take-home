@@ -4,3 +4,5 @@
 @import "../styles/reduced-motion.css";
 @import "../components/process-context/process-context.css";
 @import "../components/reviews/reviews.css";
+
+@import "../components/scoping/scoping.css";

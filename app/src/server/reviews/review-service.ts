@@ -1,3 +1,4 @@
+import { carryScopingQuestions } from "../scoping/review-obligations";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import type { z } from "zod";
@@ -129,13 +130,13 @@ export class ReviewService {
   private async readState(tx: Queryable, id: string): Promise<ReviewState> {
     const runs = (
       await tx.query(
-        "SELECT id,workflow_id,status,phase,started_content_revision,analyzed_content_revision,model,model_settings,reviewer_version,error_message,deadline_at,created_at,finished_at FROM review_runs WHERE workflow_id=$1 ORDER BY created_at DESC,id DESC LIMIT 20",
+        "SELECT id,workflow_id,process_version,status,phase,started_content_revision,analyzed_content_revision,model,model_settings,reviewer_version,error_message,deadline_at,created_at,finished_at FROM review_runs WHERE workflow_id=$1 ORDER BY created_at DESC,id DESC LIMIT 20",
         [id],
       )
     ).rows.map((r) => reviewRecord<ReviewRun>(r));
     const threads = (
       await tx.query(
-        "SELECT * FROM discussion_threads WHERE workflow_id=$1 ORDER BY created_at,id",
+        "SELECT t.*,to_jsonb(r)||jsonb_build_object('source_version_number',f.version_number) AS engineer_request FROM discussion_threads t LEFT JOIN engineer_change_requests r ON r.thread_id=t.id LEFT JOIN frozen_specs f ON f.id=r.source_frozen_spec_id WHERE t.workflow_id=$1 ORDER BY t.created_at,t.id",
         [id],
       )
     ).rows.map((r) => reviewRecord<DiscussionThread>(r));
@@ -287,6 +288,7 @@ export class ReviewService {
         [id, snapshot, run.analyzed_content_revision ?? w.content_revision],
       );
       run = await reviewById(tx, id);
+      await carryScopingQuestions(tx, run, snapshot);
       return {
         run,
         board: snapshot,
@@ -328,6 +330,7 @@ export class ReviewService {
           "The analyzed draft is no longer current.",
         );
       const board = run.analyzed_snapshot;
+      await carryScopingQuestions(tx, run, board);
       for (let i = 0; i < result.findings.length; i++)
         await this.publishFinding(tx, run, board, result.findings[i], i);
       await terminateReview(tx, run, "completed");
@@ -361,7 +364,11 @@ export class ReviewService {
           "A follow-up needs an existing finding.",
         );
       thread = await threadById(tx, run.workflow_id, f.existing_thread_id);
-      if (thread.kind !== "finding" || thread.status !== "open")
+      if (
+        thread.kind !== "finding" ||
+        thread.status !== "open" ||
+        thread.process_version !== run.process_version
+      )
         throw new DomainError(
           422,
           "CLOSED_FINDING",

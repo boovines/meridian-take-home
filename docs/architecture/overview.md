@@ -1,6 +1,6 @@
 # Architecture
 
-Architecture and design contracts · October 8, 2026. Canvas authoring, review/freeze, implementation plans/generation, runtime, evaluations, bounded repair and Gmail ingestion are implemented. A real packet completes end to end. Shipment v17 passed three consecutive fresh evaluations of the locked 24-case suite; this is a measured demo threshold, not an unseen-document accuracy guarantee. See [implementation status](../implementation-status.md) for measured outcomes and [migrations](../../app/migrations) for executable schema.
+Architecture and design contracts · October 8, 2026. Canvas authoring, review/freeze, implementation plans/generation, runtime, evaluations, bounded repair and Gmail ingestion are implemented. A real packet completes end to end. The historical October 8 measurement of shipment v17 passed three consecutive fresh evaluations of the locked 24-case suite under its recorded configuration; this is a measured demo threshold, not an unseen-document accuracy guarantee. See [implementation status](../implementation-status.md) for measured outcomes and [migrations](../../app/migrations) for executable schema.
 
 Start with the revised [Whiteboard PRD](../product/whiteboard.md) and [Self-Healing Agent PRD](../product/self-healing-agent.md). Current table rationale is in the [data-model audit](data-model.md); exact fields and constraints are defined by [migrations](../../app/migrations). [Archived interview proposals](../archive/interviews/README.md) preserve earlier alternatives and are not the executable schema.
 
@@ -36,7 +36,7 @@ The return to generation is conditional on an explicitly started repair session 
 
 The web/API can deploy to Vercel. Temporal Cloud owns orchestration; its worker runs as a separate persistent Node process. Vercel Sandbox is selected for generated execution. Supabase Postgres stores application state and immutable evidence; direct server connections verify TLS with the project CA. OpenAI performs review and generation, and Composio supplies read-only Gmail retrieval. Database transactions never span model calls or generated execution. The app README documents the implemented module boundaries.
 
-Decision-relevant document extraction can use a generated JSON schema and field evidence contract. The host validates source ownership/page bounds and field dispositions; it does not decide pharmaceutical matching rules. OpenAI remains the default. The optional LlamaCloud adapter and bounded three-page reinspection are exercised only by generated `extract` requests; older `reason` requests retain their original path. Provider fixture tests do not establish a live accuracy improvement.
+Decision-relevant document extraction can use a generated JSON schema and field evidence contract. The host validates source ownership/page bounds and field dispositions; it does not decide pharmaceutical matching rules. OpenAI supplies document interpretation. Older generated `reason` requests retain their original path; the evidence contract applies to generated `extract` requests. Alternate-provider switching and automatic reinspection are not implemented in this checkpoint. Fixture tests do not establish a live accuracy improvement.
 
 PostgreSQL connections are bounded per process. Server-side statement and idle-transaction deadlines release abandoned locks; the database adapter discards failed connections rather than returning them to the pool. This protects subsequent operations after a dropped connection, but does not turn an interrupted evaluation into a successful one. Its recorded error remains visible and a new evaluation establishes fresh evidence.
 
@@ -46,7 +46,7 @@ PostgreSQL connections are bounded per process. Server-side statement and idle-t
 | --- | --- |
 | Draft workflow | Editable with per-record revisions; semantic content revision excludes position-only changes. |
 | Review input | Captured content and revision; goal clarification records the subsequent analyzed input explicitly. |
-| Frozen spec | Immutable graph and review evidence; exactly one per workflow in the demo. |
+| Frozen spec | Immutable graph and review evidence; one frozen handoff per process revision, retaining earlier revisions. |
 | Implementation plan | Editable draft, immutable after approval; method changes create a new version. |
 | Generated code | Immutable artifact tied to its plan and parent version. |
 | Evaluation suite | Editable draft, immutable after verification/lock; corrections create a new version. |

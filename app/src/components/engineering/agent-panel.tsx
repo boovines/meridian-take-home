@@ -23,7 +23,9 @@ export function AgentPanel({
     [file, setFile] = useState("run-step.mjs"),
     [changes, setChanges] = useState(false),
     [error, setError] = useState("");
-  const versionId = selected || versions[0]?.id;
+  const versionId = versions.some((v) => v.id === selected)
+    ? selected
+    : versions[0]?.id;
   useEffect(() => {
     if (!versionId) return;
     let active = true;
@@ -60,18 +62,18 @@ export function AgentPanel({
     change = detail?.changes.find((c) => c.path === file);
   const job = jobs.find((j) => j.id === detail?.version.created_by_job_id);
   const buildLabel =
-    job?.progress.engine === "fixture"
-      ? "Fixture build result"
-      : detail?.build_check_status === "failed"
-        ? "Syntax check failed"
-        : detail?.build_check_status === "passed" ||
-            job?.progress.syntax_status === "passed" ||
-            (job?.status === "succeeded" &&
-              job.progress.check === "node --check")
-          ? "Syntax check passed"
+    detail?.build_check_status === "failed"
+      ? "Syntax check failed"
+      : detail?.build_check_status === "passed"
+        ? "Syntax check passed"
+        : job?.progress.engine === "fixture"
+          ? "Fixture build result"
           : job?.progress.syntax_status === "failed"
             ? "Syntax check failed"
-            : "Build check incomplete";
+            : job?.progress.syntax_status === "passed" ||
+                (job?.status === "succeeded" && job.progress.check === "node --check")
+              ? "Syntax check passed"
+              : "Build check incomplete";
   const fileLabel = (path: string) => {
     const nodeId = Object.entries(detail?.project.node_file_map || {}).find(
       ([, file]) => file === path,

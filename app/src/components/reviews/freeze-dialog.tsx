@@ -72,7 +72,8 @@ export function FreezeDialog({
       <h2 id="freeze-title">Ready to hand off?</h2>
       <p>
         Freezing saves this process and its review decisions for the engineer.
-        The board will be locked for the demo.
+        The approved version stays immutable; future changes require a new
+        revision.
       </p>
       {error && (
         <p role="alert" className="inline-error">
@@ -93,7 +94,7 @@ export function FreezeDialog({
           )}
           {ready.open_findings.length ? (
             <>
-              <strong>Resolve these findings first</strong>
+              <strong>Resolve these findings and requests first</strong>
               <ul>
                 {ready.open_findings.map((f) => (
                   <li key={f.id}>{f.title}</li>
@@ -101,7 +102,7 @@ export function FreezeDialog({
               </ul>
             </>
           ) : (
-            <p>✓ All AI findings have a recorded decision</p>
+            <p>✓ All findings and engineer requests have a recorded decision</p>
           )}
           {ready.issues.length ? (
             <>
@@ -110,16 +111,43 @@ export function FreezeDialog({
                 {ready.issues.map((i, k) => (
                   <li key={k}>
                     {i.message}
-                    {(i.node_id || i.connection_id) && (
-                      <button
-                        className="subtle"
-                        onClick={() => {
-                          onClose();
-                          onLocate(i);
-                        }}
-                      >
-                        Show on canvas
-                      </button>
+                    {i.repair_steps?.length ? (
+                      <ol>
+                        {i.repair_steps.map((step, index) => (
+                          <li key={index}>
+                            {step.instruction}
+                            <button
+                              className="subtle"
+                              onClick={() => {
+                                onClose();
+                                onLocate({
+                                  ...i,
+                                  node_id: step.node_id,
+                                  connection_id: undefined,
+                                });
+                              }}
+                            >
+                              Edit “
+                              {ready.board.nodes.find(
+                                (node) => node.id === step.node_id,
+                              )?.title || "block"}
+                              ”
+                            </button>
+                          </li>
+                        ))}
+                      </ol>
+                    ) : (
+                      (i.node_id || i.connection_id) && (
+                        <button
+                          className="subtle"
+                          onClick={() => {
+                            onClose();
+                            onLocate(i);
+                          }}
+                        >
+                          Show on canvas
+                        </button>
+                      )
                     )}
                   </li>
                 ))}

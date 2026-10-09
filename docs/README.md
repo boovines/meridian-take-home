@@ -15,14 +15,20 @@ Start here when working on Meridian Studio. Use the [application setup and modul
 | Check what has actually been verified | [Implementation evidence](implementation-status.md), [verification commands](verification.md) |
 | Recover original interview rationale | [Archived interview decisions](archive/interviews/README.md) |
 
+## Approved feature specifications
+
+- [Guided workflow scaffolding](product/guided-workflow-scaffolding-spec.md): approved requirements for notes, scoping interviews and initial graph generation.
+
 ## Implemented features
 
 Each feature document combines usage, rules, failure handling and verification references in one place.
 
 - [Whiteboard authoring](features/whiteboard-authoring.md)
+- [Guided workflow scaffolding](features/guided-workflow-scaffolding.md)
 - [AI review and frozen handoff](features/review-handoff.md)
 - [Implementation plans and code generation](features/engineer-generation.md)
 - [Gmail input capture](features/gmail-inputs.md)
+- [Selected-email grouped execution](features/grouped-execution.md)
 - [Workflow runtime and human responses](features/workflow-runtime.md)
 - [Trusted evaluations](features/trusted-evaluations.md)
 - [Bounded repair](features/bounded-repair.md)

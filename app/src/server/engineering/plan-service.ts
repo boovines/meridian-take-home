@@ -11,19 +11,47 @@ import type {
 } from "../../domain/engineering";
 import type { Database, Queryable } from "../database";
 import { workflow, record, expectRevision } from "../workflows/store";
-export async function frozenSpec(tx: Queryable, workflowId: string) {
+export async function frozenSpec(
+  tx: Queryable,
+  workflowId: string,
+  specId?: string,
+) {
   const row = (
-    await tx.query("SELECT * FROM frozen_specs WHERE workflow_id=$1", [
-      workflowId,
-    ])
+    await tx.query(
+      specId
+        ? "SELECT * FROM frozen_specs WHERE workflow_id=$1 AND id=$2"
+        : "SELECT f.* FROM frozen_specs f JOIN workflows w ON w.current_frozen_spec_id=f.id WHERE w.id=$1",
+      specId ? [workflowId, specId] : [workflowId],
+    )
   ).rows[0];
   if (!row)
     throw new DomainError(
       409,
       "FREEZE_REQUIRED",
-      "Freeze the customer workflow before choosing its implementation.",
+      "Choose an existing frozen customer workflow before choosing its implementation.",
     );
-  return { id: String(row.id), board: row.graph as Board };
+  return {
+    id: String(row.id),
+    version_number: Number(row.version_number),
+    parent_frozen_spec_id: row.parent_frozen_spec_id as string | null,
+    board: row.graph as Board,
+  };
+}
+/** Execution always follows its approved plan, even while a later draft is edited. */
+export async function specForPlan(
+  tx: Queryable,
+  workflowId: string,
+  planId: string,
+) {
+  const row = (
+    await tx.query(
+      "SELECT frozen_spec_id FROM implementation_plan_versions WHERE workflow_id=$1 AND id=$2",
+      [workflowId, planId],
+    )
+  ).rows[0];
+  if (!row)
+    throw new DomainError(404, "NOT_FOUND", "Implementation plan not found.");
+  return frozenSpec(tx, workflowId, String(row.frozen_spec_id));
 }
 export async function planById(
   tx: Queryable,
@@ -56,7 +84,15 @@ export class PlanService {
   async create(workflowId: string, data: z.infer<typeof createPlanInput>) {
     return this.db.transaction(async (tx) => {
       await workflow(tx, workflowId, true);
-      const spec = await frozenSpec(tx, workflowId);
+      const parentSpec = data.parent_plan_version_id
+        ? (await planById(tx, workflowId, data.parent_plan_version_id))
+            .frozen_spec_id
+        : undefined;
+      const spec = await frozenSpec(
+        tx,
+        workflowId,
+        data.frozen_spec_id ?? parentSpec,
+      );
       const previous = (
         await tx.query(
           "SELECT * FROM implementation_plan_versions WHERE workflow_id=$1 AND creation_key=$2",
@@ -64,7 +100,10 @@ export class PlanService {
         )
       ).rows[0];
       if (previous) {
-        if (previous.parent_plan_version_id !== data.parent_plan_version_id)
+        if (
+          previous.parent_plan_version_id !== data.parent_plan_version_id ||
+          previous.frozen_spec_id !== spec.id
+        )
           throw new DomainError(
             409,
             "REQUEST_REUSED",
@@ -75,8 +114,8 @@ export class PlanService {
       if (
         (
           await tx.query(
-            "SELECT id FROM implementation_plan_versions WHERE workflow_id=$1 AND state='draft'",
-            [workflowId],
+            "SELECT id FROM implementation_plan_versions WHERE workflow_id=$1 AND frozen_spec_id=$2 AND state='draft'",
+            [workflowId, spec.id],
           )
         ).rows.length
       )
@@ -92,7 +131,7 @@ export class PlanService {
           workflowId,
           data.parent_plan_version_id,
         );
-        if (parent.state !== "approved")
+        if (parent.state !== "approved" || parent.frozen_spec_id !== spec.id)
           throw new DomainError(
             409,
             "PARENT_NOT_APPROVED",
@@ -154,7 +193,7 @@ export class PlanService {
       if (!row) throw new DomainError(404, "NOT_FOUND", "Plan step not found.");
       const current = record<PlanStep>(row);
       expectRevision(current, data.expected_revision);
-      const spec = await frozenSpec(tx, workflowId),
+      const spec = await frozenSpec(tx, workflowId, plan.frozen_spec_id),
         node = spec.board.nodes.find((n) => n.id === nodeId)!;
       if (
         ["human_handoff", "human_approval"].includes(node.type) &&
@@ -207,7 +246,7 @@ export class PlanService {
           "The plan was approved while suggestions were being prepared.",
         );
       expectRevision(plan, expectedRevision);
-      const spec = await frozenSpec(tx, workflowId),
+      const spec = await frozenSpec(tx, workflowId, plan.frozen_spec_id),
         ids = new Set(data.steps.map((s) => s.node_id));
       if (
         ids.size !== spec.board.nodes.length ||
@@ -231,11 +270,11 @@ export class PlanService {
             "AI cannot remove a required human step.",
           );
         await tx.query(
-          "UPDATE implementation_plan_steps SET recommended_method=$3,recommendation_reason=$4,revision=revision+1,updated_at=now() WHERE plan_version_id=$1 AND node_id=$2",
+          "UPDATE implementation_plan_steps SET recommended_method=$3,recommendation_reason=$4,approved_at=CASE WHEN selected_method=$3 THEN approved_at ELSE NULL END,selected_method=$3,revision=revision+1,updated_at=now() WHERE plan_version_id=$1 AND node_id=$2",
           [planId, suggestion.node_id, suggestion.method, suggestion.reason],
         );
       }
-      // Recommendations are advisory; do not silently change selected methods or approvals.
+      // Suggest methods populates draft choices, never approves a changed method.
       await tx.query(
         "UPDATE implementation_plan_versions SET revision=revision+1,updated_at=now() WHERE id=$1",
         [planId],
@@ -253,7 +292,7 @@ export class PlanService {
       const plan = await planById(tx, workflowId, planId);
       if (plan.state === "approved") return plan;
       expectRevision(plan, data.expected_revision);
-      const spec = await frozenSpec(tx, workflowId),
+      const spec = await frozenSpec(tx, workflowId, plan.frozen_spec_id),
         steps = await planSteps(tx, planId);
       if (
         steps.length !== spec.board.nodes.length ||
@@ -280,10 +319,10 @@ export class PlanService {
       );
     });
   }
-  async state(workflowId: string) {
+  async state(workflowId: string, specId?: string) {
     return this.db.transaction(async (tx) => {
       const w = await workflow(tx, workflowId, true),
-        spec = await frozenSpec(tx, workflowId);
+        spec = await frozenSpec(tx, workflowId, specId);
       // Reading progress must also recover an expired slot if the worker is
       // offline. This fences publication; Temporal still owns activity retries.
       await tx.query(
@@ -294,8 +333,8 @@ export class PlanService {
       );
       const plans = (
         await tx.query(
-          "SELECT * FROM implementation_plan_versions WHERE workflow_id=$1 ORDER BY version_number DESC LIMIT 20",
-          [workflowId],
+          "SELECT * FROM implementation_plan_versions WHERE workflow_id=$1 AND frozen_spec_id=$2 ORDER BY version_number DESC LIMIT 20",
+          [workflowId, spec.id],
         )
       ).rows.map((r) => record<Plan>(r));
       const steps = (
@@ -306,17 +345,28 @@ export class PlanService {
       ).rows.map((r) => record<PlanStep>(r));
       const versions = (
         await tx.query(
-          "SELECT * FROM implementation_versions WHERE workflow_id=$1 ORDER BY version_number DESC LIMIT 20",
-          [workflowId],
+          `SELECT v.* FROM implementation_versions v JOIN implementation_plan_versions p ON p.id=v.plan_version_id
+           WHERE v.workflow_id=$1 AND p.frozen_spec_id=$2 AND (
+             v.id IN (SELECT v2.id FROM implementation_versions v2 JOIN implementation_plan_versions p2 ON p2.id=v2.plan_version_id WHERE v2.workflow_id=$1 AND p2.frozen_spec_id=$2 ORDER BY v2.version_number DESC LIMIT 20)
+             OR v.id IN (SELECT implementation_version_id FROM workflow_run_defaults WHERE workflow_id=$1 AND frozen_spec_id=$2)
+             OR v.id IN (SELECT v3.id FROM implementation_versions v3 JOIN implementation_plan_versions p3 ON p3.id=v3.plan_version_id JOIN workflow_jobs j ON j.id=v3.created_by_job_id WHERE v3.workflow_id=$1 AND p3.frozen_spec_id=$2 AND j.kind='generation' ORDER BY v3.version_number DESC LIMIT 1)
+           ) ORDER BY v.version_number DESC`,
+          [workflowId, spec.id],
         )
       ).rows;
       const jobs = (
         await tx.query(
-          "SELECT * FROM workflow_jobs WHERE workflow_id=$1 ORDER BY created_at DESC,id DESC LIMIT 20",
+          "SELECT j.*,p.frozen_spec_id,f.version_number AS process_version FROM workflow_jobs j JOIN implementation_plan_versions p ON p.id=j.plan_version_id JOIN frozen_specs f ON f.id=p.frozen_spec_id WHERE j.workflow_id=$1 AND j.parent_job_id IS NULL ORDER BY j.created_at DESC,j.id DESC LIMIT 20",
           [workflowId],
         )
       ).rows;
-      return { workflow: w, spec, plans, steps, versions, jobs };
+      const specs = (
+        await tx.query(
+          "SELECT id,version_number,parent_frozen_spec_id,created_at FROM frozen_specs WHERE workflow_id=$1 ORDER BY version_number DESC",
+          [workflowId],
+        )
+      ).rows;
+      return { workflow: w, spec, specs, plans, steps, versions, jobs };
     });
   }
 }

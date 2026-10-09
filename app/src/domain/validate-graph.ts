@@ -1,9 +1,10 @@
-import type { Board, Connection } from "./canvas";
+import type { Board, CanvasNode, Connection } from "./canvas";
 export interface StructuralIssue {
   code: string;
   message: string;
   node_id?: string;
   connection_id?: string;
+  repair_steps?: { node_id: string; instruction: string }[];
 }
 export function validateGraph(board: Board): StructuralIssue[] {
   const issues: StructuralIssue[] = [];
@@ -51,6 +52,43 @@ export function validateGraph(board: Board): StructuralIssue[] {
         for (const c of outgoing.get(id) || []) queue.push(c.target_node_id);
     }
     return seen;
+  }
+  // Only suggest a block for a simple fan-out/fan-in. More complex graphs
+  // need the owner's routing decision, not a guessed replacement.
+  function sharedNextBlock(
+    split: CanvasNode,
+    edges: Connection[],
+    currentMergeId?: string,
+  ) {
+    const nextSteps = edges.map(
+      (edge) => outgoing.get(edge.target_node_id) || [],
+    );
+    const candidateId = nextSteps[0]?.[0]?.target_node_id;
+    const candidate = candidateId ? nodes.get(candidateId) : undefined;
+    return candidate &&
+      edges.length >= 2 &&
+      candidate.id !== split.id &&
+      candidate.id !== currentMergeId &&
+      !candidate.join_for_split_id &&
+      candidate.split_mode !== "parallel" &&
+      edges.every((edge) => {
+        const head = nodes.get(edge.target_node_id);
+        return (
+          head &&
+          head.id !== candidate.id &&
+          head.type !== "outcome" &&
+          !head.split_mode &&
+          (!head.join_for_split_id || head.id === currentMergeId)
+        );
+      }) &&
+      nextSteps.every(
+        (next) => next.length === 1 && next[0].target_node_id === candidate.id,
+      ) &&
+      (incoming.get(candidate.id) || []).every((edge) =>
+        edges.some((branch) => branch.target_node_id === edge.source_node_id),
+      )
+      ? candidate
+      : null;
   }
   if (triggers.length === 1) {
     const reached = reachable(triggers[0].id);
@@ -110,11 +148,31 @@ export function validateGraph(board: Board): StructuralIssue[] {
         });
       const merges = board.nodes.filter((j) => j.join_for_split_id === n.id);
       if (merges.length !== 1) {
+        const suggestedMerge =
+          merges.length === 0 ? sharedNextBlock(n, edges) : null;
+        const splitName = n.title || n.type;
         issues.push({
           code: "MISSING_MERGE",
           node_id: n.id,
           message:
-            "Choose one shared block to wait for both paths from this split.",
+            merges.length === 0
+              ? `“${splitName}” runs both paths, but no block is set to wait for them.`
+              : `${merges.map((merge) => `“${merge.title || merge.type}”`).join(", ")} are all set to wait for paths from “${splitName}”. Choose only one shared block; on the others, set “Wait for both paths from” to “No paired merge” and save.`,
+          repair_steps: suggestedMerge
+            ? [
+                {
+                  node_id: suggestedMerge.id,
+                  instruction: `Both paths already connect to “${suggestedMerge.title || suggestedMerge.type}”. On that block, set “Wait for both paths from” to “${splitName}”, then save the block.`,
+                },
+              ]
+            : merges.length === 0
+              ? [
+                  {
+                    node_id: n.id,
+                    instruction: `Choose the shared block where every path from “${splitName}” should meet. Connect the paths to it, then on that block set “Wait for both paths from” to “${splitName}” and save.`,
+                  },
+                ]
+              : undefined,
         });
         continue;
       }
@@ -129,12 +187,43 @@ export function validateGraph(board: Board): StructuralIssue[] {
           reverseQueue.push(edge.source_node_id);
       }
       const branches = edges.map((e) => reachable(e.target_node_id, merge.id));
-      if (branches.some((b) => !b.has(merge.id)))
+      const missedBranches = edges.filter((_, i) => !branches[i].has(merge.id));
+      if (missedBranches.length) {
+        const suggestedMerge = sharedNextBlock(n, edges, merge.id);
+        const splitName = n.title || n.type;
+        const mergeName = merge.title || merge.type;
+        const missedNames = missedBranches
+          .map((edge) => {
+            const head = nodes.get(edge.target_node_id);
+            return `“${head?.title || head?.type || "missing block"}”`;
+          })
+          .join(", ");
         issues.push({
           code: "MERGE_UNREACHABLE",
-          node_id: n.id,
-          message: "Each parallel path must reach its paired merge.",
+          node_id: merge.id,
+          message: `“${mergeName}” is set to wait for both paths from “${splitName}”, but the path starting at ${missedNames} cannot reach it.`,
+          repair_steps: suggestedMerge
+            ? [
+                {
+                  node_id: merge.id,
+                  instruction: `On “${mergeName}”, set “Wait for both paths from” to “No paired merge”, then save the block.`,
+                },
+                {
+                  node_id: suggestedMerge.id,
+                  instruction: `Both paths already connect to “${suggestedMerge.title || suggestedMerge.type}”. On that block, set “Wait for both paths from” to “${splitName}”, then save the block.`,
+                },
+              ]
+            : [
+                {
+                  node_id: merge.id,
+                  instruction: `If “${mergeName}” is where the paths should meet, connect every path from “${splitName}” to it before the process ends. Otherwise, set “Wait for both paths from” to “No paired merge” here and select “${splitName}” in that setting on the shared block. Save your changes.`,
+                },
+              ],
         });
+        // Unreachable/dead-end/outcome warnings below would repeat this broken
+        // pairing. Keep this blocker; recheck the rest after the owner repairs it.
+        continue;
+      }
       const visited = new Set<string>();
       for (const branch of branches)
         for (const id of branch) {

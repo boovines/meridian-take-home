@@ -5,7 +5,7 @@ import { temporalConfig } from "../server/integrations/temporal-config";
 import { startOutbox } from "./dispatch-outbox";
 import * as activities from "./activities";
 import { getDatabase } from "../server/database";
-import { RUNTIME_HEARTBEAT_POLICY } from "../domain/runtime";
+import { RUNTIME_HEARTBEAT_POLICY } from "../domain/runtime-policy";
 nextEnv.loadEnvConfig(process.cwd());
 const config = temporalConfig();
 const connection = await NativeConnection.connect(config.connection);

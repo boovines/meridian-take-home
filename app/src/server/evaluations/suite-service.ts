@@ -44,7 +44,7 @@ export class SuiteService {
   async create(wid: string, data: z.infer<typeof createSuiteInput>) {
     return this.db.transaction(async (tx) => {
       await workflow(tx, wid, true);
-      const spec = await frozenSpec(tx, wid);
+      const spec = await frozenSpec(tx, wid, data.frozen_spec_id);
       const prior = (
         await tx.query(
           "SELECT * FROM evaluation_suite_versions WHERE workflow_id=$1 AND creation_key=$2",
@@ -54,7 +54,8 @@ export class SuiteService {
       if (prior) {
         if (
           prior.parent_suite_version_id !== data.parent_suite_version_id ||
-          prior.name !== data.name
+          prior.name !== data.name ||
+          prior.frozen_spec_id !== spec.id
         )
           throw new DomainError(
             409,
@@ -66,8 +67,8 @@ export class SuiteService {
       if (
         (
           await tx.query(
-            "SELECT id FROM evaluation_suite_versions WHERE workflow_id=$1 AND state='draft'",
-            [wid],
+            "SELECT id FROM evaluation_suite_versions WHERE workflow_id=$1 AND frozen_spec_id=$2 AND state='draft'",
+            [wid, spec.id],
           )
         ).rows.length
       )
@@ -96,8 +97,8 @@ export class SuiteService {
         );
         // A revised oracle ends active repair; its old results remain immutable.
         await tx.query(
-          "UPDATE workflow_jobs SET status='cancel_requested',phase='suite revised',updated_at=now() WHERE workflow_id=$1 AND kind='repair' AND status IN ('queued','running','waiting_for_human')",
-          [wid],
+          "UPDATE workflow_jobs SET status='cancel_requested',phase='suite revised',updated_at=now() WHERE workflow_id=$1 AND suite_version_id=$2 AND kind='repair' AND status IN ('queued','running','waiting_for_human')",
+          [wid, parent.id],
         );
       }
       return suite;
@@ -107,6 +108,7 @@ export class SuiteService {
     tx: Queryable,
     wid: string,
     data: z.infer<typeof caseInput>,
+    specId: string,
   ) {
     if (Buffer.byteLength(JSON.stringify(data)) > 100_000)
       throw new DomainError(
@@ -114,7 +116,7 @@ export class SuiteService {
         "CASE_TOO_LARGE",
         "Keep test definitions under 100 KB; use captured input artifacts for large documents.",
       );
-    const spec = await frozenSpec(tx, wid);
+    const spec = await frozenSpec(tx, wid, specId);
     if (data.node_id && !spec.board.nodes.some((n) => n.id === data.node_id))
       throw new DomainError(
         422,
@@ -154,7 +156,12 @@ export class SuiteService {
     return this.db.transaction(async (tx) => {
       await workflow(tx, wid, true);
       draft(await suiteById(tx, wid, sid));
-      await this.validate(tx, wid, data);
+      await this.validate(
+        tx,
+        wid,
+        data,
+        (await suiteById(tx, wid, sid)).frozen_spec_id,
+      );
       const prior = (
         await tx.query(
           "SELECT * FROM evaluation_cases WHERE suite_version_id=$1 AND case_key=$2",
@@ -227,7 +234,12 @@ export class SuiteService {
           "CASE_KEY_FIXED",
           "A case keeps its identity across edits.",
         );
-      await this.validate(tx, wid, c);
+      await this.validate(
+        tx,
+        wid,
+        c,
+        (await suiteById(tx, wid, sid)).frozen_spec_id,
+      );
       const row = (
         await tx.query(
           `UPDATE evaluation_cases SET name=$2,kind=$3,node_id=$4,input_bundle_id=$5,input_data=$6,human_responses=$7,assertions=$8,verified_at=NULL,revision=revision+1,updated_at=now() WHERE id=$1 RETURNING *`,
@@ -283,7 +295,8 @@ export class SuiteService {
   ) {
     return this.db.transaction(async (tx) => {
       await workflow(tx, wid, true);
-      draft(await suiteById(tx, wid, sid));
+      const suite = await suiteById(tx, wid, sid);
+      draft(suite);
       const current = (await suiteCases(tx, sid)).find((c) => c.id === cid);
       if (!current)
         throw new DomainError(
@@ -292,6 +305,7 @@ export class SuiteService {
           "Case not found in this suite.",
         );
       expectRevision(current, data.expected_revision);
+      await this.validate(tx, wid, current, suite.frozen_spec_id);
       const row = (
         await tx.query(
           "UPDATE evaluation_cases SET verified_at=now(),revision=revision+1,updated_at=now() WHERE id=$1 RETURNING *",
@@ -328,12 +342,18 @@ export class SuiteService {
       );
     });
   }
-  async state(wid: string, sid?: string) {
+  async state(wid: string, sid?: string, specId?: string) {
     await workflow(this.db, wid);
+    const spec = await frozenSpec(
+      this.db,
+      wid,
+      specId ??
+        (sid ? (await suiteById(this.db, wid, sid)).frozen_spec_id : undefined),
+    );
     const suites = (
       await this.db.query(
-        "SELECT * FROM evaluation_suite_versions WHERE workflow_id=$1 ORDER BY version_number DESC LIMIT 20",
-        [wid],
+        "SELECT * FROM evaluation_suite_versions WHERE workflow_id=$1 AND frozen_spec_id=$2 ORDER BY version_number DESC LIMIT 20",
+        [wid, spec.id],
       )
     ).rows.map((r) => record<SuiteVersion>(r));
     const selected = sid ? await suiteById(this.db, wid, sid) : suites[0];

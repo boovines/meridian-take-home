@@ -6,10 +6,12 @@ export function GmailPicker({
   workflowId,
   disabled,
   onCaptured,
+  onSelected,
 }: {
   workflowId: string;
   disabled: boolean;
-  onCaptured: (id: string) => Promise<void>;
+  onCaptured?: (id: string) => Promise<void>;
+  onSelected?: (ids: string[]) => Promise<void>;
 }) {
   const [query, setQuery] = useState("has:attachment"),
     [searchedQuery, setSearchedQuery] = useState(""),
@@ -50,18 +52,62 @@ export function GmailPicker({
       setBusy("");
     }
   }
+  async function selectAll() {
+    setBusy("Selecting all matching emails…");
+    setError("");
+    let loaded = messages;
+    let cursor = next;
+    const visited = new Set<string>();
+    setSelected(loaded.map((m) => m.id));
+    try {
+      while (cursor) {
+        if (visited.has(cursor))
+          throw new Error(
+            "Gmail repeated a results page. Loaded emails remain selected; retry your search to load the rest.",
+          );
+        visited.add(cursor);
+        const data = await api<{
+          messages: GmailSummary[];
+          next_page_token: string | null;
+        }>(
+          `/api/workflows/${workflowId}/gmail/messages?${new URLSearchParams({ query: searchedQuery, page_token: cursor })}`,
+        );
+        const byId = new Map(loaded.map((m) => [m.id, m]));
+        for (const message of data.messages) byId.set(message.id, message);
+        loaded = [...byId.values()];
+        cursor = data.next_page_token;
+        setMessages(loaded);
+        setSelected(loaded.map((m) => m.id));
+        setNext(cursor);
+        setBusy(`Selecting all matching emails… ${loaded.length} loaded`);
+      }
+    } catch (e) {
+      setError(
+        `Could not select every matching email. ${loaded.length} loaded emails remain selected. ${errorMessage(e)}`,
+      );
+    } finally {
+      setBusy("");
+    }
+  }
   async function capture() {
     setBusy(
-      "Capturing emails and attachments. Large packets can take a few minutes…",
+      onSelected
+        ? "Starting selected-email run…"
+        : "Capturing emails and attachments. Large packets can take a few minutes…",
     );
     setError("");
     try {
+      if (onSelected) {
+        await onSelected(selected);
+        setSelected([]);
+        return;
+      }
       const data = await api<{ id: string }>(
         `/api/workflows/${workflowId}/gmail/capture`,
         "POST",
         { message_ids: selected, shipment_reference: shipment.trim() },
       );
-      await onCaptured(data.id);
+      await onCaptured?.(data.id);
       setSelected([]);
     } catch (e) {
       setError(errorMessage(e));
@@ -70,11 +116,12 @@ export function GmailPicker({
     }
   }
   return (
-    <details className="gmail-picker">
-      <summary>Capture from Gmail</summary>
+    <details className="gmail-picker" open={onSelected ? true : undefined}>
+      <summary>{onSelected ? "Select emails" : "Capture from Gmail"}</summary>
       <p className="field-help">
-        Select all related emails, including certificates sent separately. Gmail
-        is read-only.
+        {onSelected
+          ? "Select all relevant emails. The workflow groups related work automatically and asks about ambiguous sources."
+          : "Select all related emails, including certificates sent separately. Gmail is read-only."}
       </p>
       <form
         onSubmit={(e) => {
@@ -83,7 +130,7 @@ export function GmailPicker({
         }}
       >
         <label>
-          Shipment number or Gmail search
+          {onSelected ? "Search Gmail" : "Shipment number or Gmail search"}
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -99,21 +146,36 @@ export function GmailPicker({
         </p>
       )}
       {!!searchedQuery && !messages.length && !busy && (
-        <p>No messages matched. Try the invoice number or a broader search.</p>
+        <p>
+          No messages matched. Try a different reference or a broader search.
+        </p>
       )}
       {!!messages.length && (
         <>
+          <div className="button-row">
+            <button
+              disabled={!!busy || disabled}
+              onClick={() => void selectAll()}
+            >
+              Select all results
+            </button>
+            <button
+              disabled={!!busy || disabled || !selected.length}
+              onClick={() => setSelected([])}
+            >
+              Clear selection
+            </button>
+          </div>
+          <p className="field-help" aria-live="polite">
+            {selected.length} selected
+          </p>
           <div className="gmail-message-list" aria-label="Matching emails">
             {messages.map((m) => (
               <label key={m.id} className="gmail-message">
                 <input
                   type="checkbox"
                   checked={selected.includes(m.id)}
-                  disabled={
-                    !!busy ||
-                    disabled ||
-                    (selected.length >= 10 && !selected.includes(m.id))
-                  }
+                  disabled={!!busy || disabled}
                   onChange={(e) =>
                     setSelected(
                       e.target.checked
@@ -142,29 +204,36 @@ export function GmailPicker({
               Load more emails
             </button>
           )}
-          <label>
-            Shipment reference
-            <input
-              value={shipment}
-              onChange={(e) => setShipment(e.target.value)}
-              placeholder="Container number or MAWB"
-              required
-              maxLength={200}
-              disabled={!!busy || disabled}
-            />
-          </label>
+          {!onSelected && (
+            <label>
+              Shipment reference
+              <input
+                value={shipment}
+                onChange={(e) => setShipment(e.target.value)}
+                placeholder="Container number or MAWB"
+                required
+                maxLength={200}
+                disabled={!!busy || disabled}
+              />
+            </label>
+          )}
           <button
             disabled={
-              !!busy || disabled || !selected.length || !shipment.trim()
+              !!busy ||
+              disabled ||
+              !selected.length ||
+              (!onSelected && !shipment.trim())
             }
             onClick={() => void capture()}
           >
-            Capture {selected.length || "selected"} email
-            {selected.length === 1 ? "" : "s"}
+            {onSelected
+              ? "Run selected emails"
+              : `Capture ${selected.length || "selected"} email${selected.length === 1 ? "" : "s"}`}
           </button>
           <p className="field-help">
-            Creates a fixed copy of the selected emails and every attachment. Up
-            to 10 emails per packet.
+            {onSelected
+              ? `Captures the selected emails and attachments, then starts processing. Reports are previewed only.`
+              : "Creates a fixed copy of the selected emails and every attachment."}
           </p>
         </>
       )}

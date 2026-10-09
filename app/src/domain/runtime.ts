@@ -5,13 +5,6 @@ import type { Method } from "./engineering";
 
 export type Json = z.infer<ReturnType<typeof z.json>>;
 export const DEMO_LIMITS = { step_attempts: 100, active_ms: 900_000 } as const;
-// Liveness tolerance is separate from the bounded operation deadline.
-export const RUNTIME_HEARTBEAT_POLICY = {
-  version: 1,
-  interval_ms: 5_000,
-  timeout_ms: 60_000,
-  max_throttle_ms: 5_000,
-} as const;
 export const bundleInput = z
   .object({
     source_kind: z.enum(["fixture", "gmail"]),
@@ -76,12 +69,15 @@ export type RunStatus =
   | "needs_attention"
   | "cancelled";
 export interface RunRecord {
+  execution_mode: "workflow" | "grouping" | "aggregate";
+  phase_node_id: string | null;
   id: string;
   workflow_id: string;
   job_id: string;
   implementation_version_id: string;
   input_bundle_id: string;
-  kind: "manual" | "evaluation";
+  kind: "manual" | "evaluation" | "recovery";
+  failure_category: RuntimeError["category"] | null;
   rerun_of_id: string | null;
   status: RunStatus;
   limits: { step_attempts: number; active_ms: number };

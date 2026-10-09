@@ -29,7 +29,7 @@ export interface StepAdapters {
     request: ExtractionRequest,
     documents: ReasoningDocument[],
     signal: AbortSignal,
-  ): Promise<{ output: Json; metadata: Json }>;
+  ): Promise<Json>;
   reason(
     instructions: string,
     data: Json,
@@ -114,23 +114,17 @@ export async function invokeApprovedStep(
           "EXTRACTION_UNAVAILABLE",
           "No evidence-aware extraction provider is configured.",
         );
-      const extraction =
+      const raw =
         result.kind === "extract"
           ? await adapters.extract!(result, documents, signal)
-          : null;
-      const raw = extraction
-        ? extraction.output
-        : await adapters.reason(
-            result.instructions,
-            result.data,
-            signal,
-            documents,
-          );
+          : await adapters.reason(
+              result.instructions,
+              result.data,
+              signal,
+              documents,
+            );
       signal.throwIfAborted();
-      await audit?.(
-        "model_response",
-        extraction ? { output: raw, provider: extraction.metadata } : raw,
-      );
+      await audit?.("model_response", raw);
       const envelope =
         result.kind === "extract"
           ? validateExtraction(result, raw, sourcePages)
@@ -186,6 +180,8 @@ export function invocationFailure(error: unknown): RuntimeError {
       error instanceof Error ? error.message : "Step invocation failed.";
   const implementationCodes = [
     "STEP_CRASH",
+    "GROUPING_OUTPUT_INVALID",
+    "INVALID_PHASE_ROUTES",
     "METHOD_VIOLATION",
     "STEP_OUTPUT_TOO_LARGE",
     "STEP_INPUT_TOO_LARGE",
@@ -201,6 +197,7 @@ export function invocationFailure(error: unknown): RuntimeError {
     "EXTRACTION_EVIDENCE_INVALID",
     "EXTRACTION_UNRESOLVED",
     "REPAIR_EVIDENCE_LEAK",
+    "REPAIR_INTEGRITY_UNCHECKABLE",
   ];
   const routeCode =
     /^(INVALID_ROUTES|AMBIGUOUS_ROUTE|NO_MATCHING_ROUTE|INVALID_OUTCOME):/.exec(
@@ -216,16 +213,16 @@ export function invocationFailure(error: unknown): RuntimeError {
         ? "implementation"
         : known &&
             [
+              "REPAIR_INTEGRITY_LIMIT",
+              "EVALUATION_CONFIGURATION_CHANGED",
               "SANDBOX_UNAVAILABLE",
               "MODEL_UNAVAILABLE",
               "MODEL_PROJECT_SPEND_LIMIT",
               "MODEL_QUOTA_EXCEEDED",
+              "BUDGET_UNAVAILABLE",
+              "INFERENCE_BUDGET_LIMIT",
               "AUDIT_UNAVAILABLE",
               "EXTRACTION_UNAVAILABLE",
-              "EXTRACTION_PROVIDER_ERROR",
-              "INFERENCE_BUDGET_LIMIT",
-              "BUDGET_UNAVAILABLE",
-              "EVALUATION_CONFIGURATION_CHANGED",
             ].includes(error.code)
           ? "infrastructure"
           : "unknown";

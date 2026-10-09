@@ -92,6 +92,9 @@ export interface Workflow {
   state: "draft" | "reviewing" | "frozen";
   revision: number;
   content_revision: number;
+  process_version?: number;
+  base_frozen_spec_id?: string | null;
+  current_frozen_spec_id?: string | null;
   created_at: string;
   updated_at: string;
 }

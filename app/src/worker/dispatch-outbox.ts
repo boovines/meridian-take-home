@@ -1,3 +1,5 @@
+import { startScopingWorkflow } from "../server/integrations/temporal";
+import { ScopingService } from "../server/scoping/service";
 import type { Database } from "../server/database";
 import type { WorkflowJob } from "../domain/engineering";
 import { dispatchOperation } from "../server/workflows/dispatch";
@@ -21,10 +23,22 @@ export async function deliverOutbox(db: Database) {
     });
   }
   const jobs = await db.query(
-    "SELECT * FROM workflow_jobs WHERE kind IN ('generation','execution','evaluation','repair') AND status IN ('queued','cancel_requested') ORDER BY created_at,id LIMIT 20",
+    "SELECT * FROM workflow_jobs WHERE parent_job_id IS NULL AND kind IN ('generation','execution','evaluation','repair','grouped') AND status IN ('queued','cancel_requested') ORDER BY created_at,id LIMIT 20",
   );
   for (const row of jobs.rows)
     await dispatchOperation(row as unknown as WorkflowJob);
+  const scoping = await db.query(
+    "SELECT id,status,deadline_at FROM scoping_operations WHERE status IN ('queued','running') ORDER BY created_at LIMIT 20",
+  );
+  for (const op of scoping.rows) {
+    if (new Date(String(op.deadline_at)).getTime() < Date.now())
+      await new ScopingService(db).finish(
+        String(op.id),
+        "failed",
+        "Scoping exceeded its time limit. Your notes and previous previews are preserved; try again.",
+      );
+    else if (op.status === "queued") await startScopingWorkflow(String(op.id));
+  }
   await deliverHumanAnswers(db);
   const reviews = await db.query(
     "SELECT id,deadline_at FROM review_runs WHERE status='queued' ORDER BY created_at LIMIT 20",

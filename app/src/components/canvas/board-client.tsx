@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import type { Connection as FlowConnection } from "@xyflow/react";
 import Workspace from "../shell/workspace";
+import { ScopingNote } from "../scoping/scoping-note";
 import { ProcessCanvas } from "./process-canvas";
 import {
   NodeInspector,
@@ -36,10 +37,17 @@ import {
   nodeTypes,
 } from "@/domain/canvas";
 import { useReview } from "../reviews/use-review";
+import { RevisionNotice } from "../process-revisions/revision-notice";
 import { ReviewPanel } from "../reviews/review-panel";
 import { FreezeDialog } from "../reviews/freeze-dialog";
 import { ProcessContextButton } from "../process-context/process-context-button";
-export function BoardClient({ id }: { id: string }) {
+export function BoardClient({
+  id,
+  openRequests = false,
+}: {
+  id: string;
+  openRequests?: boolean;
+}) {
   const [board, setBoard] = useState<Board | null>(null),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
@@ -52,8 +60,12 @@ export function BoardClient({ id }: { id: string }) {
   const [highlightedThread, setHighlightedThread] = useState<string | null>(
     null,
   );
+  const [canvasInstance, setCanvasInstance] = useState(0);
   const [dirty, setDirty] = useState(false);
-  const [reviewOpen, setReviewOpen] = useState(false),
+  const [conversationId, setConversationId] = useState<string | null>(
+    openRequests ? "first_request" : null,
+  );
+  const [reviewOpen, setReviewOpen] = useState(openRequests),
     [freezeOpen, setFreezeOpen] = useState(false);
   // A response started before a newer mutation must not replace its result.
   const boardVersion = useRef(0);
@@ -101,12 +113,14 @@ export function BoardClient({ id }: { id: string }) {
   const review = useReview(id, load);
   useEffect(() => {
     let active = true;
+    const version = ++boardVersion.current;
     api<Board>(`/api/workflows/${id}`)
       .then((b) => {
-        if (active) setBoard(b);
+        if (active && version === boardVersion.current) setBoard(b);
       })
       .catch((e) => {
-        if (active) setError(errorMessage(e));
+        if (active && version === boardVersion.current)
+          setError(errorMessage(e));
       });
     return () => {
       active = false;
@@ -252,6 +266,25 @@ export function BoardClient({ id }: { id: string }) {
             </button>
           </div>
         )}
+        <RevisionNotice
+          count={
+            review.state.threads.filter(
+              (t) => t.engineer_request && t.status === "open",
+            ).length
+          }
+          onOpen={() => {
+            openReviews();
+            setConversationId("first_request");
+          }}
+        />
+        {board?.workflow.base_frozen_spec_id &&
+          board.workflow.state !== "frozen" && (
+            <div className="state-banner">
+              Editing draft v{board.workflow.process_version} · based on frozen
+              v{(board.workflow.process_version ?? 2) - 1}. Engineering
+              continues from the approved version.
+            </div>
+          )}
         {board?.workflow.state === "reviewing" && (
           <div className="state-banner" role="status">
             Review in progress. The canvas is temporarily read-only.
@@ -260,8 +293,9 @@ export function BoardClient({ id }: { id: string }) {
         )}
         {board?.workflow.state === "frozen" && (
           <div className="state-banner">
-            <LockKeyhole size={15} /> Frozen for engineer handoff. This process
-            and its review decisions are saved.
+            <LockKeyhole size={15} /> Frozen v
+            {board.workflow.process_version ?? 1} for engineer handoff. This
+            process and its review decisions are saved.
             <Link className="button-link" href={`/workflows/${id}/engineer`}>
               Open engineer workspace
             </Link>
@@ -388,7 +422,21 @@ export function BoardClient({ id }: { id: string }) {
                 </div>
               </aside>
               <section className="canvas-stage" aria-label="Process canvas">
+                <ScopingNote
+                  board={board}
+                  onApplied={(next) => {
+                    boardVersion.current++;
+                    setBoard(next);
+                    setCanvasInstance((v) => v + 1);
+                    setSelection(null);
+                    setStatus(
+                      "Initial workflow saved. Review draft before freezing.",
+                    );
+                  }}
+                  onReview={openReviews}
+                />
                 <ProcessCanvas
+                  key={canvasInstance}
                   board={board}
                   findingCounts={counts}
                   reviewHighlight={
@@ -440,6 +488,8 @@ export function BoardClient({ id }: { id: string }) {
               </section>
               {reviewOpen ? (
                 <ReviewPanel
+                  conversationId={conversationId}
+                  onConversationChange={setConversationId}
                   board={board}
                   state={review.state}
                   onRefresh={review.refresh}

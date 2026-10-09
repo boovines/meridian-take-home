@@ -6,6 +6,9 @@ import "./runtime.css";
 import { AuditTrail } from "./audit-trail";
 export interface RunState {
   runs: RunRecord[];
+  recovery: import("@/domain/run-recovery").RunRecoveryState | null;
+  initial_manual_version_id: string | null;
+  manual_default: import("@/domain/run-recovery").ManualRunDefault | null;
   steps: StepRecord[];
   human_requests: HumanRequest[];
 }

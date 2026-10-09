@@ -24,7 +24,7 @@ export async function threadById(
 ): Promise<DiscussionThread> {
   const row = (
     await tx.query(
-      "SELECT * FROM discussion_threads WHERE workflow_id=$1 AND id=$2 FOR UPDATE",
+      "SELECT t.*,to_jsonb(r)||jsonb_build_object('source_version_number',f.version_number) AS engineer_request FROM discussion_threads t LEFT JOIN engineer_change_requests r ON r.thread_id=t.id LEFT JOIN frozen_specs f ON f.id=r.source_frozen_spec_id WHERE t.workflow_id=$1 AND t.id=$2 FOR UPDATE OF t",
       [workflowId, id],
     )
   ).rows[0];
@@ -36,7 +36,7 @@ export async function appendMessage(
   tx: Queryable,
   thread: DiscussionThread,
   data: {
-    author: "customer" | "ai" | "system";
+    author: "customer" | "engineer" | "ai" | "system";
     body: string;
     requestKey: string;
     parent?: string | null;

@@ -1,4 +1,5 @@
 "use client";
+import { RequestEntry } from "../process-revisions/request-entry";
 import { api } from "@/lib/api";
 import type { PlanStep, Method } from "@/domain/engineering";
 import type { EngineeringState } from "./types";
@@ -44,8 +45,8 @@ export function ImplementationPanel({
           <span className="eyebrow">Implementation plan</span>
           <h2>Decide how each step works.</h2>
           <p className="field-help">
-            AI can recommend a method. You approve the choices before
-            generation.
+            AI recommendations fill in the choices below. Review and approve
+            them before generation; changed choices need approval again.
           </p>
         </div>
         {plan && (
@@ -65,6 +66,7 @@ export function ImplementationPanel({
           </label>
         )}
       </div>
+      {!plan && <RequestEntry state={state} />}
       {!plan ? (
         <div className="engineer-empty">
           <h3>The customer’s process is ready for implementation.</h3>
@@ -78,6 +80,7 @@ export function ImplementationPanel({
               void mutate("Creating plan…", () =>
                 api(`${base}/plans`, "POST", {
                   request_key: crypto.randomUUID(),
+                  frozen_spec_id: state.spec.id,
                 }),
               )
             }
@@ -92,6 +95,7 @@ export function ImplementationPanel({
               {approved} of {steps.length} steps approved · Plan {plan.state}
             </span>
             <div className="button-row">
+              <RequestEntry state={state} />
               {plan.state === "draft" ? (
                 <button
                   disabled={busy || operationActive}
@@ -103,7 +107,7 @@ export function ImplementationPanel({
                     )
                   }
                 >
-                  Suggest methods
+                  Recommend methods with AI
                 </button>
               ) : (
                 <button
