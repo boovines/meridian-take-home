@@ -19,12 +19,33 @@ import { RunService } from "../runtime/run-service";
 import { BundleService } from "../runtime/bundle-service";
 import { activeGroupParent } from "./ownership";
 import { sourcesForCapture, childManifest } from "./sources";
+import { groupedExecutionState } from "./state";
 export class GroupedExecutionService {
   constructor(private db: Database) {}
+  async list(wid: string, specId?: string) {
+    await workflow(this.db, wid);
+    return (
+      await this.db.query(
+        "SELECT j.*,p.frozen_spec_id FROM workflow_jobs j JOIN implementation_plan_versions p ON p.id=j.plan_version_id WHERE j.workflow_id=$1 AND j.kind='grouped' AND ($2::uuid IS NULL OR p.frozen_spec_id=$2) ORDER BY j.created_at DESC,j.id DESC LIMIT 30",
+        [wid, specId ?? null],
+      )
+    ).rows;
+  }
+  async read(wid: string, id: string) {
+    const job = await jobById(this.db, id);
+    if (job.workflow_id !== wid)
+      throw new DomainError(
+        404,
+        "NOT_FOUND",
+        "Selected-email operation not found on this workflow.",
+      );
+    return groupedExecutionState(this.db, id);
+  }
   async start(wid: string, raw: z.infer<typeof selectedEmailExecution>) {
     const data = selectedEmailExecution.parse(raw),
       source = {
         implementation_version_id: data.implementation_version_id,
+        aggregation_node_id: data.aggregation_node_id ?? null,
         message_ids: data.message_ids,
       };
     return this.db.transaction(async (tx) => {
@@ -58,6 +79,18 @@ export class GroupedExecutionService {
           422,
           "INVALID_VERSION",
           "Generate code from an approved plan before running selected emails.",
+        );
+      const spec = await specForPlan(tx, wid, String(version.plan_version_id));
+      const outcomes = spec.board.nodes.filter((n) => n.type === "outcome");
+      if (
+        data.aggregation_node_id
+          ? !outcomes.some((n) => n.id === data.aggregation_node_id)
+          : outcomes.length !== 1
+      )
+        throw new DomainError(
+          422,
+          "AGGREGATION_OUTCOME_REQUIRED",
+          "Choose an approved Outcome block for the combined report.",
         );
       if (
         (

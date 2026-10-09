@@ -1,3 +1,4 @@
+import { withGroupedCapacity } from "../grouped-execution/capacity";
 import { GroupedBudget } from "../grouped-execution/budget";
 import { randomUUID } from "node:crypto";
 import type { Database } from "../database";
@@ -111,7 +112,8 @@ export class RecoveryBudget implements InferenceBudgetGuard {
 export async function withRecoveryBudget<T>(
   db: Database,
   jobId: string,
-  work: () => Promise<T>,
+  work: (signal: AbortSignal) => Promise<T>,
+  signal: AbortSignal = new AbortController().signal,
 ) {
   const session = (
     await db.query(
@@ -132,5 +134,9 @@ export async function withRecoveryBudget<T>(
     parent && recovery
       ? combineInferenceBudgets(parent, recovery)
       : (parent ?? recovery);
-  return budget ? withInferenceBudget(budget, work) : work();
+  const invoke = () =>
+    parentId
+      ? withGroupedCapacity(db, String(parentId), jobId, work, signal)
+      : work(signal);
+  return budget ? withInferenceBudget(budget, invoke) : invoke();
 }

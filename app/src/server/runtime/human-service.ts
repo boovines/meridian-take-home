@@ -4,6 +4,7 @@ import { DomainError } from "../../domain/errors";
 import { answerInput, type HumanRequest } from "../../domain/runtime";
 import type { Database } from "../database";
 import { workflow } from "../workflows/store";
+import { assertJobParentActive } from "../grouped-execution/ownership";
 import { jobById } from "../engineering/job-service";
 import { runById, finishedRuns } from "./store";
 export class HumanService {
@@ -38,6 +39,7 @@ export class HumanService {
       }
       const run = await runById(tx, String(row.run_id)),
         job = await jobById(tx, run.job_id);
+      await assertJobParentActive(tx, job);
       if (run.kind === "evaluation")
         throw new DomainError(
           422,

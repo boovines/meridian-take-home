@@ -11,6 +11,15 @@ import { BundleService } from "../src/server/runtime/bundle-service";
 import { HumanService } from "../src/server/runtime/human-service";
 import { StepService } from "../src/server/runtime/step-service";
 import { GroupedExecutionService } from "../src/server/grouped-execution/service";
+import { checkRecoveryBuild } from "../src/server/repairs/recovery-build";
+import { RunRecoveryService } from "../src/server/repairs/run-recovery-service";
+import { RepairService } from "../src/server/repairs/service";
+import { RepairGenerationService } from "../src/server/repairs/generation-service";
+import { fixtureSources } from "./fixtures/engineer";
+import { withGroupedCapacity } from "../src/server/grouped-execution/capacity";
+import { setTimeout as delay } from "node:timers/promises";
+import { GroupedCoordinator } from "../src/server/grouped-execution/coordinator";
+import { groupedExecutionState } from "../src/server/grouped-execution/state";
 import { GroupedBudget } from "../src/server/grouped-execution/budget";
 import { RuntimeEngine } from "../src/domain/runtime-engine";
 import { runtimeFixture } from "./fixtures/runtime";
@@ -421,4 +430,291 @@ it("keeps the approved human gate during grouping and excludes human waiting fro
   );
   expect((await engine.run()).status).toBe("completed");
   expect(invoke).toHaveBeenCalledTimes(1);
+});
+
+async function finishGrouping(f: Awaited<ReturnType<typeof fixture>>) {
+  const step = await f.steps.execute(
+    f.data,
+    {
+      invoke: async () => ({
+        kind: "complete",
+        output: f.result,
+        matching_connection_ids: [],
+      }),
+      reason: noReason,
+    },
+    AbortSignal.timeout(15000),
+  );
+  await f.runs.finish(f.phase.job.id, {
+    status: "completed",
+    error: null,
+    result_step_id: step.step_id,
+  });
+}
+async function completeOwned(
+  f: Awaited<ReturnType<typeof fixture>>,
+  jobId: string,
+) {
+  const context = (await f.runs.prepare(jobId))!;
+  const invoke = vi.fn(async (_project, _node, input) => ({
+    kind: "complete",
+    output:
+      context.run.execution_mode === "aggregate"
+        ? {
+            summary: "Retained independent request results",
+            missing: input.input.groups.filter(
+              (g: { status: string }) => g.status !== "completed",
+            ).length,
+          }
+        : { accepted: true },
+    matching_connection_ids:
+      context.run.execution_mode !== "workflow"
+        ? []
+        : context.definition.board.connections
+            .filter((e) => e.source_node_id === _node)
+            .map((e) => e.id),
+  }));
+  const engine = new RuntimeEngine(
+    context.run.id,
+    context.definition,
+    {
+      now: () => Date.now(),
+      changed() {},
+      project: (p) => f.runs.project(context.run.id, p),
+      step: (data, resume) =>
+        f.steps.execute(
+          data,
+          { invoke, reason: noReason },
+          AbortSignal.timeout(15000),
+          resume,
+        ),
+      human: async () => {
+        throw new Error("Unexpected human gate");
+      },
+    },
+    context.run.phase_node_id,
+  );
+  await f.runs.finish(jobId, await engine.run());
+  return invoke;
+}
+it("coordinates independent groups and aggregates partial results without promoting an incomplete parent to success", async () => {
+  const f = await fixture(),
+    coordinator = new GroupedCoordinator(db);
+  await finishGrouping(f);
+  const first = await coordinator.advance(f.parent.id);
+  expect(first.start).toHaveLength(2);
+  await completeOwned(f, first.start[0].id);
+  await f.runs.prepare(first.start[1].id);
+  await f.runs.finish(first.start[1].id, {
+    status: "failed",
+    error: {
+      code: "SOURCE_UNAVAILABLE",
+      message: "A source could not be read",
+      category: "infrastructure",
+    },
+  });
+  const next = await coordinator.advance(f.parent.id);
+  expect(next.start).toHaveLength(1);
+  const before = await groupedExecutionState(db, f.parent.id);
+  expect(before.aggregate?.run.execution_mode).toBe("aggregate");
+  const invocation = await completeOwned(f, next.start[0].id);
+  const context = invocation.mock.calls[0][2];
+  expect(
+    context.input.groups.map((g: { status: string }) => g.status).sort(),
+  ).toEqual(["completed", "needs_attention"]);
+  expect(
+    context.input.groups.find(
+      (g: { status: string }) => g.status !== "completed",
+    ).output,
+  ).toBeNull();
+  expect(context.input.groups[0].implementation_version_id).toBe(f.version.id);
+  expect((await coordinator.advance(f.parent.id)).done).toBe(true);
+  const after = await groupedExecutionState(db, f.parent.id);
+  expect(after.job.status).toBe("failed");
+  expect(after.completed_groups).toBe(1);
+  expect(after.failed_groups).toBe(1);
+  expect(after.aggregate?.output).toMatchObject({ missing: 1 });
+  expect(after.record.result_run_id).toBe(after.aggregate?.run.id);
+});
+it("cancels queued children and retains already completed group evidence", async () => {
+  const f = await fixture(),
+    coordinator = new GroupedCoordinator(db);
+  await finishGrouping(f);
+  const tick = await coordinator.advance(f.parent.id);
+  await completeOwned(f, tick.start[0].id);
+  await coordinator.stop(f.parent.id, "Cancelled by the engineer", true);
+  const state = await groupedExecutionState(db, f.parent.id);
+  expect(state.job.status).toBe("cancelled");
+  expect(state.children.map((c) => c.execution.run.status).sort()).toEqual([
+    "cancelled",
+    "completed",
+  ]);
+  expect(
+    state.children.find((c) => c.execution.completed)?.execution.output,
+  ).toEqual({ accepted: true });
+  expect((await coordinator.advance(f.parent.id)).done).toBe(true);
+});
+
+it("limits resumed heavy activities to shared capacity and cancels a waiting claim without leaking a lease", async () => {
+  const f = await fixture();
+  const release = Promise.withResolvers<void>(),
+    ready = Promise.withResolvers<void>();
+  let active = 0,
+    peak = 0,
+    started = 0;
+  const work = async () => {
+    active++;
+    started++;
+    peak = Math.max(peak, active);
+    if (started === 2) ready.resolve();
+    await release.promise;
+    active--;
+  };
+  const signal = AbortSignal.timeout(10000);
+  const first = withGroupedCapacity(
+    db,
+    f.parent.id,
+    f.phase.job.id,
+    work,
+    signal,
+  );
+  const second = withGroupedCapacity(
+    db,
+    f.parent.id,
+    f.phase.job.id,
+    work,
+    signal,
+  );
+  await ready.promise;
+  const abort = new AbortController();
+  const third = withGroupedCapacity(
+    db,
+    f.parent.id,
+    f.phase.job.id,
+    work,
+    abort.signal,
+  );
+  const rejected = expect(third).rejects.toMatchObject({ name: "AbortError" });
+  await delay(50);
+  expect(started).toBe(2);
+  abort.abort();
+  await rejected;
+  release.resolve();
+  await Promise.all([first, second]);
+  expect(peak).toBe(2);
+  expect(
+    (
+      await db.query(
+        "SELECT * FROM grouped_activity_leases WHERE parent_job_id=$1",
+        [f.parent.id],
+      )
+    ).rows,
+  ).toHaveLength(0);
+  await withGroupedCapacity(
+    db,
+    f.parent.id,
+    f.phase.job.id,
+    async () => {
+      started++;
+    },
+    signal,
+  );
+  expect(started).toBe(3);
+});
+
+it("repairs a grouping phase within the parent and publishes its actual recovered output without changing manual defaults", async () => {
+  const f = await fixture();
+  const failed = await f.steps.execute(
+    f.data,
+    {
+      invoke: async () => ({
+        kind: "complete",
+        output: { groups: [], assignments: [] },
+        matching_connection_ids: [],
+      }),
+      reason: noReason,
+    },
+    AbortSignal.timeout(15000),
+  );
+  if (failed.kind !== "error")
+    throw new Error("Expected invalid grouping output");
+  await f.runs.finish(f.phase.job.id, {
+    status: "failed",
+    error: failed.error,
+  });
+  const recovery = new RunRecoveryService(db),
+    repairs = new RepairService(db);
+  const state = (await recovery.state(f.w.id, f.phase.run.id))!;
+  expect(state.job.parent_job_id).toBe(f.parent.id);
+  await repairs.prepare(state.job.id);
+  const attempt = await repairs.beginAttempt(state.job.id, 1);
+  await new RepairGenerationService(db, artifacts).run(
+    attempt.id,
+    {
+      model: "fixture",
+      generate: async (context) => {
+        expect(context).toHaveProperty("source_run.execution_mode", "grouping");
+        const project = fixtureSources(context.spec.board, context.steps);
+        project.steps = project.steps.filter(
+          (s) => s.node_id === f.nodes[0].id,
+        );
+        project.steps[0].source_lines.push(
+          "// Grouping contract repair fixture",
+        );
+        return {
+          diagnosis: {
+            summary: "Account for every selected source",
+            affected_node_ids: [f.nodes[0].id],
+            changes: ["Return explicit source dispositions"],
+          },
+          project,
+        };
+      },
+    },
+    AbortSignal.timeout(15000),
+  );
+  const rerunId = await recovery.createRerun(attempt.id);
+  await checkRecoveryBuild(
+    db,
+    rerunId,
+    async () => ({ engine: "fixture" }),
+    AbortSignal.timeout(10000),
+    new VersionService(db, artifacts),
+  );
+  const context = (await f.runs.prepareCase(rerunId))!;
+  expect(context.run.execution_mode).toBe("grouping");
+  expect(context.run.phase_node_id).toBe(f.nodes[0].id);
+  const completed = await f.steps.execute(
+    { ...f.data, run_id: rerunId },
+    {
+      invoke: async () => ({
+        kind: "complete",
+        output: f.result,
+        matching_connection_ids: [],
+      }),
+      reason: noReason,
+    },
+    AbortSignal.timeout(15000),
+  );
+  await f.runs.finishCase(rerunId, {
+    status: "completed",
+    error: null,
+    result_step_id: completed.step_id,
+  });
+  expect((await recovery.decide(attempt.id)).done).toBe(true);
+  const after = await groupedExecutionState(db, f.parent.id);
+  expect(after.grouping?.run.id).toBe(rerunId);
+  expect(after.grouping?.run.implementation_version_id).not.toBe(f.version.id);
+  expect(
+    (
+      await db.query(
+        "SELECT * FROM workflow_run_defaults WHERE workflow_id=$1",
+        [f.w.id],
+      )
+    ).rows,
+  ).toHaveLength(0);
+  await new GroupedCoordinator(db).advance(f.parent.id);
+  expect(
+    (await groupedExecutionState(db, f.parent.id)).decision?.source_run_id,
+  ).toBe(rerunId);
 });

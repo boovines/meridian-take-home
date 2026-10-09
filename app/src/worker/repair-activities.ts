@@ -35,18 +35,23 @@ export async function generateRepairCandidate(id: string) {
     ).rows[0];
     if (!scope)
       throw new DomainError(404, "NOT_FOUND", "Repair attempt not found.");
-    await withRecoveryBudget(db, String(scope.job_id), () =>
-      new RepairGenerationService(db).run(
-        id,
-        {
-          model: engineeringModel(),
-          generate: repairProjectSources,
-        },
-        AbortSignal.any([
-          cancellationSignal(),
-          AbortSignal.timeout(15 * 60 * 1000),
-        ]),
-      ),
+    await withRecoveryBudget(
+      db,
+      String(scope.job_id),
+      (capacitySignal) =>
+        new RepairGenerationService(db).run(
+          id,
+          {
+            model: engineeringModel(),
+            generate: repairProjectSources,
+          },
+          AbortSignal.any([
+            capacitySignal,
+            cancellationSignal(),
+            AbortSignal.timeout(15 * 60 * 1000),
+          ]),
+        ),
+      cancellationSignal(),
     );
     const question = await new ClarificationService(db).questionForAttempt(id);
     if (question?.status === "open")

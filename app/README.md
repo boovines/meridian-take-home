@@ -84,7 +84,7 @@ The first command bundles workflows without credentials and runs in CI. The last
 | `src/server/evaluations` | Verified suites, trusted grading, case execution and result history |
 | `src/server/repairs` | Shared repair sessions and generation; run-origin recovery, retained candidates, audit/document/replay evidence, durable build/cost/wait records, regression checks and explicit evaluation confirmation |
 | `src/server/inputs` | Capture existing Gmail messages and attachment evidence into immutable input bundles |
-| `src/server/grouped-execution` | Selected-email parent ownership, immutable grouping/clarification evidence, child input scopes and shared inference allowance; orchestration/UI integration is in progress |
+| `src/server/grouped-execution` | Selected-email orchestration, immutable grouping/clarification evidence, child scopes, aggregation, shared budgets/capacity; product UI integration is in progress |
 | `src/server/runtime` | Run/visit history, immutable interaction audit, run-scoped document access, isolated step contracts and human responses |
 | `src/server/artifacts` | Immutable file records, integrity checks and local/private Supabase storage |
 | `src/server/integrations` | Composio Gmail, OpenAI/LlamaCloud, Temporal, Vercel Sandbox and metered inference adapters |

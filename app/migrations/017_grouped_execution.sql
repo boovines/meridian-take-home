@@ -138,8 +138,9 @@ BEGIN
  IF NOT EXISTS(SELECT 1 FROM workflow_jobs WHERE id=NEW.job_id AND workflow_id=NEW.workflow_id AND kind='grouped' AND parent_job_id IS NULL) THEN
   RAISE EXCEPTION 'Grouped capture requires a root grouped operation' USING ERRCODE='23514'; END IF;
  IF TG_OP='UPDATE' AND (
-   (to_jsonb(NEW)-'input_bundle_id') IS DISTINCT FROM (to_jsonb(OLD)-'input_bundle_id') OR
-   (OLD.input_bundle_id IS NOT NULL AND NEW.input_bundle_id IS DISTINCT FROM OLD.input_bundle_id)
+   (to_jsonb(NEW)-ARRAY['input_bundle_id','active_elapsed_ms','active_since','result_run_id']) IS DISTINCT FROM (to_jsonb(OLD)-ARRAY['input_bundle_id','active_elapsed_ms','active_since','result_run_id']) OR
+   (OLD.input_bundle_id IS NOT NULL AND NEW.input_bundle_id IS DISTINCT FROM OLD.input_bundle_id) OR
+   (OLD.result_run_id IS NOT NULL AND NEW.result_run_id IS DISTINCT FROM OLD.result_run_id) OR NEW.active_elapsed_ms<OLD.active_elapsed_ms
  ) THEN RAISE EXCEPTION 'Captured evidence and applied limits cannot change' USING ERRCODE='23514'; END IF;
  RETURN NEW;
 END $$;
@@ -182,3 +183,19 @@ END $$;
 CREATE TRIGGER grouping_question_guard BEFORE UPDATE OR DELETE ON grouping_questions FOR EACH ROW EXECUTE FUNCTION guard_group_question();
 CREATE UNIQUE INDEX one_grouping_phase_per_round ON workflow_jobs(parent_job_id,(source_request->>'phase_sequence'))
  WHERE source_request->>'execution_mode'='grouping';
+
+ALTER TABLE grouped_executions ADD COLUMN active_elapsed_ms bigint NOT NULL DEFAULT 0 CHECK(active_elapsed_ms>=0);
+ALTER TABLE grouped_executions ADD COLUMN active_since timestamptz;
+ALTER TABLE grouped_executions ADD COLUMN result_run_id uuid;
+ALTER TABLE grouped_executions ADD FOREIGN KEY(workflow_id,result_run_id) REFERENCES workflow_runs(workflow_id,id);
+
+-- Short-lived capacity leases bound resumed human steps as well as newly
+-- dispatched children. They are coordination state; execution/audit rows remain history.
+CREATE TABLE grouped_activity_leases (
+ token uuid PRIMARY KEY,
+ parent_job_id uuid NOT NULL REFERENCES grouped_executions(job_id),
+ job_id uuid NOT NULL REFERENCES workflow_jobs(id),
+ expires_at timestamptz NOT NULL
+);
+CREATE INDEX grouped_activity_capacity ON grouped_activity_leases(parent_job_id,expires_at);
+ALTER TABLE grouped_activity_leases ENABLE ROW LEVEL SECURITY;

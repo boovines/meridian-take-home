@@ -39,7 +39,9 @@ export async function startReviewWorkflow(id: string) {
 }
 export async function cancelReviewWorkflow(id: string) {
   try {
-    await (await temporalClient()).workflow
+    await (
+      await temporalClient()
+    ).workflow
       .getHandle(reviewWorkflowId(id))
       .cancel();
   } catch (e) {
@@ -107,6 +109,21 @@ export async function startRepairWorkflow(id: string) {
     await (
       await temporalClient()
     ).workflow.start("repairImplementation", {
+      workflowId: `job-${id}`,
+      taskQueue: temporalConfig().taskQueue,
+      args: [id],
+      workflowIdReusePolicy: "REJECT_DUPLICATE",
+    });
+  } catch (error) {
+    if (!(error instanceof WorkflowExecutionAlreadyStartedError)) throw error;
+  }
+}
+
+export async function startGroupedWorkflow(id: string) {
+  try {
+    await (
+      await temporalClient()
+    ).workflow.start("executeGroupedEmails", {
       workflowId: `job-${id}`,
       taskQueue: temporalConfig().taskQueue,
       args: [id],

@@ -9,6 +9,8 @@ import {
 import { DomainError } from "../../domain/errors";
 import type { Database, Queryable } from "../database";
 import { workflow } from "../workflows/store";
+import { jobById } from "../engineering/job-service";
+import { assertJobParentActive } from "../grouped-execution/ownership";
 import { pauseRecoveryClock } from "./recovery-clock";
 
 // The generation claim and its immutable context snapshot share a transaction.
@@ -243,6 +245,7 @@ export class ClarificationService {
           );
         return { question_id: questionId, job_id: String(q.job_id) };
       }
+      await assertJobParentActive(tx, await jobById(tx, String(q.job_id)));
       if (
         q.status !== "open" ||
         q.session_status !== "running" ||

@@ -18,6 +18,7 @@ export const selectedEmailExecution = z
   .object({
     request_key: uuid,
     implementation_version_id: uuid,
+    aggregation_node_id: uuid.optional(),
     message_ids: z
       .array(z.string().regex(/^[a-f0-9]{10,40}$/))
       .min(1)

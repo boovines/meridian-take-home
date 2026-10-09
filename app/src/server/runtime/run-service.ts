@@ -440,7 +440,7 @@ export class RunService {
     );
     const runs = (
       await this.db.query(
-        `SELECT * FROM workflow_runs WHERE workflow_id=$1 AND implementation_version_id IN (SELECT v.id FROM implementation_versions v JOIN implementation_plan_versions p ON p.id=v.plan_version_id WHERE p.frozen_spec_id=$2) ${runId ? "AND id=$3" : ""} ${kind === "manual" ? "AND kind IN ('manual','recovery')" : ""} ORDER BY created_at DESC,id DESC LIMIT 20`,
+        `SELECT * FROM workflow_runs WHERE workflow_id=$1 AND implementation_version_id IN (SELECT v.id FROM implementation_versions v JOIN implementation_plan_versions p ON p.id=v.plan_version_id WHERE p.frozen_spec_id=$2) ${runId ? "AND id=$3" : "AND job_id IN (SELECT id FROM workflow_jobs WHERE parent_job_id IS NULL)"} ${kind === "manual" ? "AND kind IN ('manual','recovery')" : ""} ORDER BY created_at DESC,id DESC LIMIT 20`,
         runId ? [workflowId, spec.id, runId] : [workflowId, spec.id],
       )
     ).rows.map(runRecord);
