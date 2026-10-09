@@ -572,12 +572,27 @@ test("edits and decides each proposed block independently while preserving unsav
     "Keep this draft until I decide.",
   );
   await page.unroute("**/proposals/*");
+  const decisions: unknown[] = [];
+  await page.route("**/proposals/*", async route => {
+    decisions.push(route.request().postDataJSON());
+    const response = await route.fetch();
+    if (decisions.length === 1) {
+      expect(response.ok()).toBe(true);
+      await route.fulfill({ status: 503, json: { error: { code: "LOST_RESPONSE", message: "Decision saved but response interrupted." } } });
+    } else await route.fulfill({ response });
+  });
+  await first.getByRole("button", { name: "Accept changes", exact: true }).click();
+  await expect(thread.getByRole("alert")).toContainText("Decision saved but response interrupted.");
+  await expect(second.getByRole("textbox")).toHaveValue("Keep this draft until I decide.");
   await first
     .getByRole("button", { name: "Accept changes", exact: true })
     .click();
+  await expect.poll(() => decisions.length).toBe(2);
+  expect(decisions[1]).toEqual(decisions[0]);
   await expect(thread.locator(".proposal-state").first()).toHaveText(
     "accepted",
   );
+  await page.unroute("**/proposals/*");
   await expect(second.getByRole("textbox")).toHaveValue(
     "Keep this draft until I decide.",
   );
