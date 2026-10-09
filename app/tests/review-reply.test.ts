@@ -4,12 +4,13 @@ import { createDatabase, migrate, type Database } from "../src/server/database";
 import { CanvasService } from "../src/server/canvas/service";
 import { ReviewService } from "../src/server/reviews/review-service";
 import { ReplyService } from "../src/server/reviews/reply-service";
+import { ReplyProposalService } from "../src/server/reviews/reply-proposal-service";
 import { FindingService } from "../src/server/reviews/finding-service";
 import { FreezeService } from "../src/server/reviews/freeze-service";
 import { nodeInput, connectionInput, type Board } from "../src/domain/canvas";
 import { messageInput, noteInput, findingAction } from "../src/domain/review";
 import {
-  replyIncorporationEvent,
+  replyProposalEvent,
   type ReplyRewriter,
 } from "../src/domain/review-reply";
 let db: Database, canvas: CanvasService, reviews: ReviewService;
@@ -103,7 +104,7 @@ const rewrite: ReplyRewriter = async ({ targets }) => ({
     instructions: `${n.instructions} Require a batch number.`,
   })),
 });
-it("atomically incorporates multiple blocks, retains audit evidence, deduplicates retry and freezes the new instructions", async () => {
+it("proposes without editing, then atomically accepts multiple blocks and freezes accepted instructions", async () => {
   const { w, first, second, thread, data } = await setup();
   const before = await canvas.load(w.id),
     provider = vi.fn(rewrite),
@@ -111,6 +112,25 @@ it("atomically incorporates multiple blocks, retains audit evidence, deduplicate
   const reply = await service.reply(w.id, thread.id, data);
   expect((await service.reply(w.id, thread.id, data)).id).toBe(reply.id);
   expect(provider).toHaveBeenCalledTimes(1);
+  expect(await canvas.load(w.id)).toEqual(before);
+  const proposedState = await reviews.state(w.id);
+  const proposalMessage = proposedState.messages.at(-1)!;
+  expect(proposalMessage.author_kind).toBe("ai");
+  const decision = {
+    decision: "accept" as const,
+    expected_revision: proposedState.threads[0].revision,
+    request_key: randomUUID(),
+  };
+  const proposals = new ReplyProposalService(db);
+  const accepted = await proposals.decide(
+    w.id,
+    thread.id,
+    proposalMessage.id,
+    decision,
+  );
+  expect(
+    (await proposals.decide(w.id, thread.id, proposalMessage.id, decision)).id,
+  ).toBe(accepted.id);
   const board = await canvas.load(w.id);
   expect(board.workflow.content_revision).toBe(
     before.workflow.content_revision + 1,
@@ -124,13 +144,11 @@ it("atomically incorporates multiple blocks, retains audit evidence, deduplicate
   expect(state.threads[0].status).toBe("open");
   expect(
     state.messages.filter((m) => m.author_kind === "customer"),
-  ).toHaveLength(1);
-  const audit = replyIncorporationEvent.parse(
-    state.messages.at(-1)!.event_data,
-  );
+  ).toHaveLength(2);
+  const audit = replyProposalEvent.parse(proposalMessage.event_data);
   expect(audit.reply_message_id).toBe(reply.id);
-  expect(audit.applied).toHaveLength(2);
-  expect(audit.applied[0].before.instructions).toBe(first.instructions);
+  expect(audit.edits).toHaveLength(2);
+  expect(audit.edits[0].before.instructions).toBe(first.instructions);
   await new FindingService(db).action(
     w.id,
     thread.id,
@@ -321,4 +339,130 @@ it("commits a concurrent duplicate request only once", async () => {
   await expect(
     service.reply(w.id, thread.id, { ...data, body: "Different answer" }),
   ).rejects.toMatchObject({ code: "REQUEST_REUSED" });
+});
+
+async function proposed() {
+  const fixture = await setup();
+  await new ReplyService(db, rewrite).reply(
+    fixture.w.id,
+    fixture.thread.id,
+    fixture.data,
+  );
+  const state = await reviews.state(fixture.w.id);
+  return {
+    ...fixture,
+    proposal: state.messages.at(-1)!,
+    revision: state.threads[0].revision,
+  };
+}
+it("rejects a proposal without changing any blocks and retains the decision", async () => {
+  const { w, thread, proposal, revision } = await proposed();
+  const before = await canvas.load(w.id);
+  await new ReplyProposalService(db).decide(w.id, thread.id, proposal.id, {
+    decision: "reject",
+    expected_revision: revision,
+    request_key: randomUUID(),
+  });
+  expect(await canvas.load(w.id)).toEqual(before);
+  const state = await reviews.state(w.id);
+  expect(state.messages.at(-1)?.event_data).toMatchObject({
+    action: "reply_proposal_decided",
+    decision: "reject",
+    proposal_message_id: proposal.id,
+  });
+  expect(state.threads[0].status).toBe("open");
+  await expect(
+    new ReplyProposalService(db).decide(w.id, thread.id, proposal.id, {
+      decision: "accept",
+      expected_revision: state.threads[0].revision,
+      request_key: randomUUID(),
+    }),
+  ).rejects.toMatchObject({ code: "PROPOSAL_DECIDED" });
+});
+it("rejects all proposed edits if one target changes before acceptance", async () => {
+  const { w, first, second, thread, proposal, revision } = await proposed();
+  await canvas.editNode(w.id, first.id, {
+    expected_revision: first.revision,
+    instructions: "Concurrent edit",
+  });
+  const before = await canvas.load(w.id);
+  await expect(
+    new ReplyProposalService(db).decide(w.id, thread.id, proposal.id, {
+      decision: "accept",
+      expected_revision: revision,
+      request_key: randomUUID(),
+    }),
+  ).rejects.toMatchObject({ code: "STALE_PROPOSAL" });
+  expect(await canvas.load(w.id)).toEqual(before);
+  expect(before.nodes.find((n) => n.id === second.id)?.instructions).toBe(
+    second.instructions,
+  );
+  await new ReplyProposalService(db).decide(w.id, thread.id, proposal.id, {
+    decision: "reject",
+    expected_revision: revision,
+    request_key: randomUUID(),
+  });
+});
+it("supersedes earlier proposals after a follow-up and refuses cross-thread decisions", async () => {
+  const { w, thread, proposal, revision, data } = await proposed();
+  await new ReplyService(db, rewrite).reply(w.id, thread.id, {
+    ...data,
+    body: "Also clarify the report",
+    expected_revision: revision,
+    request_key: randomUUID(),
+  });
+  const state = await reviews.state(w.id);
+  await expect(
+    new ReplyProposalService(db).decide(w.id, thread.id, proposal.id, {
+      decision: "accept",
+      expected_revision: state.threads[0].revision,
+      request_key: randomUUID(),
+    }),
+  ).rejects.toMatchObject({ code: "PROPOSAL_SUPERSEDED" });
+  const other = await setup();
+  await expect(
+    new ReplyProposalService(db).decide(
+      other.w.id,
+      other.thread.id,
+      proposal.id,
+      {
+        decision: "accept",
+        expected_revision: other.thread.revision,
+        request_key: randomUUID(),
+      },
+    ),
+  ).rejects.toMatchObject({ code: "PROPOSAL_NOT_FOUND" });
+});
+it("cannot accept while review locks the workflow", async () => {
+  const { w, thread, proposal, revision } = await proposed();
+  const before = (await canvas.load(w.id)).nodes;
+  await reviews.start(w.id, { request_key: randomUUID() });
+  await expect(
+    new ReplyProposalService(db).decide(w.id, thread.id, proposal.id, {
+      decision: "accept",
+      expected_revision: revision,
+      request_key: randomUUID(),
+    }),
+  ).rejects.toMatchObject({ code: "WORKFLOW_LOCKED" });
+  expect((await canvas.load(w.id)).nodes).toEqual(before);
+});
+it("serializes competing accept and reject decisions", async () => {
+  const { w, thread, proposal, revision } = await proposed();
+  const service = new ReplyProposalService(db);
+  const outcomes = await Promise.allSettled(
+    (["accept", "reject"] as const).map((decision) =>
+      service.decide(w.id, thread.id, proposal.id, {
+        decision,
+        expected_revision: revision,
+        request_key: randomUUID(),
+      }),
+    ),
+  );
+  expect(outcomes.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+  const state = await reviews.state(w.id);
+  expect(
+    state.messages.filter(
+      (m) => m.event_data?.action === "reply_proposal_decided",
+    ),
+  ).toHaveLength(1);
 });
