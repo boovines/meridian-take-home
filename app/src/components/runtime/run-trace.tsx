@@ -12,7 +12,17 @@ export interface RunState {
   steps: StepRecord[];
   human_requests: HumanRequest[];
 }
-export function RunTrace({
+type TraceProps = {
+  workflowId: string;
+  runId: string;
+  nodeTitles: Record<string, string>;
+};
+export function RunTrace(props: TraceProps) {
+  return (
+    <LoadedRunTrace key={`${props.workflowId}:${props.runId}`} {...props} />
+  );
+}
+function LoadedRunTrace({
   workflowId,
   runId,
   nodeTitles,
@@ -22,7 +32,8 @@ export function RunTrace({
   nodeTitles: Record<string, string>;
 }) {
   const [state, setState] = useState<RunState | null>(null),
-    [error, setError] = useState("");
+    [error, setError] = useState(""),
+    [reload, setReload] = useState(0);
   useEffect(() => {
     let active = true;
     api<RunState>(`/api/workflows/${workflowId}/runs/${runId}`)
@@ -35,8 +46,21 @@ export function RunTrace({
     return () => {
       active = false;
     };
-  }, [workflowId, runId]);
-  if (error) return <p role="alert">{error}</p>;
+  }, [workflowId, runId, reload]);
+  if (error)
+    return (
+      <div role="alert">
+        <p>{error}</p>
+        <button
+          onClick={() => {
+            setError("");
+            setReload((n) => n + 1);
+          }}
+        >
+          Retry loading trace
+        </button>
+      </div>
+    );
   if (!state) return <p role="status">Loading step trace…</p>;
   return (
     <div className="run-trace">

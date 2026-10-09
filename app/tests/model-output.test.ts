@@ -6,8 +6,14 @@ import {
   NoOutputGeneratedError,
   RetryError,
 } from "ai";
+import { reviewWithOpenAI } from "../src/server/integrations/openai-reviewer";
+import { recommendMethods } from "../src/server/integrations/openai-engineer";
 import { generateProjectSources } from "../src/server/integrations/openai-engineer";
-import { reasonForStep, extractForStep, extractionResponseContract } from "../src/server/integrations/openai-step";
+import {
+  reasonForStep,
+  extractForStep,
+  extractionResponseContract,
+} from "../src/server/integrations/openai-step";
 import { invocationFailure } from "../src/server/runtime/invoke-step";
 import type { Board } from "../src/domain/canvas";
 
@@ -70,9 +76,12 @@ describe("model output boundaries", () => {
             })
           : provider,
       );
-      const failure = await generateProjectSources(board, [], null, signal).catch(
-        (error) => error,
-      );
+      const failure = await generateProjectSources(
+        board,
+        [],
+        null,
+        signal,
+      ).catch((error) => error);
       expect(failure).toMatchObject({
         code: "MODEL_PROJECT_SPEND_LIMIT",
         status: 503,
@@ -89,7 +98,9 @@ describe("model output boundaries", () => {
         url: "https://api.openai.com/v1/responses",
         requestBodyValues: {},
         statusCode: 429,
-        data: { error: { code: "insufficient_quota", type: "insufficient_quota" } },
+        data: {
+          error: { code: "insufficient_quota", type: "insufficient_quota" },
+        },
       }),
     );
     const failure = await reasonForStep("Read this example", {}, signal).catch(
@@ -117,16 +128,20 @@ describe("model output boundaries", () => {
     const aborted = new RetryError({
       message: "Aborted during retry",
       reason: "abort",
-      errors: [new APICallError({
-        message: "Quota exhausted",
-        url: "https://api.openai.com/v1/responses",
-        requestBodyValues: {},
-        statusCode: 429,
-        data: { error: { code: "project_spend_limit_exceeded" } },
-      })],
+      errors: [
+        new APICallError({
+          message: "Quota exhausted",
+          url: "https://api.openai.com/v1/responses",
+          requestBodyValues: {},
+          statusCode: 429,
+          data: { error: { code: "project_spend_limit_exceeded" } },
+        }),
+      ],
     });
     generate.mockRejectedValue(aborted);
-    await expect(generateProjectSources(board, [], null, signal)).rejects.toBe(aborted);
+    await expect(generateProjectSources(board, [], null, signal)).rejects.toBe(
+      aborted,
+    );
   });
   it("reports an exhausted response budget even when the SDK output getter throws", async () => {
     generate.mockResolvedValue({
@@ -175,15 +190,67 @@ describe("model output boundaries", () => {
   });
 });
 
-
 it("keeps the host evidence envelope above a generated task requesting bare data", async () => {
-  generate.mockResolvedValue({ finishReason: "stop", output: { data: { seller: null }, fields: [] } } as never);
-  await extractForStep({ kind: "extract", instructions: "Return only {seller: null}.", data: {}, document_ids: [],
-    output_schema: { type: "object", additionalProperties: false, required: ["seller"], properties: { seller: { type: ["string", "null"] } } }, critical_paths: [["seller"]] }, [], signal);
+  generate.mockResolvedValue({
+    finishReason: "stop",
+    output: { data: { seller: null }, fields: [] },
+  } as never);
+  await extractForStep(
+    {
+      kind: "extract",
+      instructions: "Return only {seller: null}.",
+      data: {},
+      document_ids: [],
+      output_schema: {
+        type: "object",
+        additionalProperties: false,
+        required: ["seller"],
+        properties: { seller: { type: ["string", "null"] } },
+      },
+      critical_paths: [["seller"]],
+    },
+    [],
+    signal,
+  );
   const call = generate.mock.calls[0][0];
   expect(call.system).toContain(extractionResponseContract);
-  expect(call.system).toContain("The outer response must always contain data and fields");
+  expect(call.system).toContain(
+    "The outer response must always contain data and fields",
+  );
   const request = JSON.stringify(call.messages);
   expect(request).toContain("Return only {seller: null}.");
   expect(request).not.toContain(extractionResponseContract);
 });
+
+it.each(["review", "recommendations"])(
+  "classifies project caps at the %s call site",
+  async (operation) => {
+    generate.mockRejectedValue(
+      new APICallError({
+        message: "private provider diagnostic",
+        url: "https://api.openai.com/v1/responses",
+        requestBodyValues: {},
+        statusCode: 429,
+        data: { error: { code: "project_spend_limit_exceeded" } },
+      }),
+    );
+    const call =
+      operation === "recommendations"
+        ? recommendMethods(board, signal)
+        : reviewWithOpenAI(
+            {
+              run: { model: "fixture" },
+              board: {
+                workflow: { desired_outcome: "Preview an order" },
+                nodes: [],
+                connections: [],
+              },
+              discussion: { threads: [], anchors: [], messages: [] },
+            } as unknown as Parameters<typeof reviewWithOpenAI>[0],
+            signal,
+          );
+    await expect(call).rejects.toMatchObject({
+      code: "MODEL_PROJECT_SPEND_LIMIT",
+    });
+  },
+);

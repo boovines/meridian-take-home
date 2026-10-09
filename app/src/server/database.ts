@@ -2,6 +2,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { Pool, type PoolClient } from "pg";
 import { mkdir, readFile, readdir } from "node:fs/promises";
 import path from "node:path";
+import { DomainError } from "../domain/errors";
 
 export interface Queryable {
   query<T extends Record<string, unknown> = Record<string, unknown>>(
@@ -28,7 +29,9 @@ export async function createDatabase(
     });
     // pg removes failed idle clients; keep its error event from crashing the host.
     pool.on("error", () => {
-      console.warn("An idle database connection closed; the pool will reconnect.");
+      console.warn(
+        "An idle database connection closed; the pool will reconnect.",
+      );
     });
     return {
       query: (sql, values) => pool.query(sql, values),
@@ -135,6 +138,32 @@ export async function migrate(db: Database) {
   }
 }
 
+// Connectivity alone cannot establish readiness: deployed code may require tables
+// that a reachable database does not have. Never apply remote migrations implicitly.
+export async function assertMigrationsApplied(db: Queryable) {
+  const expected = (await readdir(path.join(process.cwd(), "migrations")))
+    .filter((name) => name.endsWith(".sql"))
+    .sort();
+  const exists = (
+    await db.query("SELECT to_regclass('public.schema_migrations') AS relation")
+  ).rows[0]?.relation;
+  const applied = new Set(
+    exists
+      ? (await db.query("SELECT name FROM schema_migrations")).rows.map(
+          (row) => row.name,
+        )
+      : [],
+  );
+  const missing = expected.filter((name) => !applied.has(name));
+  if (missing.length)
+    throw new DomainError(
+      503,
+      "SCHEMA_OUTDATED",
+      "The database needs an application update. Run npm run db:migrate from the deployed release, then retry.",
+      { missing_migrations: missing },
+    );
+}
+
 export function configuredDatabaseUrl() {
   if (process.env.MERIDIAN_DATABASE === "local") return undefined;
   if (process.env.DATABASE_URL) return process.env.DATABASE_URL;
@@ -169,7 +198,13 @@ export function getDatabase(): Promise<Database> {
         process.env.LOCAL_DATABASE_PATH ||
           path.resolve(process.cwd(), "../.runtime/database"),
       );
-      if (!url) await migrate(db);
+      try {
+        if (!url) await migrate(db);
+        else await assertMigrationsApplied(db);
+      } catch (error) {
+        await db.close();
+        throw error;
+      }
       return db;
     })().catch((error) => {
       globals.meridianDatabase = undefined;

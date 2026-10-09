@@ -3,6 +3,7 @@ import {
   configuredDatabaseUrl,
   createDatabase,
   migrate,
+  assertMigrationsApplied,
 } from "../src/server/database";
 nextEnv.loadEnvConfig(process.cwd());
 const url = configuredDatabaseUrl();
@@ -17,7 +18,8 @@ try {
     console.log("Database migrations applied.");
   } else {
     await db.query("SELECT 1");
-    console.log("Database connection verified.");
+    await assertMigrationsApplied(db);
+    console.log("Database connection and applied migrations verified.");
   }
 } catch (error) {
   // Never print URLs, query values, credentials or provider response bodies.

@@ -22,7 +22,8 @@ export function AgentPanel({
     [detail, setDetail] = useState<VersionDetail | null>(null),
     [file, setFile] = useState("run-step.mjs"),
     [changes, setChanges] = useState(false),
-    [error, setError] = useState("");
+    [error, setError] = useState(""),
+    [reload, setReload] = useState(0);
   const versionId = versions.some((v) => v.id === selected)
     ? selected
     : versions[0]?.id;
@@ -42,7 +43,7 @@ export function AgentPanel({
     return () => {
       active = false;
     };
-  }, [workflowId, versionId]);
+  }, [workflowId, versionId, reload]);
   if (!versionId)
     return (
       <div className="engineer-empty">
@@ -71,7 +72,8 @@ export function AgentPanel({
           : job?.progress.syntax_status === "failed"
             ? "Syntax check failed"
             : job?.progress.syntax_status === "passed" ||
-                (job?.status === "succeeded" && job.progress.check === "node --check")
+                (job?.status === "succeeded" &&
+                  job.progress.check === "node --check")
               ? "Syntax check passed"
               : "Build check incomplete";
   const fileLabel = (path: string) => {
@@ -89,7 +91,10 @@ export function AgentPanel({
             <select
               aria-label="Code version"
               value={versionId}
-              onChange={(e) => setSelected(e.target.value)}
+              onChange={(e) => {
+                setSelected(e.target.value);
+                setError("");
+              }}
             >
               {versions.map((v) => (
                 <option key={v.id} value={v.id}>
@@ -102,7 +107,11 @@ export function AgentPanel({
           <span className="status-pill">
             {ready && detail.evaluation
               ? `${detail.evaluation.verdict || detail.evaluation.status} · suite v${detail.evaluation.suite_number}`
-              : "Not yet evaluated"}
+              : ready
+                ? "Not yet evaluated"
+                : error
+                  ? "Evaluation unavailable"
+                  : "Loading evaluation…"}
           </span>
         </div>
         <a
@@ -113,12 +122,20 @@ export function AgentPanel({
         </a>
       </div>
       {error && (
-        <p role="alert" className="error-banner">
-          {error}
-        </p>
+        <div role="alert" className="error-banner">
+          <p>{error}</p>
+          <button
+            onClick={() => {
+              setError("");
+              setReload((n) => n + 1);
+            }}
+          >
+            Retry loading source
+          </button>
+        </div>
       )}
       {!ready ? (
-        <p role="status">Loading source…</p>
+        !error && <p role="status">Loading source…</p>
       ) : (
         <>
           <p className="field-help">{detail.project.generator.summary}</p>
