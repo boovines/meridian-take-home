@@ -1,3 +1,7 @@
+import {
+  activeGroupParent,
+  assertJobParentActive,
+} from "../grouped-execution/ownership";
 import { pauseRecoveryClock } from "../repairs/recovery-clock";
 import { RunRecoveryService } from "../repairs/run-recovery-service";
 import { recoveryEligibility } from "../../domain/run-recovery";
@@ -15,7 +19,7 @@ import {
   type RuntimeError,
   type startRunInput,
 } from "../../domain/runtime";
-import type { Database } from "../database";
+import type { Database, Queryable } from "../database";
 import { workflow } from "../workflows/store";
 import { jobById } from "../engineering/job-service";
 import {
@@ -28,120 +32,156 @@ import { finishedRuns, runById, runRecord } from "./store";
 export class RunService {
   constructor(private db: Database) {}
   async start(workflowId: string, data: z.infer<typeof startRunInput>) {
-    return this.db.transaction(async (tx) => {
-      await workflow(tx, workflowId, true);
-      const source = {
-        implementation_version_id: data.implementation_version_id,
-        input_bundle_id: data.input_bundle_id,
-        rerun_of_id: data.rerun_of_id,
-      };
-      const existing = (
-        await tx.query(
-          "SELECT * FROM workflow_jobs WHERE workflow_id=$1 AND request_key=$2",
-          [workflowId, data.request_key],
-        )
-      ).rows[0];
-      if (existing) {
-        if (
-          existing.kind !== "execution" ||
-          !isDeepStrictEqual(existing.source_request, source)
-        )
-          throw new DomainError(
-            409,
-            "REQUEST_REUSED",
-            "This request belongs to different run inputs.",
-          );
-        return {
-          job: existing as unknown as WorkflowJob,
-          run: runRecord(
-            (
-              await tx.query(
-                "SELECT * FROM workflow_runs WHERE job_id=$1 AND kind='manual'",
-                [existing.id],
-              )
-            ).rows[0],
-          ),
-        };
-      }
-      const version = (
-        await tx.query(
-          "SELECT * FROM implementation_versions WHERE workflow_id=$1 AND id=$2",
-          [workflowId, data.implementation_version_id],
-        )
-      ).rows[0] as unknown as ImplementationVersion;
-      if (
-        !version ||
-        !(
-          await tx.query(
-            "SELECT id FROM input_bundles WHERE workflow_id=$1 AND id=$2",
-            [workflowId, data.input_bundle_id],
-          )
-        ).rows.length
+    return this.db.transaction((tx) =>
+      this.startInTransaction(tx, workflowId, data),
+    );
+  }
+  async startInTransaction(
+    tx: Queryable,
+    workflowId: string,
+    data: z.infer<typeof startRunInput>,
+    owned?: {
+      parent_job_id: string;
+      execution_mode?: "grouping" | "aggregate";
+      phase_node_id?: string;
+      phase_sequence?: number;
+    },
+  ) {
+    await workflow(tx, workflowId, true);
+    const source = {
+      implementation_version_id: data.implementation_version_id,
+      input_bundle_id: data.input_bundle_id,
+      rerun_of_id: data.rerun_of_id,
+      ...(owned
+        ? {
+            parent_job_id: owned.parent_job_id,
+            execution_mode: owned.execution_mode ?? "workflow",
+            phase_node_id: owned.phase_node_id ?? null,
+            ...(owned.phase_sequence !== undefined
+              ? { phase_sequence: owned.phase_sequence }
+              : {}),
+          }
+        : {}),
+    };
+    const existing = (
+      await tx.query(
+        "SELECT * FROM workflow_jobs WHERE workflow_id=$1 AND request_key=$2",
+        [workflowId, data.request_key],
       )
-        throw new DomainError(
-          422,
-          "INVALID_INPUT",
-          "Code and captured inputs must belong to this workflow.",
-        );
-      if (data.rerun_of_id) {
-        const old = await runById(tx, data.rerun_of_id);
-        if (
-          old.workflow_id !== workflowId ||
-          old.implementation_version_id !== version.id ||
-          old.input_bundle_id !== data.input_bundle_id ||
-          !finishedRuns.includes(old.status)
-        )
-          throw new DomainError(
-            422,
-            "INVALID_RETRY",
-            "A retry uses the finished run's exact code version and input bundle.",
-          );
-      }
+    ).rows[0];
+    if (existing) {
       if (
-        (
-          await tx.query(
-            "SELECT id FROM workflow_jobs WHERE workflow_id=$1 AND status IN ('queued','running','waiting_for_human','cancel_requested')",
-            [workflowId],
-          )
-        ).rows.length
+        existing.kind !== "execution" ||
+        !isDeepStrictEqual(existing.source_request, source)
       )
         throw new DomainError(
           409,
-          "OPERATION_ACTIVE",
-          "Wait for or cancel the active operation first.",
+          "REQUEST_REUSED",
+          "This request belongs to different run inputs.",
         );
-      const id = randomUUID();
-      const job = (
+      return {
+        job: existing as unknown as WorkflowJob,
+        run: runRecord(
+          (
+            await tx.query(
+              "SELECT * FROM workflow_runs WHERE job_id=$1 AND kind='manual'",
+              [existing.id],
+            )
+          ).rows[0],
+        ),
+      };
+    }
+    const version = (
+      await tx.query(
+        "SELECT * FROM implementation_versions WHERE workflow_id=$1 AND id=$2",
+        [workflowId, data.implementation_version_id],
+      )
+    ).rows[0] as unknown as ImplementationVersion;
+    if (
+      !version ||
+      !(
         await tx.query(
-          `INSERT INTO workflow_jobs(id,workflow_id,kind,request_key,source_request,plan_version_id,input_version_id,executor_ref,deadline_at) VALUES($1,$2,'execution',$3,$4,$5,$6,$7,now()+interval '1 day') RETURNING *`,
+          "SELECT id FROM input_bundles WHERE workflow_id=$1 AND id=$2",
+          [workflowId, data.input_bundle_id],
+        )
+      ).rows.length
+    )
+      throw new DomainError(
+        422,
+        "INVALID_INPUT",
+        "Code and captured inputs must belong to this workflow.",
+      );
+    const parent = owned
+      ? await activeGroupParent(
+          tx,
+          owned.parent_job_id,
+          workflowId,
+          version.plan_version_id,
+        )
+      : null;
+    if (data.rerun_of_id) {
+      const old = await runById(tx, data.rerun_of_id);
+      if (
+        old.workflow_id !== workflowId ||
+        old.implementation_version_id !== version.id ||
+        old.input_bundle_id !== data.input_bundle_id ||
+        !finishedRuns.includes(old.status)
+      )
+        throw new DomainError(
+          422,
+          "INVALID_RETRY",
+          "A retry uses the finished run's exact code version and input bundle.",
+        );
+    }
+    if (
+      !parent &&
+      (
+        await tx.query(
+          "SELECT id FROM workflow_jobs WHERE workflow_id=$1 AND status IN ('queued','running','waiting_for_human','cancel_requested')",
+          [workflowId],
+        )
+      ).rows.length
+    )
+      throw new DomainError(
+        409,
+        "OPERATION_ACTIVE",
+        "Wait for or cancel the active operation first.",
+      );
+    const id = randomUUID();
+    const job = (
+      await tx.query(
+        `INSERT INTO workflow_jobs(id,workflow_id,kind,request_key,source_request,plan_version_id,input_version_id,executor_ref,deadline_at,parent_job_id) VALUES($1,$2,'execution',$3,$4,$5,$6,$7,coalesce($9::timestamptz,now()+interval '1 day'),$8) RETURNING *`,
+        [
+          id,
+          workflowId,
+          data.request_key,
+          source,
+          version.plan_version_id,
+          version.id,
+          `job-${id}`,
+          parent?.id ?? null,
+          parent?.deadline_at ?? null,
+        ],
+      )
+    ).rows[0] as unknown as WorkflowJob;
+    const run = runRecord(
+      (
+        await tx.query(
+          `INSERT INTO workflow_runs(workflow_id,job_id,implementation_version_id,input_bundle_id,rerun_of_id,limits,execution_mode,phase_node_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
           [
-            id,
             workflowId,
-            data.request_key,
-            source,
-            version.plan_version_id,
+            id,
             version.id,
-            `job-${id}`,
+            data.input_bundle_id,
+            data.rerun_of_id,
+            DEMO_LIMITS,
+            owned?.execution_mode ?? "workflow",
+            owned?.phase_node_id ?? null,
           ],
         )
-      ).rows[0] as unknown as WorkflowJob;
-      const run = runRecord(
-        (
-          await tx.query(
-            `INSERT INTO workflow_runs(workflow_id,job_id,implementation_version_id,input_bundle_id,rerun_of_id,limits) VALUES($1,$2,$3,$4,$5,$6) RETURNING *`,
-            [
-              workflowId,
-              id,
-              version.id,
-              data.input_bundle_id,
-              data.rerun_of_id,
-              DEMO_LIMITS,
-            ],
-          )
-        ).rows[0],
-      );
-      return { job, run };
-    });
+      ).rows[0],
+    );
+    return { job, run };
   }
   async prepareCase(runId: string) {
     const run = await runById(this.db, runId);
@@ -152,6 +192,7 @@ export class RunService {
       let job = await jobById(tx, jobId);
       await workflow(tx, job.workflow_id, true);
       job = await jobById(tx, jobId);
+      await assertJobParentActive(tx, job);
       if (
         caseRunId
           ? !["evaluation", "repair"].includes(job.kind)
@@ -216,6 +257,7 @@ export class RunService {
       if (finishedRuns.includes((await runById(tx, id)).status)) return;
       const job = await jobById(tx, run.job_id);
       if (!["running", "waiting_for_human"].includes(job.status)) return;
+      await assertJobParentActive(tx, job);
       const updated = await tx.query(
         `UPDATE workflow_runs SET status=$2,progress_sequence=$3,active_elapsed_ms=$4,active_since=$5,updated_at=now() WHERE id=$1 AND progress_sequence<$3 RETURNING id`,
         [id, p.status, p.sequence, p.active_elapsed_ms, p.active_since],
@@ -267,8 +309,15 @@ export class RunService {
         )
       ).rows[0];
       if (!row || finishedRuns.includes(String(row.status))) return;
+      const parentStopped =
+        job.parent_job_id &&
+        !["queued", "running", "waiting_for_human"].includes(
+          (await jobById(tx, job.parent_job_id)).status,
+        );
       const status =
-        job.status === "cancel_requested" ? "cancelled" : result.status;
+        job.status === "cancel_requested" || parentStopped
+          ? "cancelled"
+          : result.status;
       if (
         status === "completed" &&
         (!result.result_step_id ||
@@ -296,7 +345,13 @@ export class RunService {
           job.plan_version_id,
         );
         if (
-          !spec.board.nodes.some((n) => n.id === nodeId && n.type === "outcome")
+          !spec.board.nodes.some(
+            (n) =>
+              n.id === nodeId &&
+              (row.execution_mode !== "workflow"
+                ? n.id === row.phase_node_id
+                : n.type === "outcome"),
+          )
         )
           throw new DomainError(
             422,

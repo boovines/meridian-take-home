@@ -1,9 +1,11 @@
+import { GroupedBudget } from "../grouped-execution/budget";
 import { randomUUID } from "node:crypto";
 import type { Database } from "../database";
 import { DomainError } from "../../domain/errors";
 import { workflow } from "../workflows/store";
 import {
   withInferenceBudget,
+  combineInferenceBudgets,
   type InferenceBudgetGuard,
 } from "../integrations/inference-budget";
 
@@ -117,7 +119,18 @@ export async function withRecoveryBudget<T>(
       [jobId],
     )
   ).rows[0];
-  return session
-    ? withInferenceBudget(new RecoveryBudget(db, String(session.id)), work)
-    : work();
+  const job = (
+    await db.query(
+      "SELECT id,kind,parent_job_id FROM workflow_jobs WHERE id=$1",
+      [jobId],
+    )
+  ).rows[0];
+  const parentId = job?.kind === "grouped" ? job.id : job?.parent_job_id;
+  const parent = parentId ? new GroupedBudget(db, String(parentId)) : null;
+  const recovery = session ? new RecoveryBudget(db, String(session.id)) : null;
+  const budget =
+    parent && recovery
+      ? combineInferenceBudgets(parent, recovery)
+      : (parent ?? recovery);
+  return budget ? withInferenceBudget(budget, work) : work();
 }
