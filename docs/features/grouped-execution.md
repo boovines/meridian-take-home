@@ -2,7 +2,7 @@
 
 ## Implementation status
 
-The product UI, API, parent coordinator, grouping/aggregation phases, and fixture worker journeys are implemented on the grouped-execution branch. The motivating v2 process has been explicitly approved, reviewed and frozen, and its approved implementation has been generated. Live multi-email acceptance is still in progress; fixture results and syntax checks do not establish model accuracy or customer readiness.
+The product UI, API, parent coordinator, grouping/aggregation phases, and fixture worker journeys are implemented on the grouped-execution branch. The motivating v2 process has been explicitly approved, reviewed and frozen, and its approved implementation has been generated. A live two-email run completed both groups and aggregation with inspected source isolation. Business accuracy remains unverified; execution completion does not establish customer readiness.
 
 ## Product experience
 
@@ -55,4 +55,8 @@ Browser state and inspection controls live in `src/components/grouped-execution`
 
 `grouped-execution.spec.ts` checks email selection/start without a shipment reference, actual-version inspection, clarification persistence after reload, human responses, cancellation, retained successes, partial reports and a mobile viewport. Existing manual-run/recovery journeys still exercise the Saved input path.
 
-The expert approval and v2 freeze/generation gates have been completed. Remaining acceptance work is bounded live selected-email verification, including grouping, source isolation and combined-report behavior. Initial live attempts exposed coordination timeouts and an overly broad document request; those attempts are retained and do not count as successful acceptance.
+The expert approval and v2 freeze/generation gates have been completed. Live run `28f36737-78b8-4040-b8b2-64ac31f2d770` completed two selected emails as two isolated groups using v10, with no repairs during that run. All 15 captured sources were accounted for (12 assigned, three excluded decorative images, zero unresolved); sealed child membership and document hashes matched the selected capture. Earlier timeout, contract, citation and spending-limit failures remain visible along with their partial reports.
+
+The combined report sums the two child outputs and preserves their provenance and explicit unverified status. Inspection found a generated reporting bug: the presence of any coverage object made totals partial even when coverage was complete. A locked five-case Outcome suite reproduces that defect without PDF reads (baseline 3/5 cases, 13/15 assertions). These report-only checks are separate from extraction/validation accuracy. The selected emails omit a later certificate reply for one group, so these business results must not be compared directly with full-shipment labels.
+
+The standard repair session then accepted v14 on its first attempt after three consecutive complete passes of those five cases (15 assertions each). Only the generated aggregate completeness condition changed. A sandbox replay of the real saved aggregate input changed `partial` to false and preserved every other output field, without rereading PDFs or invoking a model. Earlier reports remain immutable. This verifies the report defect’s repair, not end-to-end accuracy of v14 on new emails.

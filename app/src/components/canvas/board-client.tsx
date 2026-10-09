@@ -1,4 +1,5 @@
 "use client";
+
 import Link from "next/link";
 import {
   useCallback,
@@ -39,6 +40,7 @@ import { useReview } from "../reviews/use-review";
 import { RevisionNotice } from "../process-revisions/revision-notice";
 import { ReviewPanel } from "../reviews/review-panel";
 import { FreezeDialog } from "../reviews/freeze-dialog";
+import { ProcessContextButton } from "../process-context/process-context-button";
 export function BoardClient({
   id,
   openRequests = false,
@@ -46,6 +48,7 @@ export function BoardClient({
   id: string;
   openRequests?: boolean;
 }) {
+  const [contextRevision, setContextRevision] = useState(0);
   const [board, setBoard] = useState<Board | null>(null),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
@@ -350,6 +353,15 @@ export function BoardClient({
                 Workflow details <ChevronDown size={14} />
               </button>
               <div className="button-row">
+                <ProcessContextButton
+                  workflowId={id}
+                  locked={locked}
+                  onOpen={canLeave}
+                  onSaved={async () => {
+                    await load();
+                    setContextRevision((value) => value + 1);
+                  }}
+                />
                 <button onClick={openReviews} aria-pressed={reviewOpen}>
                   <MessageSquare size={14} /> Review & comments{" "}
                   {review.state.threads.filter(
@@ -415,6 +427,7 @@ export function BoardClient({
               </aside>
               <section className="canvas-stage" aria-label="Process canvas">
                 <ScopingNote
+                  contextRevision={contextRevision}
                   board={board}
                   onApplied={(next) => {
                     boardVersion.current++;

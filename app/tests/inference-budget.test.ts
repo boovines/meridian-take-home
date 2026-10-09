@@ -148,7 +148,7 @@ it("does not dispatch inference when token preflight fails", async () => {
   try {
     await expect(meteredOpenAIFetch(base)("https://api.openai.com/v1/responses", {
       method: "POST", body: JSON.stringify({ model: "gpt-5.4", input: "fixture", max_output_tokens: 1000 }),
-    })).rejects.toMatchObject({ code: "BUDGET_UNAVAILABLE" });
+    })).rejects.toMatchObject({ code: "TOKEN_PREFLIGHT_TRANSIENT" });
     expect(base).toHaveBeenCalledTimes(3);
     expect(base.mock.calls.every(([url]) => String(url).endsWith("/input_tokens"))).toBe(true);
     expect(cancel).toHaveBeenCalledTimes(3);

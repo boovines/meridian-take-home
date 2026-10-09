@@ -1,3 +1,4 @@
+import { describeExecutionFailure } from "./execution-failure";
 import {
   proxyActivities,
   CancellationScope,
@@ -10,7 +11,7 @@ import {
 import { ApplicationFailure } from "@temporalio/common";
 import type * as activities from "./runtime-activities";
 import { RuntimeEngine } from "../domain/runtime-engine";
-import { RUNTIME_HEARTBEAT_POLICY } from "../domain/runtime-policy";
+import { RUNTIME_DEADLINE_POLICY, RUNTIME_HEARTBEAT_POLICY } from "../domain/runtime-policy";
 const io = proxyActivities<
   Pick<
     typeof activities,
@@ -30,8 +31,8 @@ const cleanup = proxyActivities<
 const steps = proxyActivities<
   Pick<typeof activities, "executeOccurrence" | "checkRecoveryCandidate">
 >({
-  startToCloseTimeout: "3 minutes",
-  scheduleToCloseTimeout: "7 minutes",
+  startToCloseTimeout: RUNTIME_DEADLINE_POLICY.activity_ms,
+  scheduleToCloseTimeout: RUNTIME_DEADLINE_POLICY.activity_schedule_ms,
   heartbeatTimeout: RUNTIME_HEARTBEAT_POLICY.timeout_ms,
   cancellationType: ActivityCancellationType.WAIT_CANCELLATION_COMPLETED,
   retry: { maximumAttempts: 2, initialInterval: "3 seconds" },
@@ -88,25 +89,7 @@ async function executeCaptured(
         rethrow: (error) => {
           if (isCancellation(error)) throw error;
         },
-        describeFailure: (error) => {
-          let cause: unknown = error;
-          while (cause instanceof Error && "cause" in cause && cause.cause)
-            cause = cause.cause;
-          const type = cause instanceof ApplicationFailure ? cause.type : null;
-          return {
-            code: type || "RUNTIME_FAILED",
-            message:
-              cause instanceof Error
-                ? cause.message.slice(0, 2000)
-                : "The runtime worker failed.",
-            category:
-              type === "RUN_LIMIT" || type === "STEP_RETRY_LIMIT"
-                ? "implementation"
-                : type === "MISSING_HUMAN_FIXTURE"
-                  ? "input"
-                  : "infrastructure",
-          };
-        },
+        describeFailure: describeExecutionFailure,
         project: (p) => io.projectExecution(context.run.id, p),
         step: (data, resume) => steps.executeOccurrence(data, resume),
         human: async (id, stopped) => {

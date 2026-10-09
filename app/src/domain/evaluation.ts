@@ -64,6 +64,7 @@ export const caseInput = z
       .object({
         input: z.json(),
         steps: z.record(uuid, z.json()),
+        execution: z.object({ mode: z.literal("aggregate") }).strict().optional(),
         human_response: humanResponse.optional(),
       })
       .strict()
@@ -121,6 +122,7 @@ export const startEvaluationInput = z
     request_key: uuid,
     implementation_version_id: uuid,
     suite_version_id: uuid,
+    auto_repair: z.boolean().optional(),
   })
   .strict();
 export interface SuiteVersion {
@@ -166,6 +168,9 @@ export interface EvaluationRun {
   created_at: string;
 }
 export interface CaseResult {
+  recovery_count?: number;
+  recovery_pending?: boolean;
+  recoveries?: Json[];
   workflow_run_id?: string | null;
   id: string;
   workflow_id: string;

@@ -1,14 +1,16 @@
+import { describeExecutionFailure } from "./execution-failure";
 import {
   proxyActivities,
   executeChild,
   isCancellation,
   CancellationScope,
   ActivityCancellationType,
+  ChildWorkflowCancellationType,
   condition,
 } from "@temporalio/workflow";
 import type * as activities from "./evaluation-activities";
 import { executeEvaluationCase } from "./execution-workflow";
-import { RUNTIME_HEARTBEAT_POLICY } from "../domain/runtime-policy";
+import { RUNTIME_DEADLINE_POLICY, RUNTIME_HEARTBEAT_POLICY } from "../domain/runtime-policy";
 const io = proxyActivities<
   Pick<
     typeof activities,
@@ -16,13 +18,14 @@ const io = proxyActivities<
     | "beginEvaluationCase"
     | "scoreWorkflowCase"
     | "failEvaluationCase"
+    | "needsEvaluationCaseRecovery"
   >
 >({ startToCloseTimeout: "15 seconds", retry: { maximumAttempts: 5 } });
 const heavy = proxyActivities<
   Pick<typeof activities, "checkEvaluationBuild" | "evaluateStepCase">
 >({
-  startToCloseTimeout: "3 minutes",
-  scheduleToCloseTimeout: "7 minutes",
+  startToCloseTimeout: RUNTIME_DEADLINE_POLICY.activity_ms,
+  scheduleToCloseTimeout: RUNTIME_DEADLINE_POLICY.activity_schedule_ms,
   heartbeatTimeout: RUNTIME_HEARTBEAT_POLICY.timeout_ms,
   cancellationType: ActivityCancellationType.WAIT_CANCELLATION_COMPLETED,
   retry: { maximumAttempts: 2, initialInterval: "3 seconds" },
@@ -59,22 +62,61 @@ export async function evaluateSuite(jobId: string, evaluationId?: string) {
           await cleanup.endEvaluation(jobId, build.error, false, evaluationId);
           return;
         }
-        for (const id of context.result_ids) {
+        const runCase = async (id: string, parallel = false) => {
           const task = await io.beginEvaluationCase(id);
-          if (task.skip) continue;
+          if (task.skip) return;
           try {
             if (task.kind === "workflow") {
               await executeChild(executeEvaluationCase, {
                 workflowId: `execution-${task.run_id}`,
                 args: [task.run_id],
                 workflowIdReusePolicy: "REJECT_DUPLICATE",
+                ...(parallel ? { cancellationType: ChildWorkflowCancellationType.WAIT_CANCELLATION_COMPLETED } : {}),
               });
-              await io.scoreWorkflowCase(id);
+              if (context.case_recovery) await io.scoreWorkflowCase(id, task.run_id);
+              else await io.scoreWorkflowCase(id);
             } else await heavy.evaluateStepCase(id);
           } catch (error) {
             if (isCancellation(error)) throw error;
-            await io.failEvaluationCase(id);
+            await io.failEvaluationCase(id, describeExecutionFailure(error));
           }
+        };
+        const runWithRecovery = async (id: string, parallel = false) => {
+          await runCase(id, parallel);
+          // Recorded prepare results without this flag retain their command order.
+          if (context.case_recovery && await io.needsEvaluationCaseRecovery(id))
+            await runCase(id, parallel);
+        };
+        // Older activity results have no concurrency field. Their command order
+        // remains unchanged on replay; new evaluations freeze their own setting.
+        const concurrency = context.case_concurrency ?? 1;
+        if (concurrency === 1) {
+          for (const id of context.result_ids) await runWithRecovery(id);
+        } else {
+          const casesScope = new CancellationScope();
+          await casesScope.run(async () => {
+            let next = 0;
+            let stopped = false;
+            const lane = async () => {
+              while (!stopped && next < context.result_ids.length) {
+                const id = context.result_ids[next++];
+                try {
+                  await runWithRecovery(id, true);
+                } catch (error) {
+                  stopped = true;
+                  casesScope.cancel();
+                  throw error;
+                }
+              }
+            };
+            // Drain all active children before cleanup or a repair handoff.
+            const lanes = await Promise.allSettled(Array.from(
+              { length: Math.min(concurrency, context.result_ids.length) }, lane,
+            ));
+            const failures = lanes.filter(result => result.status === "rejected");
+            const failure = failures.find(result => !isCancellation(result.reason)) ?? failures[0];
+            if (failure) throw failure.reason;
+          });
         }
         await cleanup.endEvaluation(jobId, undefined, false, evaluationId);
       } finally {

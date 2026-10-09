@@ -28,7 +28,12 @@ export class FreezeService {
         [id, board.workflow.process_version],
       )
     ).rows;
-    const pending = (await tx.query("SELECT id,question AS title FROM scoping_obligations WHERE workflow_id=$1 AND thread_id IS NULL", [id])).rows;
+    const pending = (
+      await tx.query(
+        "SELECT id,question AS title FROM scoping_obligations WHERE workflow_id=$1 AND thread_id IS NULL",
+        [id],
+      )
+    ).rows;
     return {
       board,
       issues: validateGraph(board),
@@ -112,14 +117,23 @@ export class FreezeService {
           [id, w.process_version],
         )
       ).rows;
+      const { raw_process_data, ...graph } = ready.board;
       const spec = (
         await tx.query(
           "INSERT INTO frozen_specs(workflow_id,source_content_revision,graph,review_evidence,unreviewed_changes_acknowledged,version_number,parent_frozen_spec_id) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *",
           [
             id,
             w.content_revision,
-            ready.board,
-            { reviews, threads, messages, anchors, requests, scoping: await scopingFreezeEvidence(tx, id) },
+            graph,
+            {
+              reviews,
+              threads,
+              messages,
+              anchors,
+              requests,
+              ...(raw_process_data ? { raw_process_data } : {}),
+              scoping: await scopingFreezeEvidence(tx, id),
+            },
             ready.unreviewed_changes && data.acknowledge_unreviewed,
             w.process_version,
             w.base_frozen_spec_id,

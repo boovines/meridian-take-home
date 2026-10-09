@@ -1,3 +1,5 @@
+import { annotateInferenceTrace, inferenceStage } from "./inference-trace";
+import { fetchOpenAIResponse } from "./openai-response";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createHash } from "node:crypto";
 import { configuredInferenceBudget } from "./inference-budget";
@@ -16,10 +18,9 @@ const prices: Record<
   "gpt-5.4-mini": { input: 0.75, cached: 0.075, output: 4.5 },
   "gpt-5.4-mini-2026-03-17": { input: 0.75, cached: 0.075, output: 4.5 },
 };
-export function meteredOpenAIFetch(base: typeof fetch): typeof fetch {
+export function meteredOpenAIFetch(base: typeof fetch, responseDeadline = false): typeof fetch {
   return async (input, init) => {
     const budget = configuredInferenceBudget();
-    if (!budget) return base(input, init);
     const url = new URL(
       typeof input === "string"
         ? input
@@ -27,6 +28,9 @@ export function meteredOpenAIFetch(base: typeof fetch): typeof fetch {
           ? input
           : input.url,
     );
+    const dispatch = (request: RequestInit | undefined) => inferenceStage("response", () => responseDeadline ? fetchOpenAIResponse(base, input, request) : base(input, request));
+    if (!budget) return url.origin === "https://api.openai.com" && url.pathname === "/v1/responses"
+      ? dispatch(init) : base(input, init);
     if (
       url.origin !== "https://api.openai.com" ||
       url.pathname !== "/v1/responses" ||
@@ -72,10 +76,11 @@ export function meteredOpenAIFetch(base: typeof fetch): typeof fetch {
         .filter((k) => r[k] !== undefined)
         .map((k) => [k, r[k]]),
     );
-    const { tokens, attempts, failures } = await countOpenAIInputTokens(base, {
+    const { tokens, attempts, failures } = await inferenceStage("preflight", () => countOpenAIInputTokens(base, {
       ...init,
       body: JSON.stringify(countBody),
-    });
+    }));
+    annotateInferenceTrace({ input_tokens: tokens, preflight_attempts: attempts, preflight_failures: failures });
     // Do not under-reserve a long-context pricing tier. The demo's inputs are
     // smaller; fail before inference until explicit long-context pricing is added.
     if (tokens > 272000)
@@ -88,7 +93,7 @@ export function meteredOpenAIFetch(base: typeof fetch): typeof fetch {
       (Math.ceil(tokens * 1.15) * price.input +
         r.max_output_tokens * price.output) /
       1e6;
-    const reservation = await budget.reserve(
+    const reservation = await inferenceStage("reservation", () => budget.reserve(
       "openai",
       estimated,
       {
@@ -100,14 +105,17 @@ export function meteredOpenAIFetch(base: typeof fetch): typeof fetch {
         request_sha256: createHash("sha256").update(body).digest("hex"),
       },
       init.signal || undefined,
-    );
+    ));
+    annotateInferenceTrace({ reservation_id: reservation.id, reserved_usd: estimated });
     // A transport error, timeout or missing usage may still be billed. Leave the
     // reservation intact; every SDK retry must obtain a separate reservation.
-    const response = await base(input, { ...init, body });
+    const response = await dispatch({ ...init, body });
+    annotateInferenceTrace({ http_status: response.status });
     if (!response.ok) {
       await reservation.annotate({ http_status: response.status });
       return response;
     }
+    return inferenceStage("reconciliation", async () => {
     const result = await response.clone().json(),
       u = result.usage,
       cached = u?.input_tokens_details?.cached_tokens || 0;
@@ -139,9 +147,16 @@ export function meteredOpenAIFetch(base: typeof fetch): typeof fetch {
       service_tier: result.service_tier,
       usage: u,
     });
+    annotateInferenceTrace({ input_tokens: u.input_tokens, output_tokens: u.output_tokens, actual_usd: actual });
     return response;
+    });
   };
 }
 export const openai = createOpenAI({
   fetch: meteredOpenAIFetch((...args) => globalThis.fetch(...args)),
+});
+
+// Extraction has a shorter response allowance than code generation/repair.
+export const runtimeOpenAI = createOpenAI({
+  fetch: meteredOpenAIFetch((...args) => globalThis.fetch(...args), true),
 });

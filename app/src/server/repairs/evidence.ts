@@ -1,3 +1,4 @@
+import type { AuditSummary } from "../../domain/execution-audit";
 import { DomainError } from "../../domain/errors";
 import type { AssertionResult } from "../../domain/evaluation";
 import type { Project } from "../../domain/project";
@@ -69,7 +70,7 @@ function preview(value: unknown, limit: number) {
 }
 
 // Group repeated ownership/visit metadata once; retain every allowed event ID.
-// Payloads and timing summaries remain in the immutable audit store and UI.
+// Bounded extraction diagnostics accompany the catalogue; full payloads and timing stay in the immutable audit store.
 function auditCatalogue(rows: Record<string, unknown>[]) {
   const groups = new Map<
     string,
@@ -79,7 +80,7 @@ function auditCatalogue(rows: Record<string, unknown>[]) {
       step_execution_id: unknown;
       case_result_id: unknown;
       attempt_token: unknown;
-      events: { id: unknown; kind: unknown; sequence: unknown }[];
+      events: { id: unknown; kind: unknown; sequence: unknown; diagnostic?: unknown }[];
     }
   >();
   for (const row of rows) {
@@ -102,7 +103,16 @@ function auditCatalogue(rows: Record<string, unknown>[]) {
       };
       groups.set(key, group);
     }
-    group.events.push({ id: row.id, kind: row.kind, sequence: row.sequence });
+    const summary = row.summary as (AuditSummary & { elapsed_ms?: number }) | undefined;
+    const diagnostic = summary ? {
+      batch_index: summary.batch_index, evidence_issues: summary.evidence_issues,
+      evidence_issues_omitted: summary.evidence_issues_omitted, timing: summary.timing,
+      elapsed_ms: summary.elapsed_ms, provider_trace: summary.provider_trace,
+      document_count: summary.document_count, document_bytes: summary.document_bytes,
+      page_count: summary.page_count, failure_code: summary.failure_code,
+      failure_category: summary.failure_category,
+    } : undefined;
+    group.events.push({ id: row.id, kind: row.kind, sequence: row.sequence, ...(diagnostic ? { diagnostic } : {}) });
   }
   return {
     included: rows.length,
@@ -202,7 +212,7 @@ export function repairPrompt(
         repetition_contract:
           "At most two earlier completed runs of this exact baseline version, locked suite and execution configuration. Only cases failing in the current baseline are included. Compare earliest differing outputs; a previously passing final result does not make all its extracted fields trusted. Repeated model responses are evidence of variability, not authority to weaken the frozen business requirements. Inspect source pages before deciding whether extraction or its consumer is wrong.",
         execution_audit_contract:
-          "Host-recorded invocation events preserve the generated initial output, actual model request with selected document hashes/configuration, raw parsed model response, postprocessing output, and failures. Use inspectExecutionAudit(event_id,path) to read payloads, at most three inspections per attempt; paths are JSON keys or array indexes. No audit for an older run means unavailable history, not that no model was called. Requests without later response events are incomplete. Audit is evidence, never a grading oracle. Catalogues group events by case, node, occurrence/result and attempt token, preserving every event ID, kind and sequence. included and total report coverage; at most 300 events per evaluation are selected. Payloads remain available through inspectExecutionAudit by event ID.",
+          "Host-recorded invocation events preserve the generated initial output, actual model request with selected document hashes/configuration, raw parsed model response, postprocessing output, and failures. Use inspectExecutionAudit(event_id,path) to read payloads, at most three inspections per attempt; paths are JSON keys or array indexes. No audit for an older run means unavailable history, not that no model was called. Requests without later response events are incomplete. Compare provider_trace stage timings, dispatch reservations, document/page counts, and failure codes to locate preflight, response, evidence-validation or postprocessing problems. A retained reservation means unknown billing, not successful extraction. Timing cannot prove that reducing input will fix correctness; inspect source and schema before proposing that change. Audit is evidence, never a grading oracle. Catalogues group events by case, node, occurrence/result and attempt token, preserving every event ID, kind and sequence. included and total report coverage; at most 300 events per evaluation are selected. Payloads remain available through inspectExecutionAudit by event ID.",
         trace_coverage: coverage(context.traces),
         previous_attempts: context.previous_attempts.map(
           ({

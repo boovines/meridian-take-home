@@ -1,7 +1,7 @@
 import { expect, it, vi } from "vitest";
 import { MockLanguageModelV4 } from "ai/test";
 const state = vi.hoisted(() => ({ model: undefined as unknown }));
-vi.mock("../src/server/integrations/openai-client", () => ({ openai: () => state.model }));
+vi.mock("../src/server/integrations/openai-client", () => ({ runtimeOpenAI: () => state.model }));
 import { reasonForStep } from "../src/server/integrations/openai-step";
 
 it.each([undefined, [3, 9]])("preserves original PDF page identities in model captions: %j", async (pages) => {
