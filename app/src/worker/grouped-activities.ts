@@ -61,8 +61,8 @@ export async function endOwnedJob(id: string) {
     await new RepairService(db).finish(
       id,
       "cancelled",
-      "The group input was superseded. Its history is retained.",
-      "GROUP_SUPERSEDED",
+      "This child operation was cancelled. Its history is retained.",
+      "GROUP_CHILD_CANCELLED",
     );
 }
 

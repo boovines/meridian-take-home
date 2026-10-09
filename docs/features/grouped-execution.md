@@ -2,7 +2,17 @@
 
 ## Implementation status
 
-The server and worker implementation is in progress on the grouped-execution branch. The API, parent coordinator, grouping/aggregation phases, and fixture worker journeys are implemented. The product UI and live multi-email verification are still pending; this document does not claim the feature is ready for customer use.
+The product UI, API, parent coordinator, grouping/aggregation phases, and fixture worker journeys are implemented on the grouped-execution branch. Live multi-email verification against an expert-approved process revision remains pending; fixture results do not establish model accuracy or customer readiness.
+
+## Product experience
+
+Open **Agent → Run workflow → Selected emails**. Choose the approved code version, search Gmail and select up to ten emails. No shipment reference is required. **Run selected emails** captures and starts the parent operation automatically. **Saved input** retains the existing single-run path.
+
+The summary shows completed groups, groups needing attention and unresolved sources. Each group opens a neighboring inspector with its actual code version, output, step/audit history, human responses and recovery history. An accepted group repair is labeled as local to that group; it does not change the manual-run default. **Inspect code** opens that exact implementation. Questions about source assignment appear above the group list; their answers and prior coverage remain inspectable after reload.
+
+Source coverage expands to show the scope and reason for every assignment, any unresolved portion and explicit exclusions, alongside shared spend/time limits. **Browse recent runs** lists runs for the selected frozen process version. Starting another run is disabled while the workflow has an active operation. Cancellation preserves completed groups and history; failed groups and partial combined reports remain visible. Reports are previews, and execution completion is not a claim of verified business correctness.
+
+The results-first layout was selected after live comparison with sidebar and three-column alternatives. It places group selection beside the selected result on desktop and stacks them on smaller screens. Setup opens automatically when there is no run history.
 
 ## Input and execution
 
@@ -28,7 +38,7 @@ The host's overall execution status is separate from the business summary. A par
 
 Migration 017 adds parent job ownership, grouped captures, immutable decisions/child provenance, clarification questions, durable inference reservations and expiring activity-capacity leases. One parent owns the workflow's active-operation slot. Two heavy activities share capacity, including resumed human steps; pauses do not hold a capacity lease. Applied limits and original captured input cannot change.
 
-The parent retains a shared active-time ledger, a wall deadline and a $5 inference allowance. Group/repair reservations compose with any operator-level budget. Unknown provider outcomes retain their reservations across restart. Each run and repair also retains its existing bounds. Parent cancellation fences late publication, closes pending questions and preserves completed results; Temporal requests cancellation of active children.
+The parent retains a shared active-time ledger, a wall deadline and a $5 inference allowance. Group/repair reservations compose with any operator-level budget. Unknown provider outcomes retain their reservations across restart. Each run and repair also retains its existing bounds. Parent cancellation fences late publication, closes pending questions and preserves completed results; Temporal requests cancellation of active children. The parent also redelivers persisted child cancellation requests when direct notification is missed.
 
 ## API and module boundaries
 
@@ -37,10 +47,12 @@ The parent retains a shared active-time ledger, a wall deadline and a $5 inferen
 - `POST /api/workflows/:id/grouping-questions/:questionId/answer`: immutable, idempotent clarification response.
 - Existing job cancellation and run/human-response endpoints remain the action boundaries.
 
-Domain contracts live in `src/domain/grouped-execution.ts`. Parent services, state projection, budgets and capacity live in `src/server/grouped-execution`. Durable orchestration lives in `src/worker/grouped-workflow.ts`; provider/capture work remains in activities and existing integrations.
+Browser state and inspection controls live in `src/components/grouped-execution`, reusing the Gmail picker, human-response forms, recovery panel and audit viewer. Domain contracts live in `src/domain/grouped-execution.ts`. Parent services, state projection, budgets and capacity live in `src/server/grouped-execution`. Durable orchestration lives in `src/worker/grouped-workflow.ts`; provider/capture work remains in activities and existing integrations.
 
 ## Verification and remaining work
 
-`grouped-runtime.test.ts` exercises immutable capture/limits, source validation, clarification-derived inputs, unchanged-child reuse, partial aggregation, cancellation, shared capacity and recovery-version provenance. `grouped-worker.test.ts` uses a real local Temporal server with sanitized adapters and actual persistence to verify restart followed by human continuation or cancellation, without duplicate capture or lost successful groups. These checks do not measure model grouping accuracy or live Gmail/provider behavior.
+`grouped-runtime.test.ts` exercises immutable capture/limits, source validation, clarification-derived inputs, unchanged-child reuse and changed-child supersession, partial aggregation, cancellation, shared capacity and recovery-version provenance. `grouped-worker.test.ts` uses a real local Temporal server with sanitized adapters and actual persistence to verify restart followed by human continuation, parent cancellation or persisted child cancellation, without duplicate capture or lost successful groups. These checks do not measure model grouping accuracy or live Gmail/provider behavior.
 
-Remaining acceptance work includes the product UI with three inspected visual variants, browser journeys, further changed-group/regression cases, and the approved motivating v2 workflow followed by bounded live selected-email verification. Actual expert approval is required before live refreeze or generation.
+`grouped-execution.spec.ts` checks email selection/start without a shipment reference, actual-version inspection, clarification persistence after reload, human responses, cancellation, retained successes, partial reports and a mobile viewport. Existing manual-run/recovery journeys still exercise the Saved input path.
+
+Remaining acceptance work is the approved motivating v2 workflow followed by bounded live selected-email verification. Actual expert approval is required before live refreeze or generation.

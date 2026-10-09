@@ -282,109 +282,175 @@ it("fences late output and new spend when the owning operation is cancelled; ret
     ).rows[0].output_data,
   ).toBeNull();
 });
-it("seals answered clarification into a new phase input and reuses unchanged children", async () => {
-  const f = await fixture();
-  const first = {
-    ...f.result,
-    assignments: f.result.assignments.map((a) => ({
-      ...a,
-      unresolved: {
-        scope: "Unlabeled request note",
-        question: "Does the unlabeled note belong to request A?",
+it.each([false, true])(
+  "seals clarification into new input and preserves unchanged children (changed sibling: %s)",
+  async (changed) => {
+    const f = await fixture();
+    const first = {
+      ...f.result,
+      assignments: f.result.assignments.map((a) => ({
+        ...a,
+        unresolved: {
+          scope: "Unlabeled request note",
+          question: "Does the unlabeled note belong to request A?",
+        },
+      })),
+    };
+    const step = await f.steps.execute(
+      f.data,
+      {
+        invoke: async () => ({
+          kind: "complete",
+          output: first,
+          matching_connection_ids: [],
+        }),
+        reason: noReason,
       },
-    })),
-  };
-  const step = await f.steps.execute(
-    f.data,
-    {
-      invoke: async () => ({
-        kind: "complete",
-        output: first,
-        matching_connection_ids: [],
-      }),
-      reason: noReason,
-    },
-    AbortSignal.timeout(15000),
-  );
-  expect(step.kind).toBe("complete");
-  await f.runs.finish(f.phase.job.id, {
-    status: "completed",
-    error: null,
-    result_step_id: step.step_id,
-  });
-  await f.service.publishGrouping(f.parent.id, f.phase.run.id);
-  await expect(
-    f.service.startGrouping(f.parent.id, randomUUID()),
-  ).rejects.toMatchObject({ code: "CLARIFICATION_PENDING" });
-  const q = (
-    await db.query("SELECT * FROM grouping_questions WHERE parent_job_id=$1", [
-      f.parent.id,
-    ])
-  ).rows[0];
-  const answer = {
-    request_key: randomUUID(),
-    answer: "The note is informational; it belongs to neither request.",
-  };
-  await f.service.answerQuestion(f.w.id, String(q.id), answer);
-  await f.service.answerQuestion(f.w.id, String(q.id), answer);
-  await expect(
-    f.service.answerQuestion(f.w.id, String(q.id), {
-      ...answer,
-      answer: "Different answer",
-    }),
-  ).rejects.toMatchObject({ code: "ALREADY_ANSWERED" });
-  const next = await f.service.startGrouping(f.parent.id, randomUUID());
-  expect(
-    (await f.service.startGrouping(f.parent.id, randomUUID())).run.id,
-  ).toBe(next.run.id);
-  expect(next.run.input_bundle_id).not.toBe(f.phase.run.input_bundle_id);
-  const bundle = await new BundleService(db).read(
-    f.w.id,
-    next.run.input_bundle_id,
-  );
-  expect(bundle.manifest).toMatchObject({
-    input: { grouping_clarification: { answers: [{ answer: answer.answer }] } },
-  });
-  const original = await new BundleService(db).read(
-    f.w.id,
-    f.phase.run.input_bundle_id,
-  );
-  expect(original.manifest).not.toHaveProperty("input.grouping_clarification");
-  await f.runs.prepare(next.job.id);
-  const resolved = await f.steps.execute(
-    { ...f.data, run_id: next.run.id },
-    {
-      invoke: async () => ({
-        kind: "complete",
-        output: f.result,
-        matching_connection_ids: [],
-      }),
-      reason: noReason,
-    },
-    AbortSignal.timeout(15000),
-  );
-  await f.runs.finish(next.job.id, {
-    status: "completed",
-    error: null,
-    result_step_id: resolved.step_id,
-  });
-  await f.service.publishGrouping(f.parent.id, next.run.id);
-  expect(
-    (
-      await db.query("SELECT id FROM grouped_children WHERE parent_job_id=$1", [
-        f.parent.id,
-      ])
-    ).rows,
-  ).toHaveLength(2);
-  expect(
-    (
+      AbortSignal.timeout(15000),
+    );
+    expect(step.kind).toBe("complete");
+    await f.runs.finish(f.phase.job.id, {
+      status: "completed",
+      error: null,
+      result_step_id: step.step_id,
+    });
+    await f.service.publishGrouping(f.parent.id, f.phase.run.id);
+    await expect(
+      f.service.startGrouping(f.parent.id, randomUUID()),
+    ).rejects.toMatchObject({ code: "CLARIFICATION_PENDING" });
+    const q = (
       await db.query(
-        "SELECT id FROM grouping_decisions WHERE parent_job_id=$1",
+        "SELECT * FROM grouping_questions WHERE parent_job_id=$1",
         [f.parent.id],
       )
-    ).rows,
-  ).toHaveLength(2);
-});
+    ).rows[0];
+    const before = await groupedExecutionState(db, f.parent.id);
+    const originalA = before.children.find((c) => c.group_key === "A")!;
+    const originalB = before.children.find((c) => c.group_key === "B")!;
+    await completeOwned(f, originalA.job_id);
+    await f.runs.prepare(originalB.job_id);
+    const oldBundle = await new BundleService(db).read(
+      f.w.id,
+      originalB.input_bundle_id,
+    );
+    const answer = {
+      request_key: randomUUID(),
+      answer: changed
+        ? "The note supplies a corrected destination for request B."
+        : "The note is informational; it belongs to neither request.",
+    };
+    await f.service.answerQuestion(f.w.id, String(q.id), answer);
+    await f.service.answerQuestion(f.w.id, String(q.id), answer);
+    await expect(
+      f.service.answerQuestion(f.w.id, String(q.id), {
+        ...answer,
+        answer: "Different answer",
+      }),
+    ).rejects.toMatchObject({ code: "ALREADY_ANSWERED" });
+    const next = await f.service.startGrouping(f.parent.id, randomUUID());
+    expect(
+      (await f.service.startGrouping(f.parent.id, randomUUID())).run.id,
+    ).toBe(next.run.id);
+    expect(next.run.input_bundle_id).not.toBe(f.phase.run.input_bundle_id);
+    const bundle = await new BundleService(db).read(
+      f.w.id,
+      next.run.input_bundle_id,
+    );
+    expect(bundle.manifest).toMatchObject({
+      input: {
+        grouping_clarification: { answers: [{ answer: answer.answer }] },
+      },
+    });
+    const original = await new BundleService(db).read(
+      f.w.id,
+      f.phase.run.input_bundle_id,
+    );
+    expect(original.manifest).not.toHaveProperty(
+      "input.grouping_clarification",
+    );
+    await f.runs.prepare(next.job.id);
+    const nextResult = changed
+      ? {
+          ...f.result,
+          groups: f.result.groups.map((g) =>
+            g.key === "B"
+              ? {
+                  ...g,
+                  context: {
+                    ...g.context,
+                    destination: "Corrected destination from note",
+                  },
+                }
+              : g,
+          ),
+          assignments: f.result.assignments.map((a) => ({
+            ...a,
+            targets: a.targets.map((t) =>
+              t.group_key === "B"
+                ? { ...t, scope: t.scope + " and corrected destination note" }
+                : t,
+            ),
+          })),
+        }
+      : f.result;
+    const resolved = await f.steps.execute(
+      { ...f.data, run_id: next.run.id },
+      {
+        invoke: async () => ({
+          kind: "complete",
+          output: nextResult,
+          matching_connection_ids: [],
+        }),
+        reason: noReason,
+      },
+      AbortSignal.timeout(15000),
+    );
+    await f.runs.finish(next.job.id, {
+      status: "completed",
+      error: null,
+      result_step_id: resolved.step_id,
+    });
+    await f.service.publishGrouping(f.parent.id, next.run.id);
+    const after = await groupedExecutionState(db, f.parent.id);
+    const currentA = after.children.find((c) => c.group_key === "A")!,
+      currentB = after.children.find((c) => c.group_key === "B")!;
+    expect(currentA.id).toBe(originalA.id);
+    expect(currentA.execution.completed).toBe(true);
+    expect(
+      await new BundleService(db).read(f.w.id, originalB.input_bundle_id),
+    ).toEqual(oldBundle);
+    if (changed) {
+      expect(currentB.id).not.toBe(originalB.id);
+      expect(currentB.input_bundle_id).not.toBe(originalB.input_bundle_id);
+      expect(currentB.supersedes_child_id).toBe(originalB.id);
+      const tick = await new GroupedCoordinator(db).advance(f.parent.id);
+      expect(tick.cancel).toContain(originalB.job_id);
+      expect(tick.cancel).not.toContain(originalA.job_id);
+      const oldJob = (
+        await db.query("SELECT status FROM workflow_jobs WHERE id=$1", [
+          originalB.job_id,
+        ])
+      ).rows[0];
+      expect(oldJob.status).toBe("cancel_requested");
+    } else expect(currentB.id).toBe(originalB.id);
+    expect(
+      (
+        await db.query(
+          "SELECT id FROM grouped_children WHERE parent_job_id=$1",
+          [f.parent.id],
+        )
+      ).rows,
+    ).toHaveLength(changed ? 3 : 2);
+    expect(
+      (
+        await db.query(
+          "SELECT id FROM grouping_decisions WHERE parent_job_id=$1",
+          [f.parent.id],
+        )
+      ).rows,
+    ).toHaveLength(2);
+  },
+);
 
 it("keeps the approved human gate during grouping and excludes human waiting from active time", async () => {
   const f = await fixture(true),
@@ -704,6 +770,7 @@ it("repairs a grouping phase within the parent and publishes its actual recovere
   expect((await recovery.decide(attempt.id)).done).toBe(true);
   const after = await groupedExecutionState(db, f.parent.id);
   expect(after.grouping?.run.id).toBe(rerunId);
+  expect(after.grouping?.version_number).toBe(f.version.version_number + 1);
   expect(after.grouping?.run.implementation_version_id).not.toBe(f.version.id);
   expect(
     (

@@ -7,6 +7,7 @@ import { RecoveryFrame } from "./recovery-frame";
 import "./recovery-panel.css";
 export function RecoveryPanel({
   run,
+  promotesManualDefault = true,
   recovery,
   busy,
   operationActive,
@@ -18,6 +19,7 @@ export function RecoveryPanel({
   onAnswered,
 }: {
   run: RunRecord;
+  promotesManualDefault?: boolean;
   recovery: RunRecoveryState | null;
   busy: boolean;
   operationActive: boolean;
@@ -66,7 +68,9 @@ export function RecoveryPanel({
           : "Recovery needs attention";
   const summary =
     session.status === "recovered"
-      ? "Business results not yet verified. The accepted version is now the default for manual runs; the confirmed evaluation baseline is unchanged."
+      ? promotesManualDefault
+        ? "Business results not yet verified. The accepted version is now the default for manual runs; the confirmed evaluation baseline is unchanged."
+        : "Business results not yet verified. This group uses the accepted version; other groups and the manual-run default are unchanged."
       : session.stop_reason ||
         latest?.diagnosis?.summary ||
         "Inspecting the failed steps and their source evidence before proposing a repair.";

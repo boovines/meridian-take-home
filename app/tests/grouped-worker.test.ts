@@ -59,7 +59,7 @@ async function eventually<T>(
   }
   throw new Error("Expected durable grouped state did not arrive.");
 }
-it.each(["answer", "cancel"])(
+it.each(["answer", "cancel", "cancel_child"])(
   "keeps completed groups across a real worker restart and %s of a waiting sibling",
   async (action) => {
     const f = await runtimeFixture(db, artifacts);
@@ -114,6 +114,8 @@ it.each(["answer", "cancel"])(
         });
         await groups.attachCapture(id, String(bundle.id));
       },
+      endOwnedJob: (id: string) =>
+        f.runs.finish(id, { status: "cancelled", error: null }),
       endGroupedExecution: (id: string, reason: string, cancelled: boolean) =>
         coordinator.stop(id, reason, cancelled),
       prepareExecution: (id: string) => f.runs.prepare(id),
@@ -237,6 +239,9 @@ it.each(["answer", "cancel"])(
       await env.client.workflow
         .getHandle(`job-${waiting[1].job_id}`)
         .signal("humanAnswered", waiting[1].id);
+    } else if (action === "cancel_child") {
+      // No direct Temporal notification: the parent must deliver the persisted intent.
+      await new JobService(db).requestCancel(f.w.id, String(waiting[1].job_id));
     } else await handle.cancel();
     const second = await Worker.create(options);
     await second.runUntil(() => handle.result());
@@ -244,7 +249,11 @@ it.each(["answer", "cancel"])(
     expect(captures).toBe(1);
     expect(state.completed_groups).toBe(action === "answer" ? 2 : 1);
     expect(state.job.status).toBe(
-      action === "answer" ? "succeeded" : "cancelled",
+      action === "answer"
+        ? "succeeded"
+        : action === "cancel_child"
+          ? "failed"
+          : "cancelled",
     );
     if (action === "answer")
       expect(state.aggregate?.output).toMatchObject({

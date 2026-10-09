@@ -6,10 +6,12 @@ export function GmailPicker({
   workflowId,
   disabled,
   onCaptured,
+  onSelected,
 }: {
   workflowId: string;
   disabled: boolean;
-  onCaptured: (id: string) => Promise<void>;
+  onCaptured?: (id: string) => Promise<void>;
+  onSelected?: (ids: string[]) => Promise<void>;
 }) {
   const [query, setQuery] = useState("has:attachment"),
     [searchedQuery, setSearchedQuery] = useState(""),
@@ -52,16 +54,23 @@ export function GmailPicker({
   }
   async function capture() {
     setBusy(
-      "Capturing emails and attachments. Large packets can take a few minutes…",
+      onSelected
+        ? "Starting selected-email run…"
+        : "Capturing emails and attachments. Large packets can take a few minutes…",
     );
     setError("");
     try {
+      if (onSelected) {
+        await onSelected(selected);
+        setSelected([]);
+        return;
+      }
       const data = await api<{ id: string }>(
         `/api/workflows/${workflowId}/gmail/capture`,
         "POST",
         { message_ids: selected, shipment_reference: shipment.trim() },
       );
-      await onCaptured(data.id);
+      await onCaptured?.(data.id);
       setSelected([]);
     } catch (e) {
       setError(errorMessage(e));
@@ -70,11 +79,12 @@ export function GmailPicker({
     }
   }
   return (
-    <details className="gmail-picker">
-      <summary>Capture from Gmail</summary>
+    <details className="gmail-picker" open={onSelected ? true : undefined}>
+      <summary>{onSelected ? "Select emails" : "Capture from Gmail"}</summary>
       <p className="field-help">
-        Select all related emails, including certificates sent separately. Gmail
-        is read-only.
+        {onSelected
+          ? "Select up to 10 emails. The workflow groups related work automatically and asks about ambiguous sources."
+          : "Select all related emails, including certificates sent separately. Gmail is read-only."}
       </p>
       <form
         onSubmit={(e) => {
@@ -83,7 +93,7 @@ export function GmailPicker({
         }}
       >
         <label>
-          Shipment number or Gmail search
+          {onSelected ? "Search Gmail" : "Shipment number or Gmail search"}
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -99,7 +109,9 @@ export function GmailPicker({
         </p>
       )}
       {!!searchedQuery && !messages.length && !busy && (
-        <p>No messages matched. Try the invoice number or a broader search.</p>
+        <p>
+          No messages matched. Try a different reference or a broader search.
+        </p>
       )}
       {!!messages.length && (
         <>
@@ -142,29 +154,36 @@ export function GmailPicker({
               Load more emails
             </button>
           )}
-          <label>
-            Shipment reference
-            <input
-              value={shipment}
-              onChange={(e) => setShipment(e.target.value)}
-              placeholder="Container number or MAWB"
-              required
-              maxLength={200}
-              disabled={!!busy || disabled}
-            />
-          </label>
+          {!onSelected && (
+            <label>
+              Shipment reference
+              <input
+                value={shipment}
+                onChange={(e) => setShipment(e.target.value)}
+                placeholder="Container number or MAWB"
+                required
+                maxLength={200}
+                disabled={!!busy || disabled}
+              />
+            </label>
+          )}
           <button
             disabled={
-              !!busy || disabled || !selected.length || !shipment.trim()
+              !!busy ||
+              disabled ||
+              !selected.length ||
+              (!onSelected && !shipment.trim())
             }
             onClick={() => void capture()}
           >
-            Capture {selected.length || "selected"} email
-            {selected.length === 1 ? "" : "s"}
+            {onSelected
+              ? "Run selected emails"
+              : `Capture ${selected.length || "selected"} email${selected.length === 1 ? "" : "s"}`}
           </button>
           <p className="field-help">
-            Creates a fixed copy of the selected emails and every attachment. Up
-            to 10 emails per packet.
+            {onSelected
+              ? `${selected.length} of 10 selected. Captures the selected emails and attachments, then starts processing. Reports are previewed only.`
+              : "Creates a fixed copy of the selected emails and every attachment. Up to 10 emails per packet."}
           </p>
         </>
       )}

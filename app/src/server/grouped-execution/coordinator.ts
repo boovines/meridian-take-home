@@ -70,9 +70,16 @@ export class GroupedCoordinator {
         .filter((c) => !current.has(String(c.job_id)))
         .map((c) => String(c.job_id)),
     );
-    const cancel = state.executions
-      .filter((e) => obsoleteOriginals.has(e.source_job_id) && !e.terminal)
-      .map((e) => e.active_job.id);
+    const cancel = [
+      ...new Set([
+        ...state.executions
+          .filter((e) => obsoleteOriginals.has(e.source_job_id) && !e.terminal)
+          .map((e) => e.active_job.id),
+        ...state.jobs
+          .filter((j) => j.status === "cancel_requested")
+          .map((j) => j.id),
+      ]),
+    ];
     for (const jobId of cancel)
       await new JobService(this.db).requestCancel(state.job.workflow_id, jobId);
     const groupingBusy = !!state.grouping && !state.grouping.terminal;

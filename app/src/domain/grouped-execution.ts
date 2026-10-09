@@ -195,3 +195,73 @@ export const answerGroupingQuestion = z
     answer: z.string().trim().min(1).max(10000),
   })
   .strict();
+
+export interface GroupExecution {
+  source_job_id: string;
+  source_run_id: string;
+  run: import("./runtime").RunRecord;
+  version_number: number;
+  output: import("./runtime").Json | null;
+  recovery: {
+    id: string;
+    job_id: string;
+    status: string;
+    stop_reason: string | null;
+  } | null;
+  active_job: import("./engineering").WorkflowJob;
+  terminal: boolean;
+  completed: boolean;
+}
+export interface GroupChild {
+  id: string;
+  group_key: string;
+  label: string;
+  input_bundle_id: string;
+  job_id: string;
+  supersedes_child_id: string | null;
+  execution: GroupExecution;
+}
+export interface GroupingQuestion {
+  id: string;
+  workflow_id: string;
+  parent_job_id: string;
+  decision_id: string;
+  source_id: string;
+  scope: string;
+  question: string;
+  status: "open" | "answered" | "cancelled";
+  answer: string | null;
+  answer_key: string | null;
+  answered_at: string | null;
+  created_at: string;
+}
+export interface GroupedExecutionDetail {
+  job: import("./engineering").WorkflowJob;
+  record: {
+    job_id: string;
+    workflow_id: string;
+    input_bundle_id: string | null;
+    result_run_id: string | null;
+    limits: Record<string, number>;
+    active_elapsed_ms: number;
+    active_since: string | null;
+    created_at: string;
+  };
+  jobs: import("./engineering").WorkflowJob[];
+  executions: GroupExecution[];
+  children: GroupChild[];
+  child_history: Omit<GroupChild, "execution">[];
+  decision: {
+    id: string;
+    sequence: number;
+    source_run_id: string;
+    result: GroupingResult;
+  } | null;
+  grouping: GroupExecution | null;
+  aggregate: GroupExecution | null;
+  questions: GroupingQuestion[];
+  coverage: ReturnType<typeof groupingCoverage> | null;
+  spent_or_reserved_usd: number;
+  completed_groups: number;
+  failed_groups: number;
+}

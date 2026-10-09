@@ -145,7 +145,7 @@ Fixture-based verification must cover a repairable extraction-contract defect; a
 
 ## Proposed extension: selected emails to multiple shipments
 
-Status: interview complete; implementation pending. This extends the single-shipment demo through an explicitly approved [process revision](whiteboard.md#proposed-extension-engineer-requested-process-revisions). It does not authorize the repair agent to change the frozen process itself.
+Status: platform UI, API and worker implemented in the grouped-execution branch with fixture coverage; expert approval and live v2 verification remain pending. This extends the single-shipment demo through an explicitly approved [process revision](whiteboard.md#proposed-extension-engineer-requested-process-revisions). It does not authorize the repair agent to change the frozen process itself.
 
 The engineer selects the existing emails to process from Gmail, then starts the operation. Selection is the only routine manual preparation: identify relevant invoice/pre-alert messages, group related emails and attachments by shipment, execute each shipment and assemble the combined summary automatically. Do not silently scan the entire mailbox or fetch unselected related messages. Provide a bounded, explicit selection and show its size before execution; apply concurrency and cost limits rather than unbounded fan-out.
 

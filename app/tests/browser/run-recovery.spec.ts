@@ -224,6 +224,9 @@ for (const needsClarification of [false, true]) {
       await page
         .getByRole("button", { name: "Run workflow", exact: true })
         .click();
+      await page
+        .getByRole("button", { name: "Saved input", exact: true })
+        .click();
     }
     await page.goto(`/workflows/${w}/engineer`);
     await openRun();

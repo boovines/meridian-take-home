@@ -2,6 +2,7 @@ import type { WorkflowJob } from "../../domain/engineering";
 import {
   groupingCoverage,
   type GroupingResult,
+  type GroupedExecutionDetail,
 } from "../../domain/grouped-execution";
 import type { Json } from "../../domain/runtime";
 import { workflow } from "../workflows/store";
@@ -22,7 +23,10 @@ export async function groupedExecutionState(db: Database, jobId: string) {
     return readGroupedState(tx, jobId);
   });
 }
-async function readGroupedState(db: Queryable, jobId: string) {
+async function readGroupedState(
+  db: Queryable,
+  jobId: string,
+): Promise<GroupedExecutionDetail> {
   const job = await jobById(db, jobId);
   if (job.kind !== "grouped")
     throw new DomainError(
@@ -41,7 +45,7 @@ async function readGroupedState(db: Queryable, jobId: string) {
   ).rows as unknown as WorkflowJob[];
   const originals = (
     await db.query(
-      "SELECT r.*,s.output_data FROM workflow_runs r JOIN workflow_jobs j ON j.id=r.job_id LEFT JOIN step_executions s ON s.id=r.result_step_id WHERE j.parent_job_id=$1 AND r.kind='manual' ORDER BY r.created_at,r.id",
+      "SELECT r.*,v.version_number,s.output_data FROM workflow_runs r JOIN implementation_versions v ON v.id=r.implementation_version_id JOIN workflow_jobs j ON j.id=r.job_id LEFT JOIN step_executions s ON s.id=r.result_step_id WHERE j.parent_job_id=$1 AND r.kind='manual' ORDER BY r.created_at,r.id",
       [jobId],
     )
   ).rows;
@@ -53,7 +57,7 @@ async function readGroupedState(db: Queryable, jobId: string) {
   ).rows;
   const accepted = (
     await db.query(
-      "SELECT r.*,s.output_data FROM workflow_runs r LEFT JOIN step_executions s ON s.id=r.result_step_id WHERE r.id=ANY($1::uuid[])",
+      "SELECT r.*,v.version_number,s.output_data FROM workflow_runs r JOIN implementation_versions v ON v.id=r.implementation_version_id LEFT JOIN step_executions s ON s.id=r.result_step_id WHERE r.id=ANY($1::uuid[])",
       [sessions.flatMap((s) => (s.rerun_id ? [s.rerun_id] : []))],
     )
   ).rows;
@@ -71,6 +75,7 @@ async function readGroupedState(db: Queryable, jobId: string) {
       source_job_id: String(original.job_id),
       source_run_id: String(original.id),
       run: runRecord(actual),
+      version_number: Number(actual.version_number),
       output: actual.output_data as Json | null,
       recovery: recovery
         ? {
@@ -140,11 +145,15 @@ async function readGroupedState(db: Queryable, jobId: string) {
   );
   return {
     job,
-    record,
+    record: {
+      ...record,
+      active_elapsed_ms: Number(record.active_elapsed_ms),
+    } as unknown as GroupedExecutionDetail["record"],
     jobs,
     executions,
     children,
-    child_history: history,
+    child_history:
+      history as unknown as GroupedExecutionDetail["child_history"],
     decision: decision
       ? {
           id: String(decision.id),
@@ -155,7 +164,7 @@ async function readGroupedState(db: Queryable, jobId: string) {
       : null,
     grouping,
     aggregate,
-    questions,
+    questions: questions as unknown as GroupedExecutionDetail["questions"],
     coverage: result ? groupingCoverage(result) : null,
     spent_or_reserved_usd: used,
     completed_groups: children.filter((c) => c.execution.completed).length,
