@@ -1,5 +1,7 @@
 # Meridian Studio technical handoff
 
+The v17 results below are historical measurements under their recorded configuration. Subsequent reviewed changes include preflight policy v2 and removal of experimental provider/reinspection settings. Those passes do not establish a confirmation sequence for the current configuration; no new live measurement was run during this review.
+
 Meridian Studio captures a process owner's requirements in a whiteboard, preserves their decisions in a frozen specification, and generates versioned code for an engineer to evaluate and repair. The import-receiving example reads existing Gmail packets and previews a report. The workflow platform remains reusable: invoice rules are supplied requirements for generated modules.
 
 ## Run the project
@@ -44,7 +46,7 @@ Approved plans, generated projects, input bundles and verified suites are separa
 
 The generator writes actual Node modules against a reusable step contract. The host supplies captured inputs and prior step outputs. Agent steps may request a bounded document interpretation; generated code cannot retrieve arbitrary files, bypass human gates, send email, or grade itself. Full source is retained before syntax validation. A successful build is not a claim of business correctness.
 
-The engineer explicitly starts repair. The frozen process, approved methods and locked expectations remain fixed. Each session allows three candidates. Every candidate completes the full suite before acceptance; it cannot become the next baseline if it breaks any previously passing assertion. A fully passing candidate must then complete three consecutive fresh full-suite passes with the same code, suite and recorded configuration before the session is confirmed. Confirmation stops on its first failure or inconclusive result. Rejected candidates retain their diagnosis, source and results. Failures that require a method, process or expectation change stop for an engineer decision.
+The engineer explicitly starts repair. The frozen process, approved methods and locked expectations remain fixed. Each session allows three candidates. Every candidate completes the full suite before acceptance; it cannot become the next baseline if it breaks any previously passing assertion. A fully passing candidate must complete three consecutive fresh full-suite passes in total, counting its first pass, with the same code, suite and recorded configuration before the session is confirmed. Confirmation stops on its first failure or inconclusive result. Rejected candidates retain their diagnosis, source and results. Failures that require a method, process or expectation change stop for an engineer decision.
 
 ## The canvas and code tradeoff
 
@@ -60,7 +62,7 @@ Shipment v17 met the demo's three-pass gate: three consecutive fresh evaluations
 
 Earlier sequences remain recorded: v12 changed a batch result on its third run; v17 later encountered token-count and heartbeat interruptions. Generic bounded preflight recovery and a tested heartbeat-policy change preceded the successful new sequence, which started from zero. These independent measurements do not rewrite the earlier repair session or promote its candidate; that history still retains v12. A source-page citation error remains outside the locked assertions. Keep that limitation visible and do not describe all extracted evidence as verified.
 
-A final Chrome-started manual run of v17 on the original Gmail packet for 020-07721814 completed all five steps and produced the expected report: three successful invoices, four batches, three successful and one failed. The unsent preview identifies the missing certificate. This demonstration is separate from the full-suite measurements.
+A final Chrome-started manual run of v17 on the original Gmail packet for the saved passing-control shipment completed all five steps and produced the expected report: three successful invoices, four batches, three successful and one failed. The unsent preview identifies the missing certificate. This demonstration is separate from the full-suite measurements.
 
 The expanded suite preserves the original checks and adds source-inspected extraction diagnostics. These observations were authored by Codex and are labeled accordingly, not claimed as independent human verification. See the requirement-to-evidence audit in docs/guides/take-home-minimum.md and the dated implementation log for exact workflow identities, evidence and limits.
 
@@ -74,7 +76,7 @@ The next investments would be broader independent extraction labels, selective r
 | Review loop | Live returns review clarified the inclusive 30-day boundary, invalid-input behavior and identifier propagation. The instructions changed before freeze, with recorded explanations. The shipment report also changed after a consequential finding. | Resolution expresses the process owner's decision; the AI does not prove semantic completeness. |
 | Frozen spec | Instructions, desired outcome, transitions, node configuration and review evidence are immutable. Engineer methods and human gates are explicit. Generation reads that artifact rather than relying on this chat. | Post-freeze revisions are deferred; newly discovered business requirements need a new workflow in the demo. |
 | Repository organization | UI, pure contracts, transactional services, adapters and Temporal orchestration have explicit boundaries. SQL migrations define persistence; large/private evidence stays outside source. | No production traffic benchmark or retention policy is claimed. |
-| Communication | Setup, current architecture, a short recording sequence and a dated evidence log are linked from the README. The report separates live execution, fixture tests, synthetic cases and source-inspected labels. | The refreshed video is an edited sequence of actual UI states with waits omitted, not an uninterrupted session. |
-| Scope judgment | Existing small SOPs demonstrate reuse. Report sending, repository import, post-freeze edits and hosted access are deferred. Inference is budgeted and repair is bounded. | LlamaCloud authentication and extraction now work; comparison is paused and no provider switch is justified. Feature PRs remain open. |
+| Communication | Setup, current architecture, a short recording sequence and a dated evidence log are linked from the README. The report separates live execution, fixture tests, synthetic cases and source-inspected labels. | Earlier recordings show historical states; use the latest evidence when presenting accuracy. |
+| Scope judgment | Existing small SOPs demonstrate reuse. Report sending, repository import, post-freeze edits and hosted access are deferred. Inference is budgeted and repair is bounded. | Alternate-provider comparison and automatic reinspection are outside the supported implementation. Passing CI does not authorize merging. |
 
 The local walkthrough was operated by Codex through Chrome with real providers. It demonstrates application behavior, not an independent customer usability study or human verification of every evaluation label.

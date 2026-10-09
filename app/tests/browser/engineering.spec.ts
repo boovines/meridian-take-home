@@ -117,6 +117,16 @@ test("approves a plan, downloads generated source, and keeps previous versions o
     path: testInfo.outputPath("generated-agent.png"),
     fullPage: true,
   });
+  await expect(page.getByText("Fixture build result.", { exact: false })).toBeVisible();
+  // A definitive evaluation failure must outrank the fixture-generation label.
+  await page.route(`**/api/workflows/${w.id}/versions/*`, async route => {
+    const response = await route.fetch();
+    await route.fulfill({ response, json: { ...await response.json(), build_check_status: "failed" } });
+  });
+  await page.reload();
+  await page.getByRole("button", { name: "Agent", exact: true }).click();
+  await expect(page.getByText("Syntax check failed.", { exact: false })).toBeVisible();
+
   const explanation =
     "Read batch certificates was approved as Code, but its instructions require interpreting document contents. Only an Agent step can request document interpretation. Review the approved method before generating again.";
   await page.route(`**/api/workflows/${w.id}/engineering`, async (route) => {
