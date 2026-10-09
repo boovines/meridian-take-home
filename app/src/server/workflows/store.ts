@@ -1,5 +1,10 @@
 import { DomainError } from "../../domain/errors";
-import type { Board, Workflow, CanvasNode, Connection } from "../../domain/canvas";
+import type {
+  Board,
+  Workflow,
+  CanvasNode,
+  Connection,
+} from "../../domain/canvas";
 import type { Queryable } from "../database";
 
 // pg returns bigint as text; revisions are restricted to JavaScript's safe range.
@@ -60,7 +65,16 @@ export async function activeNodes(
   ).rows.map((r) => record<CanvasNode>(r));
 }
 export async function readBoard(tx: Queryable, id: string): Promise<Board> {
+  const context = (
+    await tx.query(
+      "SELECT context FROM workflow_process_context WHERE workflow_id=$1",
+      [id],
+    )
+  ).rows[0]?.context;
   return {
+    ...(context
+      ? { raw_process_data: context as Board["raw_process_data"] }
+      : {}),
     workflow: await workflow(tx, id),
     nodes: await activeNodes(tx, id),
     connections: (

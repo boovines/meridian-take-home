@@ -107,6 +107,7 @@ export interface Connection extends z.infer<typeof connectionInput> {
   revision: number;
 }
 export interface Board {
+  raw_process_data?: import("./process-context").RawProcessContext;
   workflow: Workflow;
   nodes: CanvasNode[];
   connections: Connection[];

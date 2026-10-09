@@ -25,7 +25,7 @@ import {
 } from "./discussion-store";
 
 const activeStatuses = ["queued", "running", "awaiting_customer"];
-export const reviewerVersion = "process-review-v2";
+export const reviewerVersion = "process-review-v3";
 export const reviewModel = () =>
   process.env.MERIDIAN_REVIEW_PROVIDER === "fixture" &&
   process.env.MERIDIAN_DATABASE === "local" &&
@@ -40,6 +40,9 @@ export const reviewSettings = {
 function semantic(board: Board) {
   return {
     goal: board.workflow.desired_outcome,
+    ...(board.raw_process_data
+      ? { raw_process_data: board.raw_process_data }
+      : {}),
     nodes: board.nodes.map(
       ({
         id,

@@ -41,3 +41,15 @@ Deletions and review actions refresh authoritative state in place to include rel
 - The library shows up to 100 workflows; pagination, search, collaboration, and ownership controls are not implemented.
 - The canvas primarily targets laptop and desktop use. Narrow layouts retain the block palette as icons and overlay the detail panel.
 - Product scope and future requirements remain in the [whiteboard PRD](../product/whiteboard.md). Implemented review, generation and evaluation behavior is documented in the adjacent feature contracts.
+
+## Optional process context
+
+**Process context · Optional** opens a separate evidence attachment from the whiteboard toolbar. Export 1–50 selected moments with DeepShelves 2.0's `deepshelves-cli timeline --days 1 --limit 50`, then import the JSON file or paste its output. Preview each moment, select the relevant ones, name the recording and save. Newly imported moments start unselected. No desktop archive is queried by the web server, and no model is called by importing or saving. This works with local and hosted whiteboards.
+
+This attachment contains sampled screen text, app names, titles, timestamps and source moment IDs. It is not a complete computer-action recording; screenshots, explicit URL fields, image paths and unknown fields are excluded. Visible text may still contain sensitive content. The panel explains that saving persists selected text, and review/replies send it to the configured model provider. The import is bounded to 100 KB of source JSON and 50 KB of normalized context, with unique IDs and valid timestamps. Only one named recording is attached at a time; saving an import replaces it.
+
+Context is optional and separate from workflow blocks. AI receives it as `raw_process_data`, explicitly untrusted observational evidence, to inform clarification and review. It cannot authorize actions or silently change requirements. Expert-approved block edits remain the source of executable behavior. With no attachment, the existing review input and prompt are unchanged.
+
+Saved context survives reopening. Changes use a separate revision and the shared workflow lock; stale saves preserve the local selection and offer an explicit reload. Unsaved changes warn before closing. Changing context increments the workflow content revision, requiring fresh review or the existing acknowledgment at freeze. Active review and frozen workflows prevent mutation. Removal excludes the attachment from future review; earlier sealed review snapshots retain their evidence. Freeze stores current context in `review_evidence`, outside the executable graph; the current generation path does not receive raw observations as requirements. No new freeze requirement is introduced.
+
+Verification: `tests/process-context.test.ts` covers sanitized import, bounds, revision conflicts, unchanged graphs, review snapshots, removal and frozen evidence separation. Provider tests check the explicit raw-data boundary; browser checks cover preview, opt-in selection, saving/reopening and removal. These checks do not establish live model interpretation quality.

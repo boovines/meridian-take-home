@@ -94,14 +94,21 @@ export class FreezeService {
           [id],
         )
       ).rows;
+      const { raw_process_data, ...graph } = ready.board;
       const spec = (
         await tx.query(
           "INSERT INTO frozen_specs(workflow_id,source_content_revision,graph,review_evidence,unreviewed_changes_acknowledged) VALUES($1,$2,$3,$4,$5) RETURNING *",
           [
             id,
             w.content_revision,
-            ready.board,
-            { reviews, threads, messages, anchors },
+            graph,
+            {
+              reviews,
+              threads,
+              messages,
+              anchors,
+              ...(raw_process_data ? { raw_process_data } : {}),
+            },
             ready.unreviewed_changes && data.acknowledge_unreviewed,
           ],
         )

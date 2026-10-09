@@ -1,4 +1,5 @@
 "use client";
+
 import Link from "next/link";
 import {
   useCallback,
@@ -37,6 +38,7 @@ import {
 import { useReview } from "../reviews/use-review";
 import { ReviewPanel } from "../reviews/review-panel";
 import { FreezeDialog } from "../reviews/freeze-dialog";
+import { ProcessContextButton } from "../process-context/process-context-button";
 export function BoardClient({ id }: { id: string }) {
   const [board, setBoard] = useState<Board | null>(null),
     [error, setError] = useState(""),
@@ -316,6 +318,12 @@ export function BoardClient({ id }: { id: string }) {
                 Workflow details <ChevronDown size={14} />
               </button>
               <div className="button-row">
+                <ProcessContextButton
+                  workflowId={id}
+                  locked={locked}
+                  onOpen={canLeave}
+                  onSaved={load}
+                />
                 <button onClick={openReviews} aria-pressed={reviewOpen}>
                   <MessageSquare size={14} /> Review & comments{" "}
                   {review.state.threads.filter(

@@ -42,7 +42,7 @@ Freeze shows concrete fixes if blocked and an acknowledgment warning for unrevie
 
 ## Tech Stack
 
-React and TypeScript with Next.js provide the canvas and API. Supabase/Postgres stores definitions, discussions, reviews, and frozen specifications. An LLM service performs clarification and review. React Flow supplies the canvas and OpenAI supplies the reviewer. General MCP source panels, company-document ingestion, SOP-to-canvas generation, and process mining are outside the core demo. Gmail belongs to the execution feature.
+React and TypeScript with Next.js provide the canvas and API. Supabase/Postgres stores definitions, discussions, reviews, and frozen specifications. An LLM service performs clarification and review. React Flow supplies the canvas and OpenAI supplies the reviewer. Optional selected DeepShelves screen-context imports can inform AI review; they do not create graph elements or execute recorded work. General MCP source panels, company-document ingestion, SOP-to-canvas generation, and automated process mining are outside the core demo. Gmail belongs to the execution feature.
 
 ## Data Model
 
