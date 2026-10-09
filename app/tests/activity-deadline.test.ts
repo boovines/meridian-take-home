@@ -1,7 +1,8 @@
 import { afterEach, expect, it, vi } from "vitest";
 const state = vi.hoisted(() => ({ execute: vi.fn(), signal: undefined as unknown as AbortSignal }));
 vi.mock("@temporalio/activity", () => ({ heartbeat: vi.fn(), cancellationSignal: () => state.signal }));
-vi.mock("../src/server/database", () => ({ getDatabase: async () => ({}) }));
+vi.mock("../src/server/database", () => ({ getDatabase: async () => ({ query: async () => ({ rows: [{ job_id: "fixture-job" }] }) }) }));
+vi.mock("../src/server/repairs/recovery-budget", () => ({ withRecoveryBudget: async (_db: unknown, _job: string, run: (signal: AbortSignal) => Promise<unknown>, signal: AbortSignal) => run(signal) }));
 vi.mock("../src/server/runtime/step-service", () => ({ StepService: class { execute = state.execute; } }));
 import { executeOccurrence } from "../src/worker/runtime-activities";
 import type { ScheduleStep } from "../src/domain/runtime";
