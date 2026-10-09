@@ -11,6 +11,7 @@ Start here when working on Meridian Studio. Use the [application setup and modul
 | Change persistence or evaluate a schema choice | [Data-model audit](architecture/data-model.md), then [executable migrations](../app/migrations) |
 | Change an implemented feature | Its contract in the feature list below, then the relevant source/tests |
 | Run or demonstrate the application | [Demo walkthrough](guides/demo.md), [technical handoff](guides/handoff.md) |
+| Check the take-home minimum deliverables | [Requirement-to-evidence audit](guides/take-home-minimum.md) |
 | Check what has actually been verified | [Implementation evidence](implementation-status.md), [verification commands](verification.md) |
 | Recover original interview rationale | [Archived interview decisions](archive/interviews/README.md) |
 

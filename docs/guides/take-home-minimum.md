@@ -1,0 +1,38 @@
+# Take-home minimum: requirement-to-evidence audit
+
+Checked October 8 against the [original assignment](https://app.notion.com/p/Meridian-Take-Home-Project-3adfdc07926d80dc9b59f9ce64e07155), [updated agent notes](https://app.notion.com/p/Updated-Notes-on-Agent-38bfdc07926d809ebd18f5609e737300), and agreed scope cuts. The assignment allows the repair loop to reach all cases or as close as time permits. Our later three-consecutive-pass reliability gate is stricter and remains unmet.
+
+## Product minimum
+
+| Requirement | Concrete evidence | Status / limit |
+| --- | --- | --- |
+| React whiteboard with simple primitives, branches and exceptions | Seven named business blocks; saved instructions and labeled edges; return-loop and paired parallel routing checks. The real shipment board has parallel invoice/CoA readers and a paired merge. | Implemented. A process owner still edits graph changes manually. |
+| Anchored AI comments and changing statuses | Findings anchor nodes/connections; owner replies and resolutions persist. UI distinguishes Open, Answered, Rejected and Resolved. | Implemented; this is contextual discussion, not an autonomous rewrite of the customer process. |
+| Two review rounds and consequential revision | The shipment board has three completed live reviews. A finding exposed that the report mentioned missing CoAs but omitted unsupported batch relationships. The owner accepted the clarification and changed the Outcome instructions before the final review. | Live evidence verified in Chrome and persisted snapshots. Earlier failed reviews remain visible. |
+| Immutable spec sufficient for generation | The frozen graph includes the revised report instructions, five steps, five connections, desired outcome and review decisions. The approved plan and generated artifacts reference this same frozen spec. | Implemented and verified. Post-freeze editing is deliberately out of scope. |
+| Reusable scaffold and real generated code | Shared entry point, step contract, tool boundary and error handling; generated modules contain the workflow's extraction and business rules. Agent steps read PDFs; Code steps validate and report. Source and diffs are inspectable/downloadable. | Live generation verified; no invoice matching algorithm or expected answers in the shared harness. |
+| Expected-versus-actual evals and self-repair | Locked suite v5 contains 24 cases / 207 assertions, preserving the original 20 / 161. Repair diagnosed an extra character in CoA extraction, inspected source pages, and changed only the reader's instructions to produce v17. | V17 passed twice completely. A third run was inconclusive due to a token-count HTTP 500; v12 remains the retained repair baseline. |
+| Real inbound receiving example via supplied Gmail | Eleven immutable Gmail shipment bundles were captured through Composio. A retained v12 manual run on the saved passing-control shipment shows three successful invoices and four batches: three successful, one failed. | Real documents and report verified. Manual selection and preview-only delivery are agreed demo scope. |
+| Required stack | React UI, Supabase records, Temporal orchestration, Composio Gmail, Vercel Sandbox for isolated generated code. | Live integrations exercised; fixture CI is separately labeled. |
+| Reuse beyond receiving | A small returns workflow completed two consequential review rounds, freeze, generation, and three 6/6 evaluations with recorded configuration. | Evidence of reuse; not broad generalization or a second independent self-repair benchmark. |
+
+The additional v17 measurement under bounded token-count retries completed 23/24 cases with one Temporal heartbeat timeout and no assertion failures in its first run. It cannot count toward confirmation, and no second round was started. Neither infrastructure error is a correct business outcome. The original results and tests are preserved.
+
+## Exact local demonstration
+
+Start from the reviewed main branch using [app setup](../../app/README.md). Run the web app on port 3100 and keep the Temporal worker running. No hosted URL is required for this handoff.
+
+1. Open `/workflows/1edea7a4-b1b7-41a8-8c7d-a90ff204c4ed`. Show the five-block process and the two parallel readers.
+2. Open **Review & comments → Show resolved findings and review history**. Expand the report finding. Show the owner answer, three completed reviews, and the changed Outcome instructions. The persisted earlier snapshots demonstrate the before/after wording.
+3. Open the engineer workspace. **Implementation** shows approved Agent readers and Code validation/reporting. **Agent** shows actual source, version history and download.
+4. **Evaluation → Repair history**: select the v17 attempt. Explain the extra-character extraction diagnosis and limited patch. Show its two passes and inconclusive third confirmation, then the preserved v12 baseline. Do not imply the agent changed the fixed tests.
+5. **Agent → Run workflow**: select the retained manual run for the saved passing-control shipment. Show seven totals, per-item issues and the Not sent report. Reuse the saved run during a short demo rather than paying for another extraction.
+6. Briefly show `/workflows/54c0ff8f-3b20-432e-af9b-fe41e4a812f7/engineer` for the smaller returns workflow. Its successful text-input evaluations do not erase the shipment reliability limit.
+
+## Submission package and remaining limits
+
+The repository contains setup, current system diagrams, schema rationale, product contracts and this audit. The technical PDF covers all five requested topics: run instructions; primitive choices; comments/spec data model; the code-versus-graph tradeoff; and what to change with more time. The short video is explicitly an edited walkthrough of actual captured UI states, with expensive waits omitted, rather than an uninterrupted live recording.
+
+The minimum product loop is demonstrated. Do not describe the service as production-ready or the shipment implementation as repeatably confirmed. Remaining issues are fresh document/model variability, infrastructure interruptions, and an incorrect page citation outside the locked assertions. Historical alternate-provider comparisons remain incomplete. The supported implementation uses OpenAI; provider switching and automatic reinspection are outside scope.
+
+Validation recorded with the original handoff was historical fixture evidence. Consult the merged PR checks for the current revision; fixture, database and browser checks establish only the tested application behavior, not live LLM accuracy. The obsolete provider PR was closed without merging.

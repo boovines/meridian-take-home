@@ -2,7 +2,9 @@
 
 Updated as features land. An unchecked item is not complete, even if supporting code exists.
 
-**Recorded accuracy evidence, October 8:** shipment repeatability remains unconfirmed. Historical v10 passed 20/20, then 14/20 unchanged. On the expanded fixed suite, v10 passed **14/24 (189/207 assertions)**; v11 improved to **20/24 (199/207)** but was rejected for a lost previously passing source check. The restarted repair produced v12: its first two runs passed **24/24 (207/207)**, but its third passed **23/24 (205/207)**. Its three-pass confirmation failed. V14 regressed and was rejected; v13 and v15 were cancelled for unsupported matching and benchmark-specific prompt content respectively. V12 is retained but unconfirmed, and paid improvement attempts have stopped. Small synthetic returns and purchasing SOPs each completed three consecutive six-case passes; a new returns UI journey also passed 6/6 three times. These text-input successes do not establish PDF extraction reliability. See the dated evidence below and the [repeatability protocol](verification.md#live-repeatability-protocol).
+**Current minimum and accuracy evidence, October 8:** the required product loop is demonstrated; use the [minimum audit](guides/take-home-minimum.md) for exact evidence and the local demo route. Shipment v17 passed suite v5 twice at **24/24 cases and 207/207 assertions**, then its third confirmation was inconclusive due to a token-count HTTP 500. A fresh measurement after bounded preflight recovery completed **23/24, with one Temporal heartbeat timeout** and no assertion failures; no next round was started. V12 remains the retained repair baseline. Shipment repeatability is still unconfirmed, and the known citation defect is outside the scored checks.
+
+Historical provider experiments are retained below; alternate-provider integration is outside the supported implementation. At that earlier checkpoint, the partial document-only comparison completed four Llama calls (46/46 selected checks) and eight OpenAI calls (92/92). It is incomplete and establishes neither a winner nor full workflow accuracy. The live returns journey completed three consecutive six-case passes with recorded configuration; that narrower text-input result does not establish PDF reliability.
 
 ## Authoritative context
 
@@ -48,7 +50,7 @@ Boundaries may move to keep each PR coherent. PR #1 conventions are incorporated
 - [x] Fresh human response per visit; new documents/new run; exclusive ambiguity errors; correct per-occurrence joins; bounded loops/time.
 - [x] Retry uses same code and inputs in a fresh linked run; preview-only report.
 - [x] Browser walkthrough from incomplete canvas through two AI reviews, freeze, generation, failed evaluation, attempted repair, and one matching real report. Full-dataset accuracy remains separate and incomplete above.
-- [x] README/run instructions, design tradeoffs, three-page PDF handoff and an edited 60-second walkthrough of captured live UI states. The video labels its synthetic repair example and the real-data accuracy limitation; it is not an uninterrupted recording.
+- [x] README/run instructions, design tradeoffs, technical PDF handoff and an edited short walkthrough of captured live UI states. The refreshed video labels the real-data accuracy limitation; it is not an uninterrupted recording.
 
 ## Evidence log
 
@@ -226,3 +228,12 @@ A later historical read-only provider discovery succeeded after a credential rep
 ### Bounded preflight recovery — October 8
 
 The v17 infrastructure failure motivated a generic token-count retry boundary, limited to three transient-failure attempts before any inference or budget reservation. Cancellation, permanent errors, invalid token counts and exhausted retries still fail closed. Successful reservations retain attempt counts and failure types. The retry policy is now part of the pinned evaluation configuration, so old passes cannot be combined with new-policy runs. Fixture validation passed 172 tests with one PostgreSQL-only skip, plus lint and typecheck. This addresses an observed execution failure; it does not alter generated business rules, cure the citation defect, or establish another live pass.
+
+### Historical LlamaCloud adapter experiment — October 8
+
+Authenticated uploads exposed three assumptions absent from the fixtures: file IDs can be UUIDs, the combined system prompt has a 10,000-character limit, and the concrete output schema must omit unused recursive definitions left behind by the generic JSON envelope. That experimental adapter was changed to accept safe opaque IDs, reject oversized context before upload without truncation, and remove those unused definitions. Its code was later excluded from the supported implementation. A rejected upload was explicitly cleaned up. Full fixture validation passed 178 tests with one PostgreSQL-only skip, plus lint, typecheck, worker bundling and documentation checks.
+
+The first successful live comparison used one complete source-inspected invoice, not its whole shipment packet. Both adapters passed all nine fixed field checks and the field-evidence contract. LlamaCloud reported 25 credits and resolved the requested 2.5 alias to `2026-10-01-preview`; its extraction cache was disabled, while parsing-cache reuse remains unknown. At that checkpoint, a fixed four-document, three-repetition comparison was running. This obsolete adapter is not part of the supported implementation. These diagnostic requests use identical schemas and document-only context, with no expected answers sent to either provider. They do not modify the generated shipment implementation or establish complete business-result correctness.
+
+- Minimum audit follow-up: re-read the original assignment and updated notes in Chrome; verified three completed shipment reviews, a consequential report-instruction revision carried into the frozen spec, approved methods and generated source. Inspected the saved shipment report and separate returns workflow. Provider comparison paused with all in-flight calls drained; no new reliability rounds started.
+- Engineer source status: an in-flight evaluation no longer hides earlier definitive syntax evidence for the same immutable code version. Latest evaluation status remains separate, and a later build failure takes precedence. Persistence regression coverage now requires explicit compiler evidence, preserves it through reruns and cancellation, and excludes fixture completion as proof of syntax.
