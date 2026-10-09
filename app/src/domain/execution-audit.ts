@@ -10,6 +10,10 @@ export interface ProviderTrace {
   reserved_usd?: number;
   actual_usd?: number;
   http_status?: number;
+  sdk_error_types?: string[];
+  response_status?: string;
+  response_output_types?: string[];
+  response_content_types?: string[];
 }
 export const auditKinds = [
   "initial_output",

@@ -31,3 +31,16 @@ export async function inferenceStage<T>(stage: ProviderTrace["stages"][number]["
     throw error;
   } finally { entry.elapsed_ms = Date.now() - started; }
 }
+
+/** Error messages/bodies may contain source data. Keep only recognized class names. */
+export function annotateInferenceError(error: unknown) {
+  const names = new Set(["AI_APICallError", "AI_TypeValidationError", "AI_JSONParseError", "AI_InvalidResponseDataError", "AI_NoObjectGeneratedError", "AI_NoOutputGeneratedError", "AI_NoContentGeneratedError", "AI_RetryError", "AI_LoadAPIKeyError", "AI_UnsupportedFunctionalityError", "AbortError", "TimeoutError", "TypeError", "Error", "ZodError"]);
+  const chain: string[] = [];
+  let value = error;
+  while (value && typeof value === "object" && chain.length < 3) {
+    const item = value as { name?: unknown; cause?: unknown };
+    chain.push(typeof item.name === "string" && names.has(item.name) ? item.name : "UnknownError");
+    value = item.cause;
+  }
+  annotateInferenceTrace({ sdk_error_types: chain });
+}

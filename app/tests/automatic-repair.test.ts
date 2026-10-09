@@ -19,18 +19,22 @@ beforeAll(async () => {
   artifacts = new ArtifactService(db, new LocalObjectStore(dir));
 });
 afterAll(async () => { await db.close(); await rm(dir, {recursive:true, force:true}); });
-async function fixture(auto = true) {
+async function fixture(auto = true, mixed = false) {
   const f = await runtimeFixture(db, artifacts, ["trigger", "outcome"]);
   await f.runs.finish(f.job.id, {status:"cancelled"});
   const suites = new SuiteService(db), evals = new EvaluationService(db);
   const suite = await suites.create(f.w.id, {request_key:randomUUID(), name:"Trusted", parent_suite_version_id:null});
   const c = await suites.addCase(f.w.id, suite.id, caseInput.parse({case_key:"count", name:"Count", kind:"step", node_id:f.nodes[1].id, input_data:{input:{count:1},steps:{}}, assertions:[{key:"count",label:"Count",path:["count"],expected:1}]}));
   await suites.verifyCase(f.w.id,suite.id,c.id,{expected_revision:c.revision});
+  if (mixed) {
+    const other = await suites.addCase(f.w.id, suite.id, caseInput.parse({case_key:"other",name:"Independent case",kind:"step",node_id:f.nodes[1].id,input_data:{input:{count:1},steps:{}},assertions:[{key:"count",label:"Count",path:["count"],expected:1}]}));
+    await suites.verifyCase(f.w.id,suite.id,other.id,{expected_revision:other.revision});
+  }
   await suites.lock(f.w.id,suite.id,{expected_revision:(await suites.state(f.w.id)).suites[0].revision});
   const request={request_key:randomUUID(),implementation_version_id:f.version.id,suite_version_id:suite.id,...(auto?{auto_repair:true}:{})};
   const started=await evals.start(f.w.id,request);
   const ready=(await evals.prepare(started.job.id))!;
-  return {f,suites,evals,suite,request,...started,result:ready.results[0]};
+  return {f,suites,evals,suite,request,...started,result:ready.results[0],results:ready.results};
 }
 it("atomically hands a failed evaluation to exactly one bounded session, including completion retries",async()=>{
   const f=await fixture();
@@ -65,4 +69,20 @@ it("keeps typed worker validation failures repairable after Temporal wrapping", 
   expect(next?.kind).toBe("repair");
   expect((await db.query("SELECT failure_category FROM evaluation_case_results WHERE id=$1",[f.result.id])).rows[0].failure_category).toBe("implementation");
   expect((await f.suites.state(f.f.w.id)).cases[0].assertions[0].expected).toBe(1);
+});
+
+it("retains a transient case error while scheduling repair of a separately scored failure", async () => {
+  const f=await fixture(true,true);
+  for (const r of f.results) await f.evals.beginCase(r.id);
+  await f.evals.recordCase(f.results[0].id,{actual:{count:2}});
+  await f.evals.recordCase(f.results[1].id,{error:{category:"infrastructure",code:"MODEL_UNAVAILABLE",message:"Provider response unavailable"}});
+  const next=await finishEvaluationWithRepair(db,f.job.id);
+  expect(next?.kind).toBe('repair');
+  const state=await f.evals.state(f.f.w.id,f.evaluation.id);
+  expect(state.runs[0].verdict).toBe('inconclusive');
+  expect(state.results.map(r=>r.outcome).sort()).toEqual(['error','failed']);
+  expect(state.results.find(r=>r.outcome==='error')?.failure_code).toBe('MODEL_UNAVAILABLE');
+  const {regressionDecision}=await import('../src/domain/grading');
+  const cases=(await f.suites.state(f.f.w.id)).cases;
+  expect(regressionDecision(state.results,state.results,cases).accepted).toBe(false);
 });

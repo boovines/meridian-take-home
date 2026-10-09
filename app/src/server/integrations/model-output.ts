@@ -4,6 +4,7 @@ import {
   NoOutputGeneratedError,
   RetryError,
 } from "ai";
+import { annotateInferenceError } from "./inference-trace";
 import { DomainError } from "../../domain/errors";
 
 interface OutputMetadata {
@@ -78,6 +79,7 @@ export async function modelOutput<T>(
     if (result.finishReason !== "stop") throw incomplete(operation, result);
     return result.output;
   } catch (error) {
+    annotateInferenceError(error);
     if (NoObjectGeneratedError.isInstance(error))
       throw incomplete(operation, error);
     if (NoOutputGeneratedError.isInstance(error))

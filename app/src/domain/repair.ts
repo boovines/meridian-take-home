@@ -66,7 +66,8 @@ export interface RepairAttempt {
   error_message: string | null;
   finished_at: string | null;
 }
-// Missing evidence and operational failures require an engineer, not speculative code changes.
+// Diagnose proven assertion failures independently of transient service errors.
+// Candidate acceptance still requires a determinate full-suite evaluation.
 export function repairBlocker(
   e: EvaluationRun,
   results: CaseResult[],
@@ -80,12 +81,12 @@ export function repairBlocker(
       : "Resolve the shared evaluation prerequisite before repairing code.";
   if (!results.length || results.some((r) => r.status !== "finished"))
     return "The evaluation lacks complete case evidence.";
+  const hasScoredFailure = results.some(r => r.outcome === "failed" && r.check_results.some(c => !c.passed));
+  const independentlyRetryable = new Set(["MODEL_UNAVAILABLE", "MODEL_RESPONSE_TIMEOUT", "TOKEN_PREFLIGHT_TRANSIENT"]);
   if (
-    results.some(
-      (r) =>
-        ["error", "not_run"].includes(r.outcome || "") &&
-        r.failure_category !== "implementation",
-    )
+    results.some(r => ["error", "not_run"].includes(r.outcome || "") &&
+      r.failure_category !== "implementation" && !(hasScoredFailure && r.outcome === "error" &&
+        r.failure_category === "infrastructure" && independentlyRetryable.has(r.failure_code || "")))
   )
     return "Resolve input, infrastructure, or unclassified errors before repairing code.";
   return null;
