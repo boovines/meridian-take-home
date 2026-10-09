@@ -84,9 +84,18 @@ export class ArtifactService {
         "ARTIFACT_NOT_READY",
         "The file is not ready.",
       );
-    const bytes = await (
-      this.store || objectStore(record.storage_backend)
-    ).read(record.storage_key);
+    let bytes: Buffer;
+    try {
+      bytes = await (this.store || objectStore(record.storage_backend)).read(
+        record.storage_key,
+      );
+    } catch {
+      throw new DomainError(
+        503,
+        "ARTIFACT_UNAVAILABLE",
+        "The saved file is unavailable. Check the configured artifact storage location and access before retrying.",
+      );
+    }
     if (
       bytes.length !== record.byte_size ||
       createHash("sha256").update(bytes).digest("hex") !== record.content_hash

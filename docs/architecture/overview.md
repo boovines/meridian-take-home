@@ -1,12 +1,12 @@
 # Architecture
 
-Architecture and design contracts · October 8, 2026. Canvas authoring, review/freeze, implementation plans/generation, runtime, evaluations, bounded repair and Gmail ingestion are implemented. A real packet completes end to end. The historical October 8 measurement of shipment v17 passed three consecutive fresh evaluations of the locked 24-case suite under its recorded configuration; this is a measured demo threshold, not an unseen-document accuracy guarantee. See [implementation status](../implementation-status.md) for measured outcomes and [migrations](../../app/migrations) for executable schema.
+Architecture and design contracts · October 9, 2026. Canvas authoring, guided scoping, review/freeze, explicit process revisions, implementation plans/generation, runtime, evaluations, bounded repair, Gmail ingestion and grouped execution are implemented. A real packet completes end to end. The historical October 8 measurement of shipment v17 passed three consecutive fresh evaluations of the locked 24-case suite under its recorded configuration; this is a measured demo threshold, not an unseen-document accuracy guarantee. See [implementation status](../implementation-status.md) for measured outcomes and [migrations](../../app/migrations) for executable schema.
 
 Start with the revised [Whiteboard PRD](../product/whiteboard.md) and [Self-Healing Agent PRD](../product/self-healing-agent.md). Current table rationale is in the [data-model audit](data-model.md); exact fields and constraints are defined by [migrations](../../app/migrations). [Archived interview proposals](../archive/interviews/README.md) preserve earlier alternatives and are not the executable schema.
 
 ## System boundaries
 
-Use relational rows for independently changing records, immutable versions/manifests for reproducible handoff and execution, object storage for large files, and a durable executor for background work. The customer owns the process; AI review can suggest simplifications but cannot rewrite its graph. Engineers approve implementation methods. A trusted runtime enforces transitions, human gates, and limits; a trusted evaluator controls acceptance.
+Use relational rows for independently changing records, immutable versions/manifests for reproducible handoff and execution, object storage for large files, and a durable executor for background work. The customer owns the process; AI review can suggest simplifications but cannot rewrite its graph. Guided scoping separately permits an explicitly approved initial graph on an empty board. Engineers approve implementation methods. A trusted runtime enforces transitions, human gates, and limits; a trusted evaluator controls acceptance.
 
 ```mermaid
 flowchart TD
@@ -46,7 +46,7 @@ PostgreSQL connections are bounded per process. Server-side statement and idle-t
 | --- | --- |
 | Draft workflow | Editable with per-record revisions; semantic content revision excludes position-only changes. |
 | Review input | Captured content and revision; goal clarification records the subsequent analyzed input explicitly. |
-| Frozen spec | Immutable graph and review evidence; exactly one per workflow in the demo. |
+| Frozen spec | Immutable graph and review evidence; one frozen handoff per process revision, retaining earlier revisions. |
 | Implementation plan | Editable draft, immutable after approval; method changes create a new version. |
 | Generated code | Immutable artifact tied to its plan and parent version. |
 | Evaluation suite | Editable draft, immutable after verification/lock; corrections create a new version. |
@@ -58,7 +58,7 @@ Use same-workflow composite foreign keys on owned relationships and same-run key
 
 ## Data relationships
 
-These diagrams show selected relationships, not every column or foreign key. Full definitions and nullability are in `app/migrations`; the schema specs retain planning context. Temporal is the selected scheduling authority. Runtime split/join state lives in Temporal. Step records expose stable branch references for inspection; no separate parallel-group/branch tables are implemented. Omit custom database worker leases; derive progress from Temporal-owned transitions. The [decision audit](data-model.md) explains this boundary and the alternatives.
+These diagrams show selected relationships, not every column or foreign key. Full definitions and nullability are in `app/migrations`; the schema specs retain planning context. Temporal is the selected scheduling authority. Runtime split/join state lives in Temporal. Step records expose stable branch references for inspection; no separate parallel-group/branch tables are implemented. Grouped execution uses database capacity leases to bound heavy activities, not to replace Temporal scheduling; derive execution progress from Temporal-owned transitions. The [decision audit](data-model.md) explains this boundary and the alternatives.
 
 ```mermaid
 erDiagram
@@ -66,7 +66,7 @@ erDiagram
     workflows ||--o{ connections : contains
     nodes ||--o{ connections : source
     nodes ||--o{ connections : destination
-    workflows ||--o| frozen_specs : freezes_once
+    workflows ||--o{ frozen_specs : versions
     workflows ||--o{ review_runs : reviews
     workflows ||--o{ discussion_threads : owns
     review_runs o|--o{ discussion_threads : originates
@@ -127,7 +127,7 @@ Unique request/scheduling keys prevent duplicate logical actions. Worker fencing
 
 ## Efficiency and scope
 
-The executable schema has 26 application tables: four canvas, four review, twelve engineering/evaluation/repair, and six runtime/artifact records. Temporal owns parallel coordination, so the two proposed coordination tables are omitted. One nodes table covers every primitive type; one discussion model covers notes and findings; one jobs mechanism admits expensive operations. These tables share the existing application and worker.
+The executable schema covers canvas, review, scoping, engineering, evaluation, repair, runtime, artifacts and grouped execution; see the [table rationale](data-model.md) and [migrations](../../app/migrations). Temporal owns parallel coordination, so the two proposed coordination tables are omitted. One nodes table covers every primitive type; one discussion model covers notes and findings; one jobs mechanism admits expensive operations. These tables share the existing application and worker.
 
 One row per node does not by itself cause a scaling problem. Load a board with workflow-filtered queries; update a single node by key; query incoming/outgoing connections with endpoint indexes. An in-memory map helps rendering and traversal after loading the graph but does not replace persistent constraints or concurrency control. Do not store duplicate adjacency lists on nodes when connections already define the graph.
 

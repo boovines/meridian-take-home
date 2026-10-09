@@ -189,6 +189,9 @@ export class ScopingService {
         )
       ).rows as unknown as ScopingMessage[];
       const input: ScopingInput = {
+        ...(board.raw_process_data
+          ? { raw_process_data: board.raw_process_data }
+          : {}),
         note: s.note,
         note_revision: s.note_revision,
         action: data.action,

@@ -8,12 +8,18 @@ export function ScopingNote({
   board,
   onApplied,
   onReview,
+  contextRevision = 0,
 }: {
   board: Board;
+  contextRevision?: number;
   onApplied: (b: Board) => void;
   onReview: () => void;
 }) {
   const c = useScoping(board.workflow.id, board.workflow.state !== "draft");
+  const refreshContext = c.refresh;
+  useEffect(() => {
+    if (contextRevision) void refreshContext().catch(() => {});
+  }, [contextRevision, refreshContext]);
   const [open, setOpen] = useState(false),
     [expanded, setExpanded] = useState(false);
   const [position, setPosition] = useState<{ x: number; y: number } | null>(

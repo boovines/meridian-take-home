@@ -31,6 +31,7 @@ export class RuntimeEngine {
     private runId: string,
     private definition: RuntimeDefinition,
     private ports: RuntimePorts,
+    private phaseNodeId: string | null = null,
   ) {
     this.since = ports.now();
   }
@@ -90,7 +91,17 @@ export class RuntimeEngine {
     );
     if (triggers.length !== 1)
       throw new Error("Exactly one frozen trigger is required.");
-    await this.walk(triggers[0].id, null, null);
+    if (
+      this.phaseNodeId &&
+      !this.definition.board.nodes.some(
+        (n) =>
+          n.id === this.phaseNodeId && ["trigger", "outcome"].includes(n.type),
+      )
+    )
+      throw new Error(
+        "A grouped phase must execute its approved trigger or outcome.",
+      );
+    await this.walk(this.phaseNodeId ?? triggers[0].id, null, null);
     this.change(-1);
     return {
       status: this.failure
@@ -168,7 +179,7 @@ export class RuntimeEngine {
         // Preserve an already-running sibling's output even after another fails.
         outputs[nodeId] = { id: result.step_id, occurrence };
         if (this.failure) return;
-        if (node.type === "outcome") {
+        if (node.id === this.phaseNodeId || node.type === "outcome") {
           this.resultStepId = result.step_id;
           return;
         }

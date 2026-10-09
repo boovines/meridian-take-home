@@ -343,3 +343,31 @@ it("prepares source-backed packets without downloading attachments or publishing
   expect(source.attachment).not.toHaveBeenCalled();
   expect((await db.query("SELECT id FROM input_bundles WHERE workflow_id=$1",[w.id])).rows).toHaveLength(0);
 });
+
+it("captures every selected email beyond ten without omitting attachments", async () => {
+  const workflow = await new CanvasService(db).create({
+    name: "Full selection",
+    desired_outcome: "Capture all selected messages.",
+  });
+  const ids = Array.from(
+    { length: 12 },
+    (_, i) => `abcdef0123${i.toString(16).padStart(2, "0")}`,
+  );
+  const capture = new GmailCaptureService(db, reader(), artifacts);
+  const bundle = await capture.captureSelection(
+    workflow.id,
+    ids,
+    AbortSignal.timeout(10000),
+  );
+  const saved = await new BundleService(db).read(
+    workflow.id,
+    String(bundle.id),
+  );
+  expect(saved.manifest).toMatchObject({
+    message_ids: ids,
+    input: {
+      messages: ids.map((id) => ({ id })),
+      documents: ids.map((id) => ({ message_id: id })),
+    },
+  });
+});
