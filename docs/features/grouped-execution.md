@@ -2,7 +2,7 @@
 
 ## Implementation status
 
-The product UI, API, parent coordinator, grouping/aggregation phases, and fixture worker journeys are implemented on the grouped-execution branch. Live multi-email verification against an expert-approved process revision remains pending; fixture results do not establish model accuracy or customer readiness.
+The product UI, API, parent coordinator, grouping/aggregation phases, and fixture worker journeys are implemented on the grouped-execution branch. The motivating v2 process has been explicitly approved, reviewed and frozen, and its approved implementation has been generated. Live multi-email acceptance is still in progress; fixture results and syntax checks do not establish model accuracy or customer readiness.
 
 ## Product experience
 
@@ -18,7 +18,7 @@ The results-first layout was selected after live comparison with sidebar and thr
 
 An engineer selects distinct email IDs and a generated implementation from an approved plan. The parent operation captures only those emails and their attachments. Capture publishes an immutable bundle only after all requested evidence is saved. The existing Gmail reader remains read-only. Removing the selection cap does not remove execution bounds: captures still enforce attachment/text/byte limits, and grouping still enforces its source/group, time and spend limits. A failed results-page fetch retains the loaded selection and reports that selecting all did not finish.
 
-The approved Trigger implementation runs in explicit `grouping` mode through the normal step runner. It returns groups and one disposition for every captured source: scoped assignments, a clarification question for an unresolved portion, or an exclusion reason. Multiple emails can support one group, and one source can contribute to several groups. Host validation checks identities, ownership, bounds and coverage; it does not certify the semantic correctness of assignments.
+The approved Trigger implementation runs in explicit `grouping` mode through the normal step runner. Generation and repair guidance separate ownership reasoning from full downstream document extraction, require the exact grouping result shape, and require normal children to accept their established group without regrouping. These instructions guide generated code; runtime validation and live verification still determine whether it obeys them. It returns groups and one disposition for every captured source: scoped assignments, a clarification question for an unresolved portion, or an exclusion reason. Multiple emails can support one group, and one source can contribute to several groups. Host validation checks identities, ownership, bounds and coverage; it does not certify the semantic correctness of assignments.
 
 Each group receives a separate sealed input bundle and ordinary child workflow run. The generated workflow owns business grouping rules and results. The parent owns scheduling, source coverage, shared limits and cancellation. Child jobs use the parent's operation slot rather than competing for independent top-level slots.
 
@@ -55,4 +55,4 @@ Browser state and inspection controls live in `src/components/grouped-execution`
 
 `grouped-execution.spec.ts` checks email selection/start without a shipment reference, actual-version inspection, clarification persistence after reload, human responses, cancellation, retained successes, partial reports and a mobile viewport. Existing manual-run/recovery journeys still exercise the Saved input path.
 
-Remaining acceptance work is the approved motivating v2 workflow followed by bounded live selected-email verification. Actual expert approval is required before live refreeze or generation.
+The expert approval and v2 freeze/generation gates have been completed. Remaining acceptance work is bounded live selected-email verification, including grouping, source isolation and combined-report behavior. Initial live attempts exposed coordination timeouts and an overly broad document request; those attempts are retained and do not count as successful acceptance.
