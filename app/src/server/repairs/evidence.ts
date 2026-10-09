@@ -102,9 +102,9 @@ function auditCatalogue(rows: Record<string, unknown>[]) {
       };
       groups.set(key, group);
     }
-    const summary = row.summary as {batch_index?: number; evidence_issues?: unknown[]; evidence_issues_omitted?: number} | undefined;
-    const diagnostic = summary && (summary.batch_index !== undefined || summary.evidence_issues?.length)
-      ? {batch_index: summary.batch_index, evidence_issues: summary.evidence_issues, evidence_issues_omitted: summary.evidence_issues_omitted} : undefined;
+    const summary = row.summary as {batch_index?: number; evidence_issues?: unknown[]; evidence_issues_omitted?: number; timing?: unknown} | undefined;
+    const diagnostic = summary && (summary.batch_index !== undefined || summary.evidence_issues?.length || summary.timing)
+      ? {batch_index: summary.batch_index, evidence_issues: summary.evidence_issues, evidence_issues_omitted: summary.evidence_issues_omitted, timing: summary.timing} : undefined;
     group.events.push({ id: row.id, kind: row.kind, sequence: row.sequence, ...(diagnostic ? { diagnostic } : {}) });
   }
   return {

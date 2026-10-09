@@ -129,11 +129,13 @@ export async function invokeApprovedStep(
       await audit?.("failure", {
         code: failure.code,
         category: failure.category,
+        ...(error instanceof DomainError && error.code === "MODEL_RESPONSE_TIMEOUT" ? { timing: error.details } : {}),
         ...(error instanceof DomainError && error.code.startsWith("EXTRACTION_")
           ? { evidence_issues: error.details ?? null }
           : {}),
       }, {
         ...(batchIndex === undefined ? {} : { batch_index: batchIndex }),
+        ...(error instanceof DomainError && error.code === "MODEL_RESPONSE_TIMEOUT" ? { timing: error.details } : {}),
         ...(issues.length ? {
           evidence_issues: issues.slice(0, 5).map(i => ({ path: i.path.slice(0, 16).map(p => p.slice(0, 100)), reason: i.reason.slice(0, 500) })),
           evidence_issues_omitted: Math.max(0, issues.length - 5),
@@ -184,6 +186,8 @@ export function invocationFailure(error: unknown): RuntimeError {
               "EVALUATION_CONFIGURATION_CHANGED",
               "SANDBOX_UNAVAILABLE",
               "MODEL_UNAVAILABLE",
+              "MODEL_RESPONSE_TIMEOUT",
+              "STEP_EXECUTION_TIMEOUT",
               "MODEL_PROJECT_SPEND_LIMIT",
               "MODEL_QUOTA_EXCEEDED",
               "BUDGET_UNAVAILABLE",

@@ -6,7 +6,7 @@ import { heartbeat, cancellationSignal } from "@temporalio/activity";
 import { getDatabase } from "../server/database";
 import { DomainError } from "../domain/errors";
 import type { RuntimeError } from "../domain/runtime";
-import { RUNTIME_HEARTBEAT_POLICY } from "../domain/runtime-policy";
+import { RUNTIME_DEADLINE_POLICY, RUNTIME_HEARTBEAT_POLICY } from "../domain/runtime-policy";
 import { EvaluationService } from "../server/evaluations/evaluation-service";
 import { EvaluationExecutionService } from "../server/evaluations/execution-service";
 import { validateInSandbox } from "../server/integrations/sandbox-project";
@@ -102,6 +102,7 @@ export async function evaluateStepCase(id: string) {
     () => heartbeat(),
     RUNTIME_HEARTBEAT_POLICY.interval_ms,
   );
+  const deadline = AbortSignal.timeout(RUNTIME_DEADLINE_POLICY.step_ms);
   try {
     heartbeat();
     await new EvaluationExecutionService(await getDatabase()).step(
@@ -112,8 +113,15 @@ export async function evaluateStepCase(id: string) {
         extract: extractForStep,
         model: runtimeModelConfiguration(),
       },
-      AbortSignal.any([cancellationSignal(), AbortSignal.timeout(150000)]),
+      AbortSignal.any([cancellationSignal(), deadline]),
     );
+  } catch (error) {
+    if (cancellationSignal().aborted) throw error;
+    if (!deadline.aborted) throw error;
+    await new EvaluationService(await getDatabase()).recordCase(id, { error: {
+      code: "STEP_EXECUTION_TIMEOUT", category: "infrastructure",
+      message: "The step exceeded its 12-minute execution allowance. No incomplete result was accepted; inspect its last recorded stage and reduce work per step.",
+    } });
   } finally {
     clearInterval(pulse);
   }

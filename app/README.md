@@ -163,3 +163,5 @@ Evaluation scheduling uses `domain/runtime-policy.ts`: two concurrent cases per 
 `domain/evaluation-recovery.ts` defines the narrow transient case-recovery policy. Evaluation services persist one recovery and its failed-run provenance (migration 016); the Temporal scheduler retries only that case. Apply migrations and deploy matching web/worker code after active operations drain.
 
 `server/runtime/agent-interaction.ts` executes one audited Agent request. `invoke-step.ts` owns method checks, bounded extraction batches and generated postprocessing. The batch policy lives in `domain/extraction.ts`; migration 017 expands per-invocation audit capacity. Extraction field diagnostics are included in the bounded repair catalogue without changing locked grades.
+
+The OpenAI integration keeps token preflight (`server/integrations/openai-preflight.ts`) separate from bounded response transport (`server/integrations/openai-response.ts`). Shared runtime deadline values live in `domain/runtime-policy.ts` and are recorded with evaluation settings.
