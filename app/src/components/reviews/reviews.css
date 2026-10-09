@@ -226,3 +226,369 @@
   color: var(--accent);
   background: var(--accent-soft);
 }
+
+.thread-heading-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.review-thread > summary {
+  list-style: none;
+}
+.review-thread > summary::-webkit-details-marker {
+  display: none;
+}
+.review-thread > summary strong {
+  margin-top: 9px;
+}
+.review-thread .expand-conversation {
+  color: var(--muted);
+  padding: 4px;
+}
+.conversation-messages {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 18px 0;
+}
+.conversation-message {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+.conversation-avatar {
+  display: grid;
+  place-items: center;
+  width: 25px;
+  height: 25px;
+  flex: 0 0 25px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--paper);
+  color: var(--accent);
+}
+.conversation-message-body {
+  flex: 1;
+  min-width: 0;
+}
+.conversation-byline {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 4px 0 8px;
+  font-size: 10px;
+  color: var(--muted);
+}
+.conversation-byline strong {
+  font-weight: 600;
+  color: var(--ink);
+}
+.conversation-byline time {
+  font-size: 9px;
+  white-space: nowrap;
+}
+.conversation-bubble {
+  border: 1px solid var(--line);
+  border-radius: 0 10px 10px;
+  padding: 12px;
+  background: var(--surface);
+}
+.conversation-bubble > p {
+  font-size: 12px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 0;
+}
+.conversation-message.owner {
+  flex-direction: row-reverse;
+}
+.conversation-message.owner .conversation-bubble {
+  border-radius: 10px 0 10px 10px;
+  background: var(--accent-soft);
+}
+.conversation-message.owner .conversation-avatar {
+  background: var(--accent);
+  color: var(--surface);
+  border-color: var(--accent);
+}
+.conversation-message.activity .conversation-bubble {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: var(--muted);
+}
+.reply-proposal {
+  margin-top: 16px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+.proposal-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  margin-bottom: 10px;
+}
+.proposal-state {
+  font-size: 10px;
+  color: var(--muted);
+  text-transform: capitalize;
+}
+.block-diff {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  margin-top: 8px;
+  overflow: hidden;
+}
+.block-diff > summary {
+  padding: 9px 10px;
+  background: var(--paper);
+  font-weight: 600;
+}
+.instruction-diff {
+  padding: 10px;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.instruction-diff p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 6px 0 0;
+}
+.instruction-diff del {
+  background: color-mix(in srgb, var(--danger) 10%, var(--surface));
+  color: var(--danger);
+}
+.instruction-diff ins {
+  background: var(--accent-soft);
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid var(--accent);
+}
+.diff-legend {
+  display: flex;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 10px;
+}
+.proposal-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 14px 0 8px;
+}
+.proposal-actions button {
+  font-size: 11px;
+}
+.reply-proposal .field-help {
+  margin-bottom: 0;
+}
+.review-dialog {
+  width: min(1120px, calc(100vw - 32px));
+  max-width: none;
+  height: min(840px, calc(100dvh - 48px));
+  max-height: calc(100dvh - 48px);
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  color: var(--ink);
+  background: var(--surface);
+  box-shadow: 0 20px 70px #20282d26;
+  overflow: hidden;
+}
+.review-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+.review-dialog::backdrop {
+  background: #20282d66;
+}
+.conversation-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 24px 28px 20px;
+  border-bottom: 1px solid var(--line);
+}
+.conversation-header h2 {
+  font-size: 18px;
+  line-height: 1.4;
+  margin: 7px 0 0;
+  max-width: 620px;
+}
+.review-dialog > .thread-content {
+  overflow: auto;
+  padding: 18px 28px 28px;
+}
+.review-dialog .conversation-messages {
+  gap: 18px;
+}
+.review-dialog .conversation-bubble > p,
+.review-dialog .instruction-diff {
+  font-size: 14px;
+}
+.review-dialog .conversation-message.owner {
+  margin-left: 56px;
+}
+.review-dialog .response-composer {
+  background: var(--surface);
+  padding-bottom: 12px;
+}
+@media (max-width: 600px) {
+  .review-dialog {
+    width: calc(100vw - 16px);
+    height: calc(100dvh - 16px);
+    max-height: calc(100dvh - 16px);
+  }
+  .conversation-header {
+    padding: 18px;
+  }
+  .review-dialog > .thread-content {
+    padding: 14px 16px;
+  }
+  .review-dialog .conversation-message.owner {
+    margin-left: 12px;
+  }
+  .review-dialog .response-composer {
+    position: static;
+  }
+}
+
+.thread-heading-status {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.thread-chevron {
+  color: var(--muted);
+}
+.review-thread[open] > summary .thread-chevron {
+  transform: rotate(90deg);
+}
+
+.block-diff > summary .proposal-state {
+  display: block;
+  margin-top: 3px;
+  font-weight: 400;
+}
+.block-proposal-editor {
+  padding: 12px;
+}
+.block-proposal-editor textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 130px;
+  font-size: 12px;
+  line-height: 1.65;
+}
+.review-dialog .block-proposal-editor textarea {
+  font-size: 14px;
+}
+.proposal-original > summary {
+  padding: 8px 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+.proposal-original p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.65;
+}
+.block-proposal-editor .instruction-diff {
+  padding: 8px 0;
+}
+
+.proposal-edit-comparison {
+  display: grid;
+  gap: 14px;
+}
+.proposal-edit-comparison > label {
+  margin: 0;
+}
+.proposal-diff-preview {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 12px;
+}
+.proposal-diff-preview > strong {
+  display: block;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+.diff-legend .diff-removed-label {
+  color: var(--danger);
+  text-decoration: line-through;
+}
+.diff-legend .diff-added-label {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.review-dialog .proposal-edit-comparison.editable {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: stretch;
+}
+@media (max-width: 700px) {
+  .review-dialog .proposal-edit-comparison.editable {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.instruction-diff del + ins {
+  margin-left: 0.15em;
+}
+
+/* Both comparison panes share a frame and header; long content scrolls inside. */
+.proposal-edit-comparison.editable > .proposal-text-editor,
+.proposal-edit-comparison.editable > .proposal-diff-preview {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: clamp(280px, 48dvh, 500px);
+  padding: 0;
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.proposal-pane-heading,
+.proposal-edit-comparison.editable .proposal-diff-preview > strong {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--paper);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+}
+.proposal-edit-comparison.editable .proposal-text-editor textarea {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+  margin: 0;
+  padding: 12px;
+  border: 0;
+  border-radius: 0;
+  resize: none;
+  overflow: auto;
+  outline-offset: -2px;
+}
+.proposal-edit-comparison.editable .instruction-diff {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 12px;
+}
+
+.instruction-diff:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: -2px;
+}

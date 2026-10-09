@@ -55,7 +55,7 @@ test("verifies a suite, runs comparisons, and preserves results when expectation
     plan_version_id: plan.id,
     input_version_id: null,
   });
-  await post(request, `${base}/input-bundles`, {
+  const captured = await post(request, `${base}/input-bundles`, {
     source_kind: "fixture",
     shipment_reference: "SYNTHETIC-001",
     manifest: {
@@ -86,6 +86,12 @@ test("verifies a suite, runs comparisons, and preserves results when expectation
     .getByLabel("Case name", { exact: true })
     .fill("Two missing fields on one good");
   await page.getByLabel("Check label", { exact: true }).fill("One failed good");
+  const comparison = page.getByRole("combobox", { name: "Comparison", exact: true });
+  await comparison.selectOption("text_includes");
+  await expect(page.getByText("Enter a nonempty JSON string.", { exact: false })).toBeVisible();
+  await comparison.selectOption("array_includes");
+  await expect(page.getByText("Enter any JSON value.", { exact: false })).toBeVisible();
+  await comparison.selectOption("equals");
   await page
     .getByLabel("Output path (JSON array)", { exact: true })
     .fill('["goods_failed"]');
@@ -330,5 +336,27 @@ test("verifies a suite, runs comparisons, and preserves results when expectation
   await expect(historyChart.locator(".eval-history-row")).toHaveCount(6);
   await page.getByRole("button", {name:"Show latest 5",exact:true}).click();
   await expect(historyChart.locator(".eval-history-row")).toHaveCount(5);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.getByRole("button", { name: /Test cases/ }).click();
+  await page.getByRole("button", { name: "Create suite revision", exact: true }).click();
+  await page.getByRole("button", { name: "Add case", exact: true }).click();
+  await page.getByLabel("Case name", { exact: true }).fill("Isolated source evidence");
+  await page.getByRole("combobox", { name: "Test scope", exact: true }).selectOption("step");
+  const input = page.getByRole("combobox", { name: "Captured input (optional)", exact: true });
+  await expect(input).toHaveValue("");
+  await input.selectOption(captured.id);
+  await page.getByRole("button", { name: "Save case", exact: true }).click();
+  await page.getByRole("button", { name: /Isolated source evidence/ }).click();
+  await page.getByRole("button", { name: "Edit case", exact: true }).click();
+  await expect(input).toHaveValue(captured.id);
+  await page.screenshot({ path: testInfo.outputPath("step-captured-input.png"), fullPage: true });
+  await page.getByLabel("Case name", { exact: true }).fill("Renamed source evidence");
+  await page.getByRole("button", { name: "Save case", exact: true }).click();
+  await page.getByRole("button", { name: "Edit case", exact: true }).click();
+  await expect(input).toHaveValue(captured.id);
+  await input.selectOption("");
+  await page.getByRole("button", { name: "Save case", exact: true }).click();
+  await page.getByRole("button", { name: "Edit case", exact: true }).click();
+  await expect(input).toHaveValue("");
   expect(errors).toEqual([]);
 });

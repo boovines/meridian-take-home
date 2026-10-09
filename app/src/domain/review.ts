@@ -12,6 +12,7 @@ export const messageInput = z
   .object({
     body: z.string().trim().min(1).max(20000),
     parent_message_id: uuid.nullable().default(null),
+    expected_revision: revisionSchema.optional(),
     request_key: uuid,
   })
   .strict();

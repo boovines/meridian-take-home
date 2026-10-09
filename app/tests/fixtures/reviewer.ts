@@ -18,7 +18,11 @@ export function fixtureReview(
         category: "ambiguity",
         title: "Which invoice fields are required?",
         message: "Confirm the required fields before this step is implemented.",
-        node_ids: [task.id],
+        node_ids: board.nodes
+          .filter(
+            (n) => n.type === "task" && n.instructions === "Check invoice",
+          )
+          .map((n) => n.id),
         connection_ids: [],
         change_kind: "detail",
         proposal: {
@@ -28,5 +32,20 @@ export function fixtureReview(
         },
       },
     ],
+  };
+}
+
+/** Deterministic transport fixture, not evidence of model rewrite quality. */
+export function fixtureReplyRewrite(
+  context: import("../../src/domain/review-reply").ReplyContext,
+): import("../../src/domain/review-reply").ReplyRewrite {
+  return {
+    outcome: "updated",
+    explanation:
+      "I suggest incorporating your answer into the referenced block instructions. Review the changes below.",
+    updates: context.targets.map((node) => ({
+      node_id: node.id,
+      instructions: `${node.instructions}\n${context.answer}`,
+    })),
   };
 }
