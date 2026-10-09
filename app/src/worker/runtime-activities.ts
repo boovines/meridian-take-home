@@ -8,9 +8,9 @@ import { StepService } from "../server/runtime/step-service";
 import { answerScriptedHuman as scriptedAnswer } from "../server/evaluations/scripted-human";
 import { HumanService } from "../server/runtime/human-service";
 import { invokeInSandbox } from "../server/integrations/sandbox-step";
-import { extractForStep } from "../server/integrations/extraction";
 import {
   reasonForStep,
+  extractForStep,
   runtimeModelConfiguration,
 } from "../server/integrations/openai-step";
 export async function prepareExecution(id: string) {

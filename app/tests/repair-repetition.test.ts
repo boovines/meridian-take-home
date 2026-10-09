@@ -47,3 +47,43 @@ it("ignores JSON key order and preserves index changes without assuming record i
   expect(result.changes.map(c=>c.path)).toEqual([[0],[1]]);
   expect(result.alignment).toContain("arrays by index");
 });
+
+it("reports unmatched occurrences on both sides, including a current-only visit", () => {
+  const result = repetitionDifferences([trace(1), trace(2, 2)], [trace(1), trace(3, 3)]);
+  expect(result).toMatchObject({
+    completed_comparisons: 1, unpaired_or_ambiguous_occurrences: 2,
+    unpaired_current_occurrences: 1, unpaired_earlier_occurrences: 1,
+  });
+});
+
+it("bounds deep and cyclic outputs and reports unvisited pairs separately", () => {
+  const deep = (leaf: unknown) => {
+    let value = leaf;
+    for (let i = 0; i < 100; i++) value = { nested: value };
+    return value;
+  };
+  const result = repetitionDifferences([trace(deep(1)), trace(1, 2)], [trace(deep(2)), trace(2, 2)]);
+  expect(result).toMatchObject({
+    traversal_limited: true, completed_comparisons: 0,
+    compared_occurrences: 1, unvisited_paired_occurrences: 1,
+  });
+  const a: Record<string, unknown> = {}, b: Record<string, unknown> = {};
+  a.self = a; b.self = b;
+  expect(repetitionDifferences([trace(a)], [trace(b)]).traversal_limited).toBe(true);
+});
+
+it("does not serialize a structured addition and caps long scalar previews", () => {
+  const added = { toJSON() { throw new Error("must not serialize an unbounded subtree"); } };
+  const result = repetitionDifferences([trace({ added, text: "🙂".repeat(100000) })], [trace({})]);
+  expect(result.changes[0]).toMatchObject({
+    path: ["added"], current: { present: true, truncated: true, preview_omitted: "structured_value" },
+  });
+  expect(result.changes[1].current).toMatchObject({ present: true, truncated: true, original_code_units: 200000 });
+  expect(Buffer.byteLength(JSON.stringify(result.changes))).toBeLessThanOrEqual(16000);
+});
+
+it("bounds wide object enumeration and oversized keys before building paths", () => {
+  const wide = Object.fromEntries(Array.from({length: 50001}, (_, i) => [`k${i}`, i]));
+  expect(repetitionDifferences([trace(wide)], [trace({})]).traversal_limited).toBe(true);
+  expect(repetitionDifferences([trace({ ["x".repeat(1000001)]: 1 })], [trace({})]).traversal_limited).toBe(true);
+});

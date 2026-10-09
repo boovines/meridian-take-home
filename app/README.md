@@ -83,7 +83,7 @@ The first command bundles workflows without credentials and runs in CI. The last
 | `src/server/inputs` | Capture existing Gmail messages and attachment evidence into immutable input bundles |
 | `src/server/runtime` | Run/visit history, immutable interaction audit, run-scoped document access, isolated step contracts and human responses |
 | `src/server/artifacts` | Immutable file records, integrity checks and local/private Supabase storage |
-| `src/server/integrations` | Composio Gmail, OpenAI/LlamaCloud, Temporal, Vercel Sandbox and metered inference adapters |
+| `src/server/integrations` | Composio Gmail, OpenAI, Temporal, Vercel Sandbox and metered inference adapters |
 | `src/server/database.ts`, `src/server/http.ts` | Database and HTTP infrastructure |
 | `src/worker` | Temporal workflow definitions, activities and worker entry point |
 | `migrations` | Ordered SQL migrations; existing applied migrations are not rewritten |
@@ -93,7 +93,7 @@ The first command bundles workflows without credentials and runs in CI. The last
 | `../.runtime` | Ignored runtime databases, certificates, captured inputs and generated artifacts |
 | `../work` | Ignored temporary verification renders and handoff-building tools; not application code |
 
-ESLint rejects inward dependencies from domain to application layers, browser imports of server/worker code, and runtime I/O imports in deterministic workflow modules. Type-only activity imports remain allowed.
+ESLint rejects inward dependencies from domain to application layers, browser imports of server/worker code, and runtime I/O imports in deterministic workflow modules. Node built-ins are restricted in both bare and `node:` forms, including subpaths. Type-only workflow imports remain allowed.
 
 Keep shared modules small and named for their responsibility. Split growing feature modules when another responsibility appears; do not add empty architectural folders or a catch-all utilities file.
 
@@ -139,8 +139,8 @@ This optional live check creates a workflow, captures one supplied message, and 
 
 Evidence-aware document extraction uses the pure `domain/extraction` contract, `server/runtime/extraction` for PDF page bounds, and provider code in `server/integrations`. Isolated evaluation cases can use the same immutable document bundles as workflow runs (migration 011). Run the extraction/evaluation/Gmail fixture tests when changing this boundary.
 
-For bounded paid verification, set `INFERENCE_BUDGET_USD` and an absolute `INFERENCE_BUDGET_LEDGER` path in ignored local storage. All OpenAI adapters share this ledger across local app/worker processes. The guard currently supports `gpt-5.4` or its `gpt-5.4-2026-03-05` snapshot; configure review, engineering and runtime models consistently. A stale `.lock` after a crashed writer requires operator inspection; the guard fails closed rather than discarding unknown spend. Keep the ledger when restarting an experiment.
+For bounded paid verification, set `INFERENCE_BUDGET_USD` and an absolute `INFERENCE_BUDGET_LEDGER` path in ignored local storage. All OpenAI adapters share this ledger across local app/worker processes. The guard currently supports `gpt-5.4` or its `gpt-5.4-2026-03-05` snapshot; configure review, engineering and runtime models consistently. This guard supports processes on one machine sharing a local filesystem; it is not a distributed or provider-enforced billing limit. Budgeted calls explicitly request standard service tier; response model, tier and usage must match the supported pricing before a reservation is settled. Reservations are flushed before dispatch and uncertain charges stay reserved. A stale `.lock` after a crashed writer requires operator inspection; the guard fails closed rather than discarding unknown spend. Keep the ledger when restarting an experiment. An invalid ledger or mismatched ceiling blocks new calls. Token preflight failures stop before inference; unknown request outcomes retain their reservations. Rates are recorded in `openai-client.ts` and must be checked before adding models. Pricing references: [GPT-5.4](https://developers.openai.com/api/docs/models/gpt-5.4) and [service tiers](https://developers.openai.com/api/reference/typescript/resources/responses).
 
 `server/integrations/openai-preflight.ts` owns bounded read-only token-count recovery: at most three attempts for transient failures, honoring cancellation and a shared deadline. It never retries inference or skips a budget reservation. The policy is recorded in evaluation settings; restart idle workers after changing it, and start a new measurement sequence rather than combining results across policies.
 
-`EXTRACTION_PROVIDER=openai` remains the default. The optional `llamacloud` choice requires `LLAMA_CLOUD_API_KEY` and `LLAMA_CLOUD_PROJECT_ID`, uses Extract Agentic 2.5 with Agentic parsing and disables extraction-response caching. `EXTRACTION_REINSPECTION=1` permits one source-localized correction call. These settings apply to the new `extract` contract, not older generated `reason` requests. Live provider selection must follow measured results, not fixture success.
+`ReasoningDocument.source_page_numbers` preserves original page identities when a caller supplies a focused PDF subset. OpenAI document captions describe that mapping; this does not enable automatic reinspection or add another model call.
