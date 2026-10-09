@@ -120,3 +120,36 @@ it("preserves the timeout through the real runtime SDK and does not retry the mo
   expect(failure).toMatchObject({code: "MODEL_RESPONSE_TIMEOUT"}); await pending;
   expect(base).toHaveBeenCalledTimes(1);
 });
+
+it("delivers complete metered response bytes to the SDK across concurrent settlements", async () => {
+  const { createOpenAI } = await import("@ai-sdk/openai");
+  const { generateText } = await import("ai");
+  const dir = await mkdtemp(path.join(os.tmpdir(), "meridian-response-body-"));
+  vi.stubEnv("INFERENCE_BUDGET_LEDGER", path.join(dir, "ledger.json"));
+  vi.stubEnv("INFERENCE_BUDGET_USD", "2");
+  const expected = "Evidence café → complete. ".repeat(600);
+  const body = JSON.stringify({
+    id: "resp_fixture", created_at: 1, model: "gpt-5.4", service_tier: "default", status: "completed",
+    output: [{ id: "msg_fixture", type: "message", role: "assistant", status: "completed",
+      content: [{ type: "output_text", text: expected, annotations: [] }] }],
+    usage: { input_tokens: 10, output_tokens: 5, input_tokens_details: { cached_tokens: 0 }, output_tokens_details: { reasoning_tokens: 0 } },
+  });
+  const base: typeof fetch = async url => String(url).endsWith("/input_tokens")
+    ? Response.json({ input_tokens: 10 })
+    : new Response(body, { headers: { "content-type": "application/json", "x-request-id": "fixture-request" } });
+  const provider = createOpenAI({ apiKey: "fixture", fetch: meteredOpenAIFetch(base, true) });
+  try {
+    for (let round = 0; round < 3; round++) {
+      const results = await Promise.all(Array.from({ length: 10 }, () => generateText({
+        model: provider("gpt-5.4"), prompt: "fixture", maxOutputTokens: 100, maxRetries: 0,
+      })));
+      for (const result of results) {
+        expect(result.text).toBe(expected);
+        expect(result.response.headers?.["x-request-id"]).toBe("fixture-request");
+      }
+    }
+    const ledger = JSON.parse(await readFile(path.join(dir, "ledger.json"), "utf8"));
+    expect(ledger.charges).toHaveLength(30);
+    expect(ledger.charges.every((c: {state: string}) => c.state === "settled")).toBe(true);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
