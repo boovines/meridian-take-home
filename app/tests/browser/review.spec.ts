@@ -136,7 +136,7 @@ test("clarifies an empty outcome and can cancel to resume editing", async ({
 test("one response composer replies, resolves, reopens and rejects with matching status", async ({
   page,
   request,
-}) => {
+}, testInfo) => {
   const workflow = await seededWorkflow(request);
   await page.goto(`/workflows/${workflow.id}`);
   await page.getByRole("button", { name: /Review & comments/ }).click();
@@ -159,6 +159,41 @@ test("one response composer replies, resolves, reopens and rejects with matching
   await response.fill("The five fields in our SOP are required.");
   await thread.getByRole("button", { name: "Send", exact: true }).click();
   await expect(thread.locator(".thread-status")).toHaveText("Answered");
+  const unchanged = await (
+    await request.get(`/api/workflows/${workflow.id}`)
+  ).json();
+  expect(
+    unchanged.nodes.find((n: { type: string }) => n.type === "task")
+      .instructions,
+  ).toBe("Check invoice");
+  await expect(thread.locator(".reply-proposal")).toContainText(
+    "Awaiting your approval",
+  );
+  await thread
+    .getByRole("button", { name: "Accept changes", exact: true })
+    .click();
+  await expect(thread.locator(".proposal-state")).toHaveText("accepted");
+  const updated = await (
+    await request.get(`/api/workflows/${workflow.id}`)
+  ).json();
+  const task = updated.nodes.find((n: { type: string }) => n.type === "task");
+  expect(task.instructions).toContain(
+    "The five fields in our SOP are required.",
+  );
+  await expect(
+    page.locator(".process-block").filter({ hasText: "Validate invoice" }),
+  ).toContainText("The five fields in our SOP are required.");
+  await expect(
+    thread.getByRole("button", { name: "Apply and resolve" }),
+  ).toHaveCount(0);
+  await expect(thread.locator(".instruction-diff")).toContainText(
+    "Check invoice",
+  );
+  await page.screenshot({
+    path: testInfo.outputPath("reply-block-update.png"),
+    fullPage: true,
+  });
+
   await response.fill(
     "This wording is already specified in the process; no change needed.",
   );
@@ -259,6 +294,176 @@ test("review hover and keyboard focus highlight only referenced blocks and conne
   await expect(highlightedEdges).toHaveCount(0);
 });
 
+test("a failed reply update preserves the answer and retries without duplicate messages", async ({
+  page,
+  request,
+}) => {
+  const workflow = await seededWorkflow(request);
+  await page.goto(`/workflows/${workflow.id}`);
+  await page.getByRole("button", { name: /Review & comments/ }).click();
+  await page
+    .getByRole("button", { name: "Start draft review", exact: true })
+    .click();
+  const thread = page
+    .locator(".review-thread")
+    .filter({ hasText: "Which invoice fields are required?" });
+  const response = thread.getByRole("textbox");
+  const initial = await (
+    await request.get(`/api/workflows/${workflow.id}`)
+  ).json();
+  await page.route("**/threads/*/messages", (route) =>
+    route.fulfill({
+      status: 503,
+      json: {
+        error: {
+          code: "UNAVAILABLE",
+          message: "Reply update unavailable. Please retry.",
+        },
+      },
+    }),
+  );
+  await response.fill("Validate all five required fields.");
+  await thread.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(thread.getByRole("alert")).toContainText(
+    "Reply update unavailable",
+  );
+  await expect(response).toHaveValue("Validate all five required fields.");
+  expect(
+    (await (await request.get(`/api/workflows/${workflow.id}`)).json()).nodes,
+  ).toEqual(initial.nodes);
+  await page.unroute("**/threads/*/messages");
+  // Simulate a committed request whose response was lost. Retry must reuse its key.
+  let lost = false;
+  await page.route("**/threads/*/messages", async (route) => {
+    const serverResponse = await route.fetch();
+    if (!lost) {
+      lost = true;
+      await route.fulfill({
+        status: 503,
+        json: {
+          error: {
+            code: "LOST_RESPONSE",
+            message: "Connection interrupted; retry.",
+          },
+        },
+      });
+    } else await route.fulfill({ response: serverResponse });
+  });
+  await thread.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(thread.getByRole("alert")).toContainText(
+    "Connection interrupted",
+  );
+  await expect(response).toHaveValue("Validate all five required fields.");
+  // An unrelated note refreshes this thread to its committed revision before
+  // retry. The uncertain reply must still reuse its original key and parent.
+  await page.getByRole("textbox", { name: "Comment on this workflow", exact: true }).fill("Keep this independent note.");
+  await page.getByRole("button", { name: "Add note", exact: true }).click();
+  await expect(thread.locator(".proposal-state")).toHaveText("Awaiting your approval");
+  await thread.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(thread.locator(".thread-status")).toHaveText("Answered");
+  await expect(response).toHaveValue("");
+  const state = await (
+    await request.get(`/api/workflows/${workflow.id}/reviews`)
+  ).json();
+  expect(
+    state.messages.filter(
+      (m: { author_kind: string; body: string }) => m.author_kind === "customer" && m.body === "Validate all five required fields.",
+    ),
+  ).toHaveLength(1);
+  await thread
+    .getByRole("button", { name: "Accept changes", exact: true })
+    .click();
+  await expect(thread.locator(".proposal-state")).toHaveText("accepted");
+  await page.reload();
+  await page
+    .locator(".process-block strong")
+    .filter({ hasText: "Validate invoice" })
+    .click();
+  await expect(
+    page.getByRole("textbox", { name: "Instructions", exact: true }),
+  ).toHaveValue(/Validate all five required fields\./);
+});
+
+test("expanded conversation preserves drafts, traps focus, rejects changes and works on narrow screens", async ({
+  page,
+  request,
+}, testInfo) => {
+  const workflow = await seededWorkflow(request);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto(`/workflows/${workflow.id}`);
+  await page.getByRole("button", { name: /Review & comments/ }).click();
+  await page
+    .getByRole("button", { name: "Start draft review", exact: true })
+    .click();
+  const thread = page
+    .locator(".review-thread")
+    .filter({ hasText: "Which invoice fields are required?" });
+  const expand = thread.getByRole("button", { name: /Expand conversation:/ });
+  await thread
+    .getByRole("textbox")
+    .fill("Keep the existing required fields, and flag unreadable invoices.");
+  for (let i = 0; i < 3; i++) {
+    await expand.click();
+    await expect(page.getByRole("dialog").getByRole("textbox")).toHaveValue(
+      /Keep the existing/,
+    );
+    await expect(thread.getByRole("textbox")).toHaveCount(1);
+    await page.keyboard.press("Escape");
+    await expect(expand).toBeFocused();
+  }
+  await expand.click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(
+    dialog.getByRole("button", { name: "Accept changes", exact: true }),
+  ).toBeEnabled();
+  await expect(dialog.locator(".conversation-message.assistant")).toHaveCount(
+    2,
+  );
+  await expect(dialog.locator(".conversation-message.owner")).toHaveCount(1);
+  await dialog
+    .getByRole("button", { name: "Close conversation", exact: true })
+    .focus();
+  await page.keyboard.press("Shift+Tab");
+  expect(
+    await dialog.evaluate((el) => el.contains(document.activeElement)),
+  ).toBe(true);
+  await page.screenshot({
+    path: testInfo.outputPath("conversation-expanded.png"),
+    fullPage: true,
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  const box = await dialog.boundingBox();
+  expect(box!.x).toBeGreaterThanOrEqual(0);
+  expect(box!.x + box!.width).toBeLessThanOrEqual(390);
+  expect(await dialog.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(
+    true,
+  );
+  await page.screenshot({
+    path: testInfo.outputPath("conversation-mobile.png"),
+    fullPage: true,
+  });
+  await dialog
+    .getByRole("button", { name: "Reject changes", exact: true })
+    .click();
+  await expect(dialog.locator(".proposal-state")).toHaveText("rejected");
+  const board = await (
+    await request.get(`/api/workflows/${workflow.id}`)
+  ).json();
+  expect(
+    board.nodes.find((n: { type: string }) => n.type === "task").instructions,
+  ).toBe("Check invoice");
+  await dialog
+    .getByRole("button", { name: "Close conversation", exact: true })
+    .click();
+  await expect(expand).toBeFocused();
+  await page.reload();
+  await page.getByRole("button", { name: /Review & comments/ }).click();
+  await expand.click();
+  await expect(page.getByRole("dialog").locator(".proposal-state")).toHaveText(
+    "rejected",
+  );
+});
 
 test("an older initial review response cannot erase a completed review", async ({ page, request }) => {
   const workflow = await seededWorkflow(request);

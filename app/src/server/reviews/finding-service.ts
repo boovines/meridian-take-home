@@ -1,3 +1,4 @@
+import { ReplyService } from "./reply-service";
 import type { z } from "zod";
 import { DomainError } from "../../domain/errors";
 import type { CanvasNode } from "../../domain/canvas";
@@ -24,36 +25,7 @@ export class FindingService {
     threadId: string,
     data: z.infer<typeof messageInput>,
   ) {
-    return this.db.transaction(async (tx) => {
-      const w = await workflow(tx, workflowId, true);
-      const thread = await threadById(tx, workflowId, threadId);
-      const existing = (
-        await tx.query(
-          "SELECT * FROM discussion_messages WHERE thread_id=$1 AND request_key=$2",
-          [threadId, data.request_key],
-        )
-      ).rows[0];
-      if (existing) return reviewRecord(existing);
-      editable(w);
-      if (thread.kind === "clarification")
-        throw new DomainError(
-          409,
-          "USE_CLARIFICATION",
-          "Answer the outcome question in the review panel.",
-        );
-      if (thread.status === "closed")
-        throw new DomainError(
-          409,
-          "THREAD_CLOSED",
-          "Reopen the finding before adding an answer.",
-        );
-      return appendMessage(tx, thread, {
-        author: "customer",
-        body: data.body,
-        parent: data.parent_message_id,
-        requestKey: data.request_key,
-      });
-    });
+    return new ReplyService(this.db).reply(workflowId, threadId, data);
   }
   async note(workflowId: string, data: z.infer<typeof noteInput>) {
     return this.db.transaction(async (tx) => {
