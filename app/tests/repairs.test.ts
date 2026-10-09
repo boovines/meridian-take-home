@@ -535,7 +535,7 @@ it.each(["none", "error", "failed", "passed"] as const)(
     const context = await repairs.generationContext(next.id);
     expect(context.previous_attempts).toHaveLength(observed === "none" ? 0 : 1);
     expect(context.session.baseline_version_id).toBe(f.version.id);
-    expect(context.evaluation.id).toBe(initial.evaluation.id);
+    expect(context.evaluation?.id).toBe(initial.evaluation.id);
     expect(context.cases).toHaveLength(2);
     if (observed !== "none") {
       const prior = context.previous_attempts[0];
