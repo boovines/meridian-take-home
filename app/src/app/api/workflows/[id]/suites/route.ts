@@ -11,6 +11,9 @@ export async function GET(
     return new SuiteService(await getDatabase()).state(
       parseId((await params).id),
       suite ? parseId(suite) : undefined,
+      new URL(request.url).searchParams.has("spec")
+        ? parseId(new URL(request.url).searchParams.get("spec")!)
+        : undefined,
     );
   });
 }
