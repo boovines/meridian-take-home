@@ -55,7 +55,9 @@ export function extractionOutput(dataSchema: ExtractionRequest["output_schema"])
       const envelope = extractionEnvelope.safeParse(value);
       if (!envelope.success || !checkData(envelope.data.data))
         return { success: false, error: new Error("Response does not match the extraction envelope and data schema.") };
-      return { success: true, value: envelope.data as Json };
+      // Validate here without applying Zod normalization: the model-response audit
+      // must retain the provider value. Runtime validation normalizes its own copy.
+      return { success: true, value: value as Json };
     },
   }) });
 }

@@ -34,3 +34,11 @@ it('rejects unsupported open or optional object schemas before paid inference', 
   await expect(extractForStep({ ...request, output_schema: { type: 'object', properties: { seller: { type: 'string' } } } }, [], AbortSignal.timeout(1000))).rejects.toMatchObject({ code: 'EXTRACTION_SCHEMA_INVALID' });
   expect(model.doGenerateCalls).toHaveLength(0);
 });
+
+it('preserves the provider response for audit before runtime normalization', async () => {
+  const raw = { ...envelope, fields: [{ ...envelope.fields[0], evidence: [{ ...envelope.fields[0].evidence[0], text: '  Example  ' }] }] };
+  modelReturning(raw);
+  const output = await extractForStep(request, [], AbortSignal.timeout(1000));
+  expect(output).toEqual(raw);
+  expect(validateExtraction(request, output, [{ artifact_id: id, page_count: 1 }]).fields[0].evidence[0].text).toBe('Example');
+});
