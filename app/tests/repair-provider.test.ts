@@ -4,7 +4,7 @@ import { MockLanguageModelV4 } from "ai/test";
 import type { Project } from "../src/domain/project";
 import type { RepairContext } from "../src/server/repairs/generation-service";
 const state = vi.hoisted(() => ({ model: undefined as unknown }));
-vi.mock("@ai-sdk/openai", () => ({ openai: () => state.model }));
+vi.mock("../src/server/integrations/openai-client", () => ({ openai: () => state.model }));
 vi.mock("../src/server/repairs/evidence", () => ({ repairPrompt: () => "Locked test context" }));
 import { repairProjectSources } from "../src/server/integrations/openai-repair";
 

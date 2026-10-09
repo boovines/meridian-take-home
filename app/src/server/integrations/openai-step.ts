@@ -3,7 +3,7 @@ import {
   type ExtractionRequest,
 } from "../../domain/extraction";
 import { generateText, Output, type UserContent } from "ai";
-import { openai } from "@ai-sdk/openai";
+import { openai } from "./openai-client";
 import { DomainError } from "../../domain/errors";
 import type { Json } from "../../domain/runtime";
 import type { ReasoningDocument } from "../runtime/documents";
@@ -36,7 +36,7 @@ export async function reasonForStep(
   for (const document of documents) {
     content.push({
       type: "text",
-      text: `Captured document ${document.artifact_id}: ${document.name}`,
+      text: `Captured document ${document.artifact_id}: ${document.name}${document.source_page_numbers ? `. PDF pages in order correspond to original source pages ${document.source_page_numbers.join(", ")}. Cite original source page numbers.` : ""}`,
     });
     if (document.media_type === "application/pdf")
       content.push({

@@ -1,6 +1,6 @@
 import { generateText, Output, tool, isStepCount } from "ai";
 import { z } from "zod";
-import { openai } from "@ai-sdk/openai";
+import { openai } from "./openai-client";
 import { repairSources } from "../../domain/repair";
 import type { Project } from "../../domain/project";
 import type { RepairContext } from "../repairs/generation-service";

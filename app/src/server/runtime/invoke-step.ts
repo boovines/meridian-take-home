@@ -213,6 +213,8 @@ export function invocationFailure(error: unknown): RuntimeError {
               "MODEL_UNAVAILABLE",
               "MODEL_PROJECT_SPEND_LIMIT",
               "MODEL_QUOTA_EXCEEDED",
+              "BUDGET_UNAVAILABLE",
+              "INFERENCE_BUDGET_LIMIT",
               "AUDIT_UNAVAILABLE",
               "EXTRACTION_UNAVAILABLE",
             ].includes(error.code)
