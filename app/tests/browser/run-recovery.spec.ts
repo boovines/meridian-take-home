@@ -155,9 +155,16 @@ for (const needsClarification of [false, true]) {
               name: "Packet review",
               desired_outcome: "Preview report",
             },
+            specs: [{ id: "spec", version_number: 1, created_at: date }],
             spec: {
               id: "spec",
+              version_number: 1,
               board: {
+                workflow: {
+                  id: w,
+                  name: "Packet review",
+                  desired_outcome: "Preview report",
+                },
                 nodes: [{ id: n, title: "Read documents" }],
                 connections: [],
               },
@@ -248,11 +255,9 @@ for (const needsClarification of [false, true]) {
           name: "Use for future runs of this workflow",
         }),
       ).not.toBeChecked();
-      await page
-        .locator(".recovery-question")
-        .screenshot({
-          path: testInfo.outputPath("engineer-clarification.png"),
-        });
+      await page.locator(".recovery-question").screenshot({
+        path: testInfo.outputPath("engineer-clarification.png"),
+      });
       await page
         .getByLabel("Your clarification")
         .fill("REG means registration number. Inspect the printed label.");
