@@ -41,8 +41,8 @@ test("optional context previews selected moments, persists and can be removed wi
     .check();
   await page.getByLabel("Recording name").fill("Receiving demonstration");
   await page.getByRole("button", { name: "Save selected context" }).click();
-  await expect(page.getByRole("status")).toContainText(
-    "Context saved for the next review",
+  await expect(page.locator(".process-context-dialog").getByRole("status")).toContainText(
+    "Context saved for scoping and review",
   );
   await page.reload();
   await page.getByRole("button", { name: "Process context Optional" }).click();
@@ -70,7 +70,7 @@ test("optional context previews selected moments, persists and can be removed wi
   await page
     .getByRole("button", { name: "Confirm removal", exact: true })
     .click();
-  await expect(page.getByRole("status")).toContainText("Context removed");
+  await expect(page.locator(".process-context-dialog").getByRole("status")).toContainText("Context removed");
   const after = await (
     await request.get(`/api/workflows/${workflow.id}`)
   ).json();

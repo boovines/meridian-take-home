@@ -48,6 +48,7 @@ export function BoardClient({
   id: string;
   openRequests?: boolean;
 }) {
+  const [contextRevision, setContextRevision] = useState(0);
   const [board, setBoard] = useState<Board | null>(null),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
@@ -356,7 +357,10 @@ export function BoardClient({
                   workflowId={id}
                   locked={locked}
                   onOpen={canLeave}
-                  onSaved={load}
+                  onSaved={async () => {
+                    await load();
+                    setContextRevision((value) => value + 1);
+                  }}
                 />
                 <button onClick={openReviews} aria-pressed={reviewOpen}>
                   <MessageSquare size={14} /> Review & comments{" "}
@@ -423,6 +427,7 @@ export function BoardClient({
               </aside>
               <section className="canvas-stage" aria-label="Process canvas">
                 <ScopingNote
+                  contextRevision={contextRevision}
                   board={board}
                   onApplied={(next) => {
                     boardVersion.current++;

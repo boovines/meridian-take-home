@@ -4,6 +4,7 @@ import { FileUp, X, Check, Monitor } from "lucide-react";
 import { api, errorMessage } from "@/lib/api";
 import {
   importProcessMoments,
+  rawProcessContext,
   type ProcessContextRecord,
   type RawProcessContext,
 } from "@/domain/process-context";
@@ -108,7 +109,7 @@ export function ProcessContextPanel({
       setError("");
     } catch {
       setError(
-        "This export could not be read. Use 1–50 moments with unique IDs, timestamps and text, totalling at most 50 KB of context.",
+        "This export could not be read. Use 1–50 moments with unique IDs, timestamps and text, with at most 24,000 characters per moment.",
       );
     }
   }
@@ -126,6 +127,10 @@ export function ProcessContextPanel({
             kind: "sampled_screen_context",
             moments: moments.filter((m) => selected.includes(m.id)),
           };
+      if (context && !rawProcessContext.safeParse(context).success)
+        throw new Error(
+          "Selected context exceeds 50 KB. Deselect less relevant moments and try again.",
+        );
       const result = await api<ProcessContextRecord>(endpoint, "PUT", {
         expected_revision: saved.revision,
         context,
@@ -134,7 +139,7 @@ export function ProcessContextPanel({
       setStatus(
         remove
           ? "Context removed. Your workflow is unchanged."
-          : "Context saved for the next review. Your workflow is unchanged.",
+          : "Context saved for scoping and review. Your workflow is unchanged.",
       );
       try {
         await onSaved();
@@ -196,6 +201,13 @@ export function ProcessContextPanel({
         </p>
       )}
       {!saved && !error && <p role="status">Loading saved context…</p>}
+      {!locked && (
+        <p className="field-help">
+          Changing context refreshes initial scoping. Notes and history stay
+          saved; unapplied previews must be regenerated. Existing blocks stay
+          unchanged.
+        </p>
+      )}
       <div className="context-body">
         <section className="context-import">
           <h3>{saved?.context ? "Recording attached" : "Bring a recording"}</h3>
@@ -366,10 +378,11 @@ export function ProcessContextPanel({
             </div>
           )}
           <p className="context-disclosure">
-            Saving stores selected text with this workflow. Starting AI review
-            or replying to an AI finding sends saved context to the configured
-            model provider. Screenshots and separate URL fields are excluded;
-            visible text can still contain sensitive information.
+            Saving stores selected text with this workflow. Scoping the
+            workflow, starting AI review or replying to an AI finding sends
+            saved context to the configured model provider. Screenshots and
+            separate URL fields are excluded; visible text can still contain
+            sensitive information.
           </p>
         </section>
       </div>
@@ -432,7 +445,7 @@ export function ProcessContextPanel({
           {dirty
             ? "Unsaved context changes"
             : saved?.context
-              ? "Included in the next review"
+              ? "Included in scoping and review"
               : "No context attached. The usual review works without it."}
         </span>
         <div className="button-row">

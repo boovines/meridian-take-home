@@ -1,3 +1,4 @@
+import { ScopingService } from "../src/server/scoping/service";
 import { randomUUID } from "node:crypto";
 import { beforeAll, afterAll, it, expect } from "vitest";
 import { createDatabase, migrate, type Database } from "../src/server/database";
@@ -88,6 +89,7 @@ it("leaves context absent for existing workflows and preserves graph during atta
     context: recording,
   });
   expect(saved.revision).toBe(2);
+  expect((await context.save(w.id, { expected_revision: 2, context: recording })).revision).toBe(2);
   const after = await readBoard(db, w.id);
   expect(after.nodes).toEqual(before.nodes);
   expect(after.connections).toEqual(before.connections);
@@ -153,4 +155,31 @@ it("freezes context as evidence, never as executable graph instructions, and loc
       [w.id],
     ),
   ).rejects.toThrow();
+});
+
+it("snapshots context for scoping and invalidates in-flight work after a context change", async () => {
+  const w = await setup();
+  const scoping = new ScopingService(db);
+  await scoping.state(w.id);
+  await scoping.saveNote(w.id, {
+    note: "Review a request and prepare a report.",
+    expected_revision: 1,
+  });
+  await context.save(w.id, { expected_revision: 1, context: recording });
+  const state = await scoping.state(w.id);
+  const op = await scoping.request(w.id, {
+    action: "start",
+    body: "",
+    expected_revision: state.session.revision,
+    expected_note_revision: state.session.note_revision,
+    request_key: randomUUID(),
+  });
+  expect(op.input.raw_process_data).toEqual(recording);
+  await context.save(w.id, { expected_revision: 2, context: null });
+  expect(await scoping.prepare(op.id)).toBeNull();
+  const updated = await scoping.state(w.id);
+  expect(updated.operation?.status).toBe("cancelled");
+  expect(updated.session.current_scope_id).toBeNull();
+  expect(updated.session.current_preview_id).toBeNull();
+  expect(updated.session.note).toBe(state.session.note);
 });

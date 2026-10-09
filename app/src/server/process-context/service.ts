@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import type { z } from "zod";
 import {
   saveProcessContext,
@@ -41,7 +42,7 @@ export class ProcessContextService {
           "STALE_CONTEXT",
           "Process context changed in another tab. Reload saved context before replacing it.",
         );
-      if (JSON.stringify(current.context) === JSON.stringify(data.context))
+      if (isDeepStrictEqual(current.context, data.context))
         return current;
       const row = (
         await tx.query(
@@ -50,6 +51,16 @@ export class ProcessContextService {
           [id, current.revision + 1, data.context],
         )
       ).rows[0];
+      // Existing scoped previews were based on a different evidence set. Preserve
+      // history while requiring a new interview before an unapplied preview is used.
+      await tx.query(
+        "UPDATE scoping_operations SET status='cancelled',finished_at=now() WHERE workflow_id=$1 AND status IN ('queued','running')",
+        [id],
+      );
+      await tx.query(
+        "UPDATE scoping_sessions SET revision=revision+1,incorporated_note_revision=NULL,current_scope_id=NULL,current_preview_id=NULL,updated_at=now() WHERE workflow_id=$1 AND applied_preview_id IS NULL",
+        [id],
+      );
       await tx.query(
         "UPDATE workflows SET content_revision=content_revision+1,updated_at=now() WHERE id=$1",
         [id],

@@ -28,7 +28,12 @@ export class FreezeService {
         [id, board.workflow.process_version],
       )
     ).rows;
-    const pending = (await tx.query("SELECT id,question AS title FROM scoping_obligations WHERE workflow_id=$1 AND thread_id IS NULL", [id])).rows;
+    const pending = (
+      await tx.query(
+        "SELECT id,question AS title FROM scoping_obligations WHERE workflow_id=$1 AND thread_id IS NULL",
+        [id],
+      )
+    ).rows;
     return {
       board,
       issues: validateGraph(board),
@@ -120,7 +125,15 @@ export class FreezeService {
             id,
             w.content_revision,
             graph,
-            { reviews, threads, messages, anchors, requests, ...(raw_process_data ? { raw_process_data } : {}), scoping: await scopingFreezeEvidence(tx, id) },
+            {
+              reviews,
+              threads,
+              messages,
+              anchors,
+              requests,
+              ...(raw_process_data ? { raw_process_data } : {}),
+              scoping: await scopingFreezeEvidence(tx, id),
+            },
             ready.unreviewed_changes && data.acknowledge_unreviewed,
             w.process_version,
             w.base_frozen_spec_id,

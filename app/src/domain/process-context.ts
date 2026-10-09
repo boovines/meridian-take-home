@@ -60,12 +60,8 @@ export function importProcessMoments(input: unknown) {
       }),
     )
     .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
-  rawProcessContext.parse({
-    label: "Recording",
-    source: "deepshelves",
-    kind: "sampled_screen_context",
-    moments,
-  });
+  if (new Set(moments.map((moment) => moment.id)).size !== moments.length)
+    throw new Error("Each moment must have a unique ID.");
   return moments;
 }
 
