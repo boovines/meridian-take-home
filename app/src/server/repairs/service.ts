@@ -477,17 +477,10 @@ export class RepairService {
         };
       }),
     );
-    const evaluation = await evaluationById(
-      this.db,
-      attempt.baseline_evaluation_id,
-    );
-    const failedCaseIds = baselineResults
-      .filter((r) => r.outcome !== "passed")
-      .map((r) => r.case_id);
-    const earlierRuns = failedCaseIds.length
-      ? (
-          await this.db.query(
-            `SELECT id,status,verdict FROM evaluation_runs WHERE workflow_id=$1 AND implementation_version_id=$2
+    const evaluation = await evaluationById(this.db, attempt.baseline_evaluation_id);
+    const failedCaseIds = baselineResults.filter(r => r.outcome !== "passed").map(r => r.case_id);
+    const earlierRuns = failedCaseIds.length && !isDeepStrictEqual(evaluation.execution_configuration, {}) ? (await this.db.query(
+      `SELECT id,status,verdict FROM evaluation_runs WHERE workflow_id=$1 AND implementation_version_id=$2
        AND suite_version_id=$3 AND execution_configuration=$4::jsonb AND created_at<$5 AND status='completed'
        ORDER BY created_at DESC LIMIT 2`,
             [
@@ -925,12 +918,7 @@ export class RepairService {
           )
         ).rows
       : [];
-    const confirmations = (
-      await this.db.query(
-        "SELECT c.*,e.status,e.verdict FROM repair_confirmations c JOIN evaluation_runs e ON e.id=c.evaluation_run_id WHERE c.workflow_id=$1 ORDER BY c.created_at,c.round",
-        [wid],
-      )
-    ).rows;
+    const confirmations = sessions[0] ? (await this.db.query("SELECT c.*,e.status,e.verdict FROM repair_confirmations c JOIN repair_attempts a ON a.id=c.attempt_id JOIN evaluation_runs e ON e.id=c.evaluation_run_id WHERE a.session_id=$1 ORDER BY a.attempt_number,c.round", [sessions[0].id])).rows : [];
     return { sessions, attempts, replays, confirmations };
   }
 }
