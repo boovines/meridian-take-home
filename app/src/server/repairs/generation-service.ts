@@ -15,7 +15,7 @@ import type { Database } from "../database";
 import { ArtifactService } from "../artifacts/service";
 import { assembleProject, validateProject } from "../engineering/project";
 import { VersionService } from "../engineering/version-service";
-import { RepairService, attemptById } from "./service";
+import { RepairService, attemptById, retainedRepairArtifact } from "./service";
 import { repairIntegrityEvidence, changedStepSources, type PreviousSourceEvidence } from "./evidence";
 import { completeRepairSources } from "./patch";
 import { repairDocumentBudget, RepairDocumentReader, type ReadRepairDocument } from "./documents";
@@ -56,12 +56,26 @@ export class RepairGenerationService {
       claimed.attempt.baseline_version_id,
     );
     // Reuse a complete durable artifact if a prior activity died before publishing.
-    const checkpoint = (
+    let checkpoint = (
       await this.db.query(
         "SELECT id,metadata FROM artifacts WHERE workflow_id=$1 AND kind='generated_project' AND state='ready' AND metadata->>'repair_attempt_id'=$2 ORDER BY created_at DESC LIMIT 1",
         [claimed.job.workflow_id, attemptId],
       )
     ).rows[0];
+    if (!checkpoint && claimed.attempt.attempt_number === 1 && claimed.attempt.baseline_evaluation_id !== null && typeof claimed.job.source_request?.retained_attempt_id === "string") {
+      const old = await retainedRepairArtifact(this.db, claimed.job.workflow_id,
+        claimed.job.source_request.retained_attempt_id, claimed.attempt.baseline_evaluation_id);
+      const { bytes } = await this.artifacts.read(claimed.job.workflow_id, old.id);
+      // Preserve exact source bytes and link both artifacts; all validation below
+      // still runs against the new session's context before publication.
+      const recovered = await this.artifacts.create(claimed.job.workflow_id,
+        "generated_project", "repair-project.json", "application/json", bytes, {
+          ...old.metadata, repair_attempt_id: attemptId,
+          recovered_from_attempt_id: claimed.job.source_request.retained_attempt_id,
+          recovered_from_artifact_id: old.id,
+        });
+      checkpoint = { id: recovered.id, metadata: recovered.metadata };
+    }
     let project: Project,
       artifactId: string,
       diagnosis: z.infer<typeof repairSources>["diagnosis"];

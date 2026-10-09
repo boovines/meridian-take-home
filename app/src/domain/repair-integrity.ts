@@ -119,13 +119,11 @@ export function assertRepairEvidenceIntegrity(
   const budget = new ScanBudget();
   const observed = evidenceIdentifiers(evidence, budget);
   if (!observed.size) return;
-  const permitted = evidenceIdentifiers(frozenDefinition, budget);
+  // Inspect changed runtime text first. Baseline/frozen constants only matter
+  // when a candidate actually contains an identifier observed in the evidence.
+  // Avoid spending the shared scan budget on exemptions we never need.
+  const possibleCopies: (Occurrence & { moduleIndex: number })[] = [];
   let files = 0;
-  for (const file in baselineFiles) {
-    if (!Object.hasOwn(baselineFiles, file) || !file.endsWith(".mjs")) continue;
-    budget.value();
-    for (const entry of runtimeIdentifiers(baselineFiles[file], budget) ?? []) permitted.add(entry.identifier);
-  }
   for (const file in candidateFiles) {
     if (!Object.hasOwn(candidateFiles, file) || !file.endsWith(".mjs")) continue;
     budget.value();
@@ -133,8 +131,23 @@ export function assertRepairEvidenceIntegrity(
     if (source === baselineFiles[file]) continue;
     const entries = runtimeIdentifiers(source, budget);
     if (!entries) throw new DomainError(422, "REPAIR_INTEGRITY_UNCHECKABLE", `Changed JavaScript module ${moduleIndex} could not be inspected. Check or simplify its syntax in the retained patch before retrying; no candidate was cleared.`);
-    const copied = entries.find(entry => observed.has(entry.identifier) && !permitted.has(entry.identifier));
-    if (copied) throw new DomainError(
+    for (const entry of entries)
+      if (observed.has(entry.identifier)) possibleCopies.push({ ...entry, moduleIndex });
+  }
+  if (!possibleCopies.length) return;
+  const permitted = evidenceIdentifiers(frozenDefinition, budget);
+  const needsExemption = () => possibleCopies.some(entry => !permitted.has(entry.identifier));
+  if (!needsExemption()) return;
+  for (const file in baselineFiles) {
+    if (!Object.hasOwn(baselineFiles, file) || !file.endsWith(".mjs")) continue;
+    budget.value();
+    for (const entry of runtimeIdentifiers(baselineFiles[file], budget) ?? []) permitted.add(entry.identifier);
+    if (!needsExemption()) return;
+  }
+  const copied = possibleCopies.find(entry => !permitted.has(entry.identifier));
+  if (copied) {
+    const { moduleIndex } = copied;
+    throw new DomainError(
       422, "REPAIR_EVIDENCE_LEAK",
       `Changed JavaScript module ${moduleIndex}, line ${copied.line}, column ${copied.column} introduces a distinctive identifier from evaluation inputs or answers into runtime text. It is absent from frozen requirements and baseline runtime text. Inspect the retained patch and use a general rule; an intentional new constant requires an engineer decision. This check does not prove absence of other overfitting.`,
       { module_index: moduleIndex, line: copied.line, column: copied.column },

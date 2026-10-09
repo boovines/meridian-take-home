@@ -4,6 +4,7 @@ import { isDeepStrictEqual } from "node:util";
 import { DomainError } from "../../domain/errors";
 import { assertRepairEvidenceIntegrity } from "../../domain/repair-integrity";
 import { grade } from "../../domain/grading";
+import { counterexampleInput, applyCounterexample } from "../../domain/repair-counterexample";
 import type { Project } from "../../domain/project";
 import { selectRoutes, type Json } from "../../domain/runtime";
 import type { Database, Queryable } from "../database";
@@ -21,6 +22,7 @@ import type { RepairContext } from "./generation-service";
 export const replayInput = z
   .object({
     recorded_input_id: z.uuid(),
+    counterexample: counterexampleInput.nullable().optional(),
     candidate_patch: z
       .object({
         node_id: z.uuid(),
@@ -147,6 +149,8 @@ export class RepairStepReplay {
       }
       recordedOutput = isolated!.actual_output;
     }
+    const recordedInputHash = createHash("sha256").update(JSON.stringify(executionContext)).digest("hex");
+    if (input.counterexample) executionContext = applyCounterexample(executionContext, input.counterexample);
     const project: Project = {
       ...this.baseline,
       files: {
@@ -162,6 +166,8 @@ export class RepairStepReplay {
         node_id: nodeId,
         context: executionContext,
         candidate_patch: input.candidate_patch,
+        counterexample: input.counterexample ?? null,
+        recorded_input_sha256: recordedInputHash,
       }),
     );
     if (requestBytes.length > 2_000_000)
@@ -249,17 +255,22 @@ export class RepairStepReplay {
         status: "completed",
         selected_connection_ids: routes,
         actual_output: result.output,
-        changed_from_recording: !isDeepStrictEqual(
+        changed_from_recording: input.counterexample ? null : !isDeepStrictEqual(
           recordedOutput,
           result.output,
         ),
         recorded_output: recordedOutput,
-        checks: caseDefinition
+        hypothesis_checks: input.counterexample ? JSON.parse(JSON.stringify(grade(result.output,
+          input.counterexample.expectations.map((item,index)=>({...item,key:`hypothesis-${index+1}`,label:`Model hypothesis ${index+1}`,operator:"equals" as const})),
+        ))) : [],
+        checks: caseDefinition && !input.counterexample
           ? JSON.parse(
               JSON.stringify(grade(result.output, caseDefinition.assertions)),
             )
           : [],
-        assertions_scope: caseDefinition
+        assertions_scope: input.counterexample
+          ? "model-authored hypothesis only; modified input is not a trusted case"
+          : caseDefinition
           ? "same isolated case only"
           : "none; workflow totals do not grade an intermediate step",
       };
@@ -283,6 +294,9 @@ export class RepairStepReplay {
         .update(input.candidate_patch.source_lines.join("\n"))
         .digest("hex"),
       diagnostic_only: true,
+      input_modified: !!input.counterexample,
+      recorded_input_sha256: recordedInputHash,
+      hypothesis_rationale: input.counterexample?.rationale ?? null,
     };
     const resultArtifact = await this.artifacts.create(
       wid,
@@ -301,7 +315,7 @@ export class RepairStepReplay {
         [
           replay.id,
           resultArtifact.id,
-          { status: report.status, node_id: nodeId, diagnostic_only: true },
+          { status: report.status, node_id: nodeId, diagnostic_only: true, input_modified: !!input.counterexample },
         ],
       );
     });
@@ -311,6 +325,13 @@ export class RepairStepReplay {
       : {
           replay_id: replay.id,
           diagnostic_only: true,
+          input_modified: !!input.counterexample,
+          assertions_scope: report.assertions_scope ?? null,
+          hypothesis_checks_summary: Array.isArray(report.hypothesis_checks)
+            ? report.hypothesis_checks.map(check => {
+              const value = check as Record<string, Json>;
+              return { key: value.key, passed: value.passed, missing: value.missing };
+            }) : [],
           truncated: true,
           json_preview: text.slice(0, 48000),
           result_artifact_id: resultArtifact.id,

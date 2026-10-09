@@ -18,7 +18,7 @@ it.each(["application/pdf", "text/plain"])("feeds %s evidence back to the model,
     return {
       content: count <= 3
         ? [{ type: "tool-call", toolCallId: `read-${count}`, toolName: "inspectDocument", input: JSON.stringify({ artifact_id: id }) }]
-        : count <= 5 ? [{ type: "tool-call", toolCallId: `replay-${count}`, toolName: "replay_step", input: JSON.stringify({ recorded_input_id: id, candidate_patch: { node_id: node, source_lines: ["export function run() {}"] } }) }]
+        : count <= 5 ? [{ type: "tool-call", toolCallId: `replay-${count}`, toolName: "replay_step", input: JSON.stringify({ recorded_input_id: id, candidate_patch: { node_id: node, source_lines: ["export function run() {}"] }, ...(count === 4 ? { counterexample: { rationale: "Distinct numeric values must stay distinct.", changes: [{path:["input","value"],value:"15"}], expectations: [{path:["same"],expected:false}] } } : {}) }) }]
         : [{ type: "text", text: JSON.stringify(answer) }],
       finishReason: { unified: count <= 5 ? "tool-calls" : "stop", raw: undefined },
       usage: { inputTokens: { total: 1, noCache: 1, cacheRead: undefined, cacheWrite: undefined }, outputTokens: { total: 1, text: 1, reasoning: undefined } },
@@ -28,14 +28,16 @@ it.each(["application/pdf", "text/plain"])("feeds %s evidence back to the model,
   state.model = model;
   const bytes = Buffer.from(media === "application/pdf" ? "%PDF-1.7\nfixture" : "Verified source text");
   const read = vi.fn(async () => ({ artifact_id: id, name: "source", media_type: media, bytes }));
-  const replay = vi.fn(async () => ({ diagnostic_only: true, changed_from_recording: false }));
+  const replay = vi.fn(async (input: unknown) => ({ diagnostic_only: true, input_modified: !!(input as {counterexample?:unknown}).counterexample, changed_from_recording: false, hypothesis_checks: [{passed:false}] }));
   const result = await repairProjectSources({ session: { origin: "evaluation" } } as RepairContext, {} as Project, AbortSignal.timeout(10000), [], read, async()=>({}), replay);
   expect(result).toEqual(answer);
   expect(read).toHaveBeenCalledTimes(3);
   expect(read).toHaveBeenCalledWith(id, undefined);
   expect(replay).toHaveBeenCalledTimes(2);
+  expect(replay.mock.calls[0]?.[0]).toMatchObject({counterexample:{changes:[{path:["input","value"],value:"15"}],expectations:[{path:["same"],expected:false}]}});
   expect(model.doGenerateCalls).toHaveLength(6);
   expect(JSON.stringify(model.doGenerateCalls[4].prompt)).toContain("changed_from_recording");
+  expect(JSON.stringify(model.doGenerateCalls[4].prompt)).toContain("hypothesis_checks");
   expect(model.doGenerateCalls[5].toolChoice).toEqual({ type: "none" });
   const evidence = model.doGenerateCalls[1].prompt.find(message => message.role === "tool");
   expect(JSON.stringify(evidence)).toContain(id);

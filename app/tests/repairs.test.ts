@@ -1406,3 +1406,85 @@ it.each([false,true])("preserves scheduling across candidate confirmation rounds
   expect(evaluationCaseConcurrency(ready.evaluation.execution_configuration)).toBe(legacy?1:2);
   await repairs.finish(job.id,"cancelled","Scheduling verified.");
 });
+
+it.each([false, true])("recovers a scan-limited artifact without paying for generation, preserving history and rechecking copies (%s)", async (contaminated) => {
+  const { f, job, initial } = await prepared();
+  const old = await repairs.beginAttempt(job.id, 1);
+  const context = await repairs.generationContext(old.id);
+  const baseline = (await new VersionService(db, artifacts).load(f.w.id, f.version.id)).project;
+  const generated = await generator.generate(context);
+  if (contaminated) generated.project.steps[0].source_lines.push('const example = "SYNTHETIC-001";');
+  const project = assembleProject(context.spec.board, context.spec.id, context.plan, context.steps,
+    completeRepairSources(baseline, context.steps, generated), "fixture");
+  const retained = await artifacts.create(f.w.id, "generated_project", "repair-project.json", "application/json",
+    Buffer.from(JSON.stringify(project)), {repair_attempt_id:old.id,diagnosis:generated.diagnosis});
+  await repairs.finish(job.id, "needs_attention", "Host scanner exhausted its budget.", "REPAIR_INTEGRITY_LIMIT");
+  const {retainedRepairArtifact} = await import("../src/server/repairs/service");
+  await expect(retainedRepairArtifact(db,randomUUID(),old.id,initial.evaluation.id)).rejects.toMatchObject({code:"REPAIR_RECOVERY_UNAVAILABLE"});
+  await expect(retainedRepairArtifact(db,f.w.id,old.id,randomUUID())).rejects.toMatchObject({code:"REPAIR_RECOVERY_UNAVAILABLE"});
+  const request = {request_key:randomUUID(), baseline_evaluation_id:initial.evaluation.id, retained_attempt_id:old.id};
+  const next = await repairs.start(f.w.id, request);
+  expect((await repairs.start(f.w.id, request)).job.id).toBe(next.job.id);
+  await expect(repairs.start(f.w.id, {...request,retained_attempt_id:randomUUID()})).rejects.toMatchObject({code:"REQUEST_REUSED"});
+  await repairs.prepare(next.job.id);
+  const attempt = await repairs.beginAttempt(next.job.id,1);
+  const adapter = {...generator,generate:vi.fn(async () => {throw new Error("Must reuse retained artifact");})};
+  if (contaminated) {
+    await expect(generation.run(attempt.id,adapter,AbortSignal.timeout(10000))).rejects.toMatchObject({code:"REPAIR_EVIDENCE_LEAK"});
+  } else {
+    const recovered = await generation.run(attempt.id,adapter,AbortSignal.timeout(10000));
+    expect(recovered.candidate_version_id).toBeTruthy();
+    const loaded = await new VersionService(db,artifacts).load(f.w.id,recovered.candidate_version_id!);
+    expect(loaded.project).toEqual(project);
+    expect(recovered.status).toBe("running"); // Publication is not acceptance.
+  }
+  expect(adapter.generate).not.toHaveBeenCalled();
+  const copy = (await db.query("SELECT * FROM artifacts WHERE metadata->>'repair_attempt_id'=$1",[attempt.id])).rows[0];
+  expect(copy.metadata).toMatchObject({recovered_from_attempt_id:old.id,recovered_from_artifact_id:retained.id});
+  expect((await artifacts.read(f.w.id,String(copy.id))).bytes).toEqual((await artifacts.read(f.w.id,retained.id)).bytes);
+  expect((await db.query("SELECT status,error_code,candidate_version_id FROM repair_attempts WHERE id=$1",[old.id])).rows[0])
+    .toMatchObject({status:"failed",error_code:"REPAIR_INTEGRITY_LIMIT",candidate_version_id:null});
+  await repairs.finish(next.job.id,"cancelled","Recovery test complete.");
+});
+
+it("does not recover artifacts from unrelated baselines or implementation failures", async () => {
+  const { f, job, initial } = await prepared();
+  const attempt = await repairs.beginAttempt(job.id,1);
+  await repairs.finish(job.id,"needs_attention","Copy detected.","REPAIR_EVIDENCE_LEAK");
+  await expect(repairs.start(f.w.id,{request_key:randomUUID(),baseline_evaluation_id:initial.evaluation.id,retained_attempt_id:attempt.id}))
+    .rejects.toMatchObject({code:"REPAIR_RECOVERY_UNAVAILABLE"});
+  const {retainedRepairArtifact} = await import("../src/server/repairs/service");
+  await expect(retainedRepairArtifact(db,randomUUID(),attempt.id,initial.evaluation.id)).rejects.toMatchObject({code:"REPAIR_RECOVERY_UNAVAILABLE"});
+  await expect(retainedRepairArtifact(db,f.w.id,attempt.id,randomUUID())).rejects.toMatchObject({code:"REPAIR_RECOVERY_UNAVAILABLE"});
+});
+
+it("separates synthetic hypotheses from locked checks and retains the original input", async () => {
+  const {RepairStepReplay}=await import("../src/server/repairs/replay");
+  const {f,job}=await prepared(); const attempt=await repairs.beginAttempt(job.id,1);
+  const claim=await repairs.claimGeneration(attempt.id), context=await repairs.generationContext(attempt.id);
+  const baseline=(await new VersionService(db,artifacts).load(f.w.id,f.version.id)).project;
+  const invoke=vi.fn(async(_p:unknown,_n:string,ctx:Record<string,Json>)=>({kind:"complete",output:{failed_goods:((ctx.input as Record<string,Json>).missing_fields as Json[]).length ? 1 : 0},matching_connection_ids:[]}));
+  const replay=new RepairStepReplay(db,context,baseline,claim.token!,AbortSignal.timeout(10000),invoke,artifacts);
+  const input={recorded_input_id:context.results[0].id,candidate_patch:{node_id:f.nodes[1].id,source_lines:["export async function run() {}"]},counterexample:{
+    rationale:"Removing missing fields should remove the failure.",changes:[{path:["input","missing_fields"],value:[]}],expectations:[{path:["failed_goods"],expected:0}],
+  }};
+  const report=await replay.run(input);
+  expect(report).toMatchObject({status:"completed",input_modified:true,diagnostic_only:true,checks:[],changed_from_recording:null,hypothesis_checks:[{passed:true,actual:0}]});
+  // A bad model hypothesis is visibly falsified, never used to grade the suite.
+  expect(await replay.run({...input,counterexample:{...input.counterexample,expectations:[{path:["failed_goods"],expected:2}]}}))
+    .toMatchObject({checks:[],hypothesis_checks:[{passed:false,actual:0}]});
+  expect(context.cases[0].input_data).toMatchObject({input:{missing_fields:["HTS","NDC"]}});
+  expect(context.cases[0].assertions.find(a=>a.key==="goods")?.expected).toBe(1);
+  const state=await repairs.state(f.w.id);
+  const request=JSON.parse((await artifacts.read(f.w.id,String(state.replays[0].request_artifact_id))).bytes.toString());
+  expect(request).toMatchObject({counterexample:input.counterexample,context:{input:{missing_fields:[]}}});
+  const result=JSON.parse((await artifacts.read(f.w.id,String(state.replays[0].result_artifact_id))).bytes.toString());
+  expect(result.input_sha256).not.toBe(result.recorded_input_sha256);
+  expect(state.attempts[0].candidate_version_id).toBeNull();
+  invoke.mockImplementationOnce(async()=>({kind:"complete",output:{failed_goods:0,note:"x".repeat(60000)},matching_connection_ids:[]}));
+  const large=await replay.run({...input,counterexample:{...input.counterexample,expectations:[{path:["note"],expected:"short"}]}});
+  expect(large).toMatchObject({truncated:true,input_modified:true,hypothesis_checks_summary:[{passed:false,missing:false}]});
+  expect(JSON.stringify(large).length).toBeLessThan(51000);
+  await expect(replay.run(input)).rejects.toMatchObject({code:"REPLAY_LIMIT"});
+  await repairs.finish(job.id,"cancelled","Synthetic diagnostics verified.");
+});
