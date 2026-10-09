@@ -97,7 +97,11 @@ export function meteredOpenAIFetch(base: typeof fetch, responseDeadline = false)
       return response;
     }
     return inferenceStage("reconciliation", async () => {
-    const result = await response.clone().json(),
+    // Reconciliation must not leave the SDK dependent on a cloned stream after
+    // asynchronous ledger writes. Keep the original bytes and provide a fresh
+    // response only after accounting succeeds; never reserialize model output.
+    const bytes = await response.arrayBuffer();
+    const result = JSON.parse(new TextDecoder().decode(bytes)),
       u = result.usage,
       cached = u?.input_tokens_details?.cached_tokens || 0;
     if (
@@ -135,7 +139,9 @@ export function meteredOpenAIFetch(base: typeof fetch, responseDeadline = false)
       usage: u,
     });
     annotateInferenceTrace({ input_tokens: u.input_tokens, output_tokens: u.output_tokens, actual_usd: actual });
-    return response;
+    return new Response(bytes, {
+      status: response.status, statusText: response.statusText, headers: response.headers,
+    });
     });
   };
 }
