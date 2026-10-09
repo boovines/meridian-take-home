@@ -1,22 +1,24 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import { mkdir, readFile, writeFile, rename, rmdir } from "node:fs/promises";
-import { dirname } from "node:path";
+import { mkdir, readFile, open, rename, rmdir, rm } from "node:fs/promises";
+import { z } from "zod";
+import { dirname, isAbsolute } from "node:path";
 import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { DomainError } from "../../domain/errors";
-interface Charge {
-  id: string;
-  provider: string;
-  at: string;
-  reserved_usd: number;
-  actual_usd?: number;
-  state: "reserved" | "settled";
-  metadata: Record<string, unknown>;
-}
-interface Ledger {
-  ceiling_usd: number;
-  charges: Charge[];
-}
+const chargeSchema = z.object({
+  id: z.uuid(),
+  provider: z.string().min(1),
+  at: z.string().datetime(),
+  reserved_usd: z.number().finite().positive(),
+  actual_usd: z.number().finite().nonnegative().optional(),
+  state: z.enum(["reserved", "settled"]),
+  metadata: z.record(z.string(), z.unknown()),
+}).strict().refine(c => c.state === "settled" ? c.actual_usd !== undefined : c.actual_usd === undefined);
+const ledgerSchema = z.object({
+  ceiling_usd: z.number().finite().positive(),
+  charges: z.array(chargeSchema),
+}).strict().refine(l => new Set(l.charges.map(c => c.id)).size === l.charges.length);
+type Ledger = z.infer<typeof ledgerSchema>;
 // Optional operator guard, shared by local app and worker processes via an atomic
 // file lock. Unknown outcomes retain reservations, including after a restart.
 export class InferenceBudget {
@@ -25,7 +27,7 @@ export class InferenceBudget {
     private ceiling: number,
   ) {
     if (!Number.isFinite(ceiling) || ceiling <= 0)
-      throw new Error("Invalid inference budget ceiling.");
+      throw new DomainError(503, "BUDGET_UNAVAILABLE", "Invalid inference budget ceiling.");
   }
   private async change<T>(
     f: (ledger: Ledger) => T,
@@ -53,12 +55,17 @@ export class InferenceBudget {
     try {
       let ledger: Ledger;
       try {
-        ledger = JSON.parse(await readFile(this.file, "utf8"));
+        const parsed = ledgerSchema.safeParse(JSON.parse(await readFile(this.file, "utf8")));
+        if (!parsed.success)
+          throw new DomainError(503, "BUDGET_UNAVAILABLE", "The inference ledger is invalid; inspect it before continuing.");
+        ledger = parsed.data;
       } catch (e) {
+        if (e instanceof SyntaxError)
+          throw new DomainError(503, "BUDGET_UNAVAILABLE", "The inference ledger is not valid JSON; inspect it before continuing.");
         if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
         ledger = { ceiling_usd: this.ceiling, charges: [] };
       }
-      if (ledger.ceiling_usd !== this.ceiling || !Array.isArray(ledger.charges))
+      if (ledger.ceiling_usd !== this.ceiling)
         throw new DomainError(
           503,
           "BUDGET_UNAVAILABLE",
@@ -66,8 +73,24 @@ export class InferenceBudget {
         );
       const result = f(ledger),
         tmp = `${this.file}.${randomUUID()}.tmp`;
-      await writeFile(tmp, JSON.stringify(ledger, null, 2), { mode: 0o600 });
-      await rename(tmp, this.file);
+      try {
+        const file = await open(tmp, "wx", 0o600);
+        try {
+          await file.writeFile(JSON.stringify(ledger, null, 2));
+          await file.sync();
+        } finally {
+          await file.close();
+        }
+        await rename(tmp, this.file);
+        const directory = await open(dirname(this.file), "r");
+        try {
+          await directory.sync();
+        } finally {
+          await directory.close();
+        }
+      } finally {
+        await rm(tmp, { force: true });
+      }
       return result;
     } finally {
       await rmdir(lock);
@@ -92,7 +115,7 @@ export class InferenceBudget {
         throw new DomainError(
           503,
           "INFERENCE_BUDGET_LIMIT",
-          "The experiment's reserved and recorded spend would exceed its ceiling.",
+          "Reserved and recorded inference spend would exceed the configured ceiling.",
         );
       ledger.charges.push({
         id,
@@ -192,11 +215,11 @@ function operatorBudget() {
   const path = process.env.INFERENCE_BUDGET_LEDGER,
     limit = process.env.INFERENCE_BUDGET_USD;
   if (!path && !limit) return null;
-  if (!path || !limit)
+  if (!path || !limit || !isAbsolute(path))
     throw new DomainError(
       503,
       "BUDGET_UNAVAILABLE",
-      "Configure both the inference budget path and ceiling.",
+      "Configure an absolute inference ledger path and a positive ceiling.",
     );
   return new InferenceBudget(path, Number(limit));
 }

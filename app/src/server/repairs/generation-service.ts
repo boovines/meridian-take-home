@@ -16,10 +16,10 @@ import { ArtifactService } from "../artifacts/service";
 import { assembleProject, validateProject } from "../engineering/project";
 import { VersionService } from "../engineering/version-service";
 import { RepairService, attemptById } from "./service";
-import { changedStepSources, type PreviousSourceEvidence } from "./evidence";
+import { repairIntegrityEvidence, changedStepSources, type PreviousSourceEvidence } from "./evidence";
 import { completeRepairSources } from "./patch";
-import { RepairDocumentReader, type ReadRepairDocument } from "./documents";
-import { RepairAuditReader, type ReadRepairAudit } from "./audit";
+import { repairDocumentBudget, RepairDocumentReader, type ReadRepairDocument } from "./documents";
+import { repairAuditBudget, RepairAuditReader, type ReadRepairAudit } from "./audit";
 import { ExecutionAuditService } from "../runtime/audit-service";
 export type RepairContext = Awaited<
   ReturnType<RepairService["generationContext"]>
@@ -104,6 +104,7 @@ export class RepairGenerationService {
         ),
         this.artifacts,
         signal,
+        repairDocumentBudget(this.db, attemptId, claimed.token),
       );
       const audits = new RepairAuditReader(
         claimed.job.workflow_id,
@@ -118,6 +119,7 @@ export class RepairGenerationService {
         ),
         new ExecutionAuditService(this.db, this.artifacts),
         signal,
+        repairAuditBudget(this.db, attemptId, claimed.token),
       );
       const replay = new RepairStepReplay(
         this.db,
@@ -244,7 +246,7 @@ export class RepairGenerationService {
       project.files,
       baseline.files,
       context.spec.board,
-      context,
+      repairIntegrityEvidence(context),
     );
     // A new version id is not a new candidate if its executable files are identical.
     // Keep the generated artifact for diagnosis, but never buy another lucky sequence.
@@ -258,7 +260,7 @@ export class RepairGenerationService {
         "The proposed repair did not change the implementation. Inspect the saved diagnosis before spending on another run.",
       );
     for (const previous of context.previous_attempts.filter(
-      (a) => a.candidate_version_id,
+      (a) => a.session_id === context.session.id && a.candidate_version_id,
     )) {
       const prior = await new VersionService(this.db, this.artifacts).load(
         claimed.job.workflow_id,

@@ -240,3 +240,19 @@ export function repairPrompt(
     "Required repair context exceeds the demo limit even with bounded output previews. Inspect the failed steps with an engineer.",
   );
 }
+
+// Application UUIDs, audit metadata, labels and prior diagnoses are not business
+// answers. Both publication and replay use this same evidence projection.
+export function repairIntegrityEvidence(context: RepairContext) {
+  return {
+    cases: context.cases.map(c => ({ input: c.input_data, expected: c.assertions.map(a => a.expected) })),
+    shipments: context.input_inventory.map(bundle => bundle.shipment_reference),
+    results: context.results.map(r => ({ output: r.actual_output, actual: r.check_results.map(c => c.actual) })),
+    traces: context.traces.map(t => t.output_data),
+    repetitions: context.baseline_repetitions.flatMap(run => run.traces.map(t => t.output_data)),
+    previous: context.previous_attempts.map(a => ({
+      traces: a.candidate_traces.map(t => t.output_data),
+      actual: a.candidate_results.flatMap(r => r.check_results.map(c => c.actual)),
+    })),
+  };
+}
