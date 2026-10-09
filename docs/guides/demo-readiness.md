@@ -6,8 +6,8 @@ This is an active failure register, not a readiness certification. Reported symp
 
 - Local isolated checkout: `1a57ff3`, branch `codex/demo-readiness`, stacked on `codex/vercel-hosting` (PR 86). Initial checks at `4a48f60` are historical only.
 - Existing uncommitted freeze/method-suggestion changes remain in the original checkout and are not part of this initial baseline.
-- Latest production deployment: `dpl_3auMhztd84b3JzwCNwnPqR5jFPzE`, alias <https://meridian-take-home.vercel.app>, created October 9 at 17:26 EDT.
-- An existing worker runs from a separate checkout at `79ab206`; compatibility is under investigation. Do not replace a worker while its operations are active.
+- Original production deployment: `dpl_3auMhztd84b3JzwCNwnPqR5jFPzE`, alias <https://meridian-take-home.vercel.app>, created October 9 at 17:26 EDT.
+- The original worker ran from `79ab206`. It was replaced only after checking for idle operations; the current worker runs the repaired checkout with private artifact storage configured.
 - Required coverage: authoring/save/reopen, review/reply/freeze, method approval/generation/source, input capture, execution/human response/report/audit, evaluations and bounded repair; errors, reloads and interrupted requests.
 - Fixture tests and live provider checks are separate evidence. Existing exposed cases are regression coverage, never held-out validation.
 
@@ -20,7 +20,7 @@ This is an active failure register, not a readiness certification. Reported symp
 | DEMO-003 | Review unreliable live | Generic failures confirmed in saved history | Confirmed current provider cap; missing schema also prevented current board reads | Cap raised by owner, migration applied, safe error persistence added; live review passed |
 | DEMO-004 | Agent generation unreliable | Recent jobs show local inference-budget exhaustion | Local experiment ceiling is separate from provider project cap | Preserved old ledger; capped verification ledger and current worker; live generation passed |
 | DEMO-005 | Execution/audit failed to display | Interrupted audit/trace loads reproduced | No retry, sticky errors; overlapping event reads cancelled each other | Independent event requests, explicit retries and scoped state; browser-tested |
-| DEMO-006 | Business logic loses context when translated into executable contracts | Broader accuracy concern; no universal fix claimed | Requires per-workflow trace evidence | Fixed synthetic order suite passed twice; live bounded repair passed 3 confirmations; real shipment retest pending |
+| DEMO-006 | Business logic loses context when translated into executable contracts | Broader accuracy concern; no universal fix claimed | Requires per-workflow trace evidence | Fixed synthetic order suite passed twice; live bounded repair passed 3 confirmations; real shipment retest blocked by provider cap (5 passed, 3 errors, 16 not run) |
 | DEMO-007 | Review/method recommendations hide provider limits | Reproduced at real adapter and activity seams | Missing safe model-output classification and durable specific error | Regression tests pass |
 | DEMO-008 | Audit list remains loading after failed read | Browser-reproduced | No retry dependency/control | Fixed; interrupted list and payload plus overlapping reads pass |
 | DEMO-009 | Fresh runtime cannot load generated artifact | Live synthetic run failed `ARTIFACT_UNAVAILABLE` | Old worker/configuration inconsistent with current private artifact access | Restarted idle worker with current storage config; new runtime completed |
@@ -67,4 +67,13 @@ A deployment status of Ready does not establish application readiness. The evide
 
 - Final live scoping retest passed: 9 paths, a preserved human-approval loop, an explicit unresolved retention question, and normal review still required.
 - Live Gmail capture completed into a private synthetic test workflow (`0beab52e-ea58-4a14-8960-59b7660b1719`); no message was sent or modified. Captured content remains in private artifact storage.
-- Historical v17's latest prior evaluation had 15 `INFERENCE_BUDGET_LIMIT` and one `BUDGET_UNAVAILABLE` case, explaining its inconclusive result. A fresh full 24-case locked-suite evaluation is underway against unchanged code and expectations with automatic repair disabled.
+- Historical v17's latest prior evaluation had 15 `INFERENCE_BUDGET_LIMIT` and one `BUDGET_UNAVAILABLE` case, explaining its inconclusive result. Fresh 24-case evaluation `7bcb13f3-7559-44db-bfba-9e321a44043c` used unchanged code, locked expectations and disabled automatic repair. Five cases passed, three returned `MODEL_PROJECT_SPEND_LIMIT`, and the remaining sixteen were not run after cancelling this verification job. The result is inconclusive; no business-rule defect or full PDF accuracy pass can be inferred from the unexecuted cases. Small text requests succeeding does not establish that the project can fund larger PDF requests.
+
+## Current verification result
+
+- Local suite: 446 tests passed, one PostgreSQL-only test skipped because no local `TEST_DATABASE_URL` was available. PostgreSQL CI is tracked separately.
+- Browser suite: all 38 journeys passed, including failed-read recovery and concurrent audit disclosure requests.
+- Lint, typecheck, production build, worker bundle, documentation links and diff hygiene passed.
+- Staged production build: <https://meridian-take-home-ouscp2qu3-justin-hous-projects.vercel.app>. Authenticated hosted requests returned HTTP 200 for the original order-entry board, synthetic generated source with passed evaluation evidence, completed execution trace, audit list and private audit payload. This also verifies the deployment contains the migration files required by startup checks.
+- Repair PR: <https://github.com/boovines/meridian-take-home/pull/88>, stacked on PR 86 and left open.
+- Remaining external blocker: larger PDF calls still receive the provider's enforced project-spend-limit error after the owner raised a limit. The separate application verification budget is not exhausted. A complete unchanged 24-case suite must pass before calling that real-document demo verified. Do not lower expectations or present partial execution as a pass.
