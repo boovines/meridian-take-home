@@ -48,7 +48,7 @@ export function ThreadCard({
       expandButton.current?.focus();
     }
   }, [expanded]);
-  const pendingRequest = useRef<{ signature: string; key: string } | null>(
+  const pendingRequest = useRef<{ signature: string; key: string; revision: number; parent: string | null } | null>(
     null,
   );
   const messages = state.messages.filter((m) => m.thread_id === thread.id),
@@ -75,23 +75,27 @@ export function ThreadCard({
         action,
         proposalId,
         reply,
-        revision: thread.revision,
       });
       if (pendingRequest.current?.signature !== signature)
-        pendingRequest.current = { signature, key: crypto.randomUUID() };
+        pendingRequest.current = {
+          signature,
+          key: crypto.randomUUID(),
+          revision: thread.revision,
+          parent: messages.at(-1)?.id || null,
+        };
       const requestKey = pendingRequest.current.key;
       const base = `/api/workflows/${board.workflow.id}/threads/${thread.id}`;
       if (action === "accept-proposal" || action === "reject-proposal") {
         await api(`${base}/proposals/${proposalId}`, "POST", {
           decision: action === "accept-proposal" ? "accept" : "reject",
-          expected_revision: thread.revision,
+          expected_revision: pendingRequest.current.revision,
           request_key: requestKey,
         });
       } else if (action === "reply") {
         await api(`${base}/messages`, "POST", {
           body: reply,
-          expected_revision: thread.revision,
-          parent_message_id: messages.at(-1)?.id || null,
+          expected_revision: pendingRequest.current.revision,
+          parent_message_id: pendingRequest.current.parent,
           request_key: requestKey,
         });
         setReply("");
@@ -99,7 +103,7 @@ export function ThreadCard({
         await api(`${base}/actions`, "POST", {
           action,
           reason: action === "reopen" ? "" : reply,
-          expected_revision: thread.revision,
+          expected_revision: pendingRequest.current.revision,
           request_key: requestKey,
         });
         setReply("");
@@ -127,6 +131,9 @@ export function ThreadCard({
           "PROPOSAL_DECIDED",
         ].includes(e.code)
       ) {
+        // A definitive conflict did not commit. The next attempt may use the
+        // refreshed context; uncertain transport failures retain the exact payload.
+        pendingRequest.current = null;
         await onRefresh().catch(() => {});
       }
     } finally {

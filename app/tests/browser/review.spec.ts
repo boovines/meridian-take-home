@@ -354,6 +354,11 @@ test("a failed reply update preserves the answer and retries without duplicate m
     "Connection interrupted",
   );
   await expect(response).toHaveValue("Validate all five required fields.");
+  // An unrelated note refreshes this thread to its committed revision before
+  // retry. The uncertain reply must still reuse its original key and parent.
+  await page.getByRole("textbox", { name: "Comment on this workflow", exact: true }).fill("Keep this independent note.");
+  await page.getByRole("button", { name: "Add note", exact: true }).click();
+  await expect(thread.locator(".proposal-state")).toHaveText("Awaiting your approval");
   await thread.getByRole("button", { name: "Send", exact: true }).click();
   await expect(thread.locator(".thread-status")).toHaveText("Answered");
   await expect(response).toHaveValue("");
@@ -362,7 +367,7 @@ test("a failed reply update preserves the answer and retries without duplicate m
   ).json();
   expect(
     state.messages.filter(
-      (m: { author_kind: string }) => m.author_kind === "customer",
+      (m: { author_kind: string; body: string }) => m.author_kind === "customer" && m.body === "Validate all five required fields.",
     ),
   ).toHaveLength(1);
   await thread
