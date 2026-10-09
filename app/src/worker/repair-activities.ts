@@ -1,3 +1,5 @@
+import { ClarificationService } from "../server/repairs/clarification-service";
+import { withRecoveryBudget } from "../server/repairs/recovery-budget";
 import { heartbeat, cancellationSignal } from "@temporalio/activity";
 import { ApplicationFailure } from "@temporalio/common";
 import { DomainError } from "../domain/errors";
@@ -11,6 +13,7 @@ export async function prepareRepair(id: string) {
   return value
     ? {
         deadline_at: value.deadline_at,
+        origin: value.session.origin,
         attempt_limit: value.session.attempt_limit,
       }
     : null;
@@ -23,17 +26,36 @@ export async function generateRepairCandidate(id: string) {
   const pulse = setInterval(() => heartbeat(), 5000);
   try {
     heartbeat();
-    await new RepairGenerationService(await getDatabase()).run(
-      id,
-      {
-        model: engineeringModel(),
-        generate: repairProjectSources,
-      },
-      AbortSignal.any([
-        cancellationSignal(),
-        AbortSignal.timeout(15 * 60 * 1000),
-      ]),
+    const db = await getDatabase();
+    const scope = (
+      await db.query(
+        "SELECT s.job_id FROM repair_attempts a JOIN repair_sessions s ON s.id=a.session_id WHERE a.id=$1",
+        [id],
+      )
+    ).rows[0];
+    if (!scope)
+      throw new DomainError(404, "NOT_FOUND", "Repair attempt not found.");
+    await withRecoveryBudget(
+      db,
+      String(scope.job_id),
+      (capacitySignal) =>
+        new RepairGenerationService(db).run(
+          id,
+          {
+            model: engineeringModel(),
+            generate: repairProjectSources,
+          },
+          AbortSignal.any([
+            capacitySignal,
+            cancellationSignal(),
+            AbortSignal.timeout(15 * 60 * 1000),
+          ]),
+        ),
+      cancellationSignal(),
     );
+    const question = await new ClarificationService(db).questionForAttempt(id);
+    if (question?.status === "open")
+      return { ready: false as const, waiting: true as const };
     return { ready: true as const };
   } catch (error) {
     if (error instanceof DomainError)
@@ -48,11 +70,18 @@ export async function generateRepairCandidate(id: string) {
   }
 }
 export async function createRepairEvaluation(id: string, round = 1) {
-  return (await new RepairService(await getDatabase()).createEvaluation(id, round)).id;
+  return (
+    await new RepairService(await getDatabase()).createEvaluation(id, round)
+  ).id;
 }
 export async function decideRepairAttempt(id: string) {
-  const { session, attempt } = await new RepairService(await getDatabase()).decide(id);
-  return { done: session.status !== "running", confirming: attempt.status === "running" };
+  const { session, attempt } = await new RepairService(
+    await getDatabase(),
+  ).decide(id);
+  return {
+    done: session.status !== "running",
+    confirming: attempt.status === "running",
+  };
 }
 export async function endRepair(
   id: string,

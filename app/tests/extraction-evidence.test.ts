@@ -55,9 +55,44 @@ describe("evidence contract at extraction boundary", () => {
     );
   });
   it("rejects a bare null instead of treating it as proved absence", () => {
+    expect(() => validateExtraction(request, null, docs)).toThrow(expect.objectContaining({
+      details: { issues: [{ path: [], reason: expect.stringContaining("bare null") }] },
+    }));
     expect(() =>
       validateExtraction(request, { data: { seller: null }, fields: [] }, docs),
     ).toThrow(/evidence/i);
+  });
+  it("records the malformed citation path for repair instead of claiming the response was null", async () => {
+    const valid = response();
+    const raw = {
+      ...valid,
+      fields: [{
+        ...valid.fields[0],
+        evidence: [{ ...valid.fields[0].evidence[0], artifact_id: "message:fixture-email" }],
+      }],
+    };
+    let invocations = 0;
+    const events: { kind: string; payload: unknown }[] = [];
+    await expect(invokeApprovedStep(
+      {} as Project, randomUUID(), "agent", {},
+      {
+        invoke: async () => { invocations++; return request; },
+        reason: async () => ({}),
+        extract: async () => raw,
+      },
+      AbortSignal.timeout(1000),
+      async () => [{ artifact_id: artifact, name: "example.txt", media_type: "text/plain", bytes: Buffer.from("Seller: Example Ltd") }],
+      async (kind, payload) => { events.push({ kind, payload }); },
+    )).rejects.toMatchObject({ code: "EXTRACTION_EVIDENCE_INVALID" });
+    expect(invocations).toBe(1);
+    expect(events.find(e => e.kind === "failure")?.payload).toMatchObject({
+      evidence_issues: { issues: [{
+        path: ["fields", "0", "evidence", "0", "artifact_id"],
+        reason: expect.stringMatching(/uuid/i),
+      }] },
+    });
+    expect(JSON.stringify(events.find(e => e.kind === "failure"))).not.toContain("bare null");
+    expect(events.find(e => e.kind === "model_response")?.payload).toMatchObject(raw);
   });
   it("distinguishes absent from unresolved, preventing uncertain values from reaching validation", () => {
     expect(

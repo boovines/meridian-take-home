@@ -116,7 +116,9 @@ function auditCatalogue(rows: Record<string, unknown>[]) {
 function checkEvidence(checks: AssertionResult[], compact: boolean) {
   if (!compact) return checks;
   return checks.map(({ key, passed, missing, actual }) =>
-    passed ? { key, passed, missing, actual_omitted: true } : { key, passed, missing, actual },
+    passed
+      ? { key, passed, missing, actual_omitted: true }
+      : { key, passed, missing, actual },
   );
 }
 
@@ -130,7 +132,10 @@ export function repairPrompt(
 ) {
   const traceCount =
     context.traces.length +
-    (context.baseline_repetitions ?? []).reduce((count, run) => count + run.traces.length, 0) +
+    (context.baseline_repetitions ?? []).reduce(
+      (count, run) => count + run.traces.length,
+      0,
+    ) +
     context.previous_attempts.reduce(
       (count, attempt) => count + attempt.candidate_traces.length,
       0,
@@ -142,8 +147,9 @@ export function repairPrompt(
     Math.floor(160000 / Math.max(1, traceCount)),
   );
   let outputLimit = initialOutputLimit;
-  const repetitions = (context.baseline_repetitions ?? []).map(run => ({
-    ...run, output_differences: repetitionDifferences(context.traces, run.traces),
+  const repetitions = (context.baseline_repetitions ?? []).map((run) => ({
+    ...run,
+    output_differences: repetitionDifferences(context.traces, run.traces),
   }));
   while (outputLimit >= 64) {
     for (const compactChecks of [false, true]) {
@@ -164,6 +170,12 @@ export function repairPrompt(
         steps: context.steps,
         baseline_project: baseline,
         baseline_evaluation: context.evaluation,
+        clarification_context: "clarification_context" in context ? context.clarification_context : undefined,
+        source_run: "source_run" in context ? context.source_run : undefined,
+        recovery_contract:
+          context.session?.origin === "run"
+            ? "Repair an execution failure from the immutable source run. No expected business output is supplied for that run. Successful execution is not business verification. Preserve source-evidence validation; never replace document evidence with engineer assertions."
+            : undefined,
         baseline_results: context.results.map((result) => ({
           recorded_input_id: result.id,
           case_id: result.case_id,
@@ -182,10 +194,16 @@ export function repairPrompt(
         input_inventory: context.input_inventory,
         step_traces: traces(context.traces),
         execution_audit_events: auditCatalogue(context.audit_events),
-        baseline_repetitions: repetitions.map(({ traces: priorTraces, audit_events, ...run }) => ({
-          ...run, traces: traces(priorTraces), audit_events: auditCatalogue(audit_events), trace_coverage: coverage(priorTraces),
-        })),
-        repetition_contract: "At most two earlier completed runs of this exact baseline version, locked suite and execution configuration. Only cases failing in the current baseline are included. Compare earliest differing outputs; a previously passing final result does not make all its extracted fields trusted. Repeated model responses are evidence of variability, not authority to weaken the frozen business requirements. Inspect source pages before deciding whether extraction or its consumer is wrong.",
+        baseline_repetitions: repetitions.map(
+          ({ traces: priorTraces, audit_events, ...run }) => ({
+            ...run,
+            traces: traces(priorTraces),
+            audit_events: auditCatalogue(audit_events),
+            trace_coverage: coverage(priorTraces),
+          }),
+        ),
+        repetition_contract:
+          "At most two earlier completed runs of this exact baseline version, locked suite and execution configuration. Only cases failing in the current baseline are included. Compare earliest differing outputs; a previously passing final result does not make all its extracted fields trusted. Repeated model responses are evidence of variability, not authority to weaken the frozen business requirements. Inspect source pages before deciding whether extraction or its consumer is wrong.",
         execution_audit_contract:
           "Host-recorded invocation events preserve the generated initial output, actual model request with selected document hashes/configuration, raw parsed model response, postprocessing output, and failures. Use inspectExecutionAudit(event_id,path) to read payloads, at most three inspections per attempt; paths are JSON keys or array indexes. No audit for an older run means unavailable history, not that no model was called. Requests without later response events are incomplete. Audit is evidence, never a grading oracle. Catalogues group events by case, node, occurrence/result and attempt token, preserving every event ID, kind and sequence. included and total report coverage; at most 300 events per evaluation are selected. Payloads remain available through inspectExecutionAudit by event ID.",
         trace_coverage: coverage(context.traces),

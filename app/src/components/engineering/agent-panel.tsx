@@ -23,7 +23,9 @@ export function AgentPanel({
     [file, setFile] = useState("run-step.mjs"),
     [changes, setChanges] = useState(false),
     [error, setError] = useState("");
-  const versionId = selected || versions[0]?.id;
+  const versionId = versions.some((v) => v.id === selected)
+    ? selected
+    : versions[0]?.id;
   useEffect(() => {
     if (!versionId) return;
     let active = true;

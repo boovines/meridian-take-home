@@ -1,7 +1,8 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError, errorMessage } from "@/lib/api";
-import type { ScopingState, ScopingSession } from "@/domain/scoping";
+import type { ScopingState, ScopingSession, scopingRequest } from "@/domain/scoping";
+import type { z } from "zod";
 import type { Board } from "@/domain/canvas";
 export function useScoping(workflowId: string, locked: boolean) {
   const [state, setState] = useState<ScopingState | null>(null);
@@ -17,6 +18,7 @@ export function useScoping(workflowId: string, locked: boolean) {
   const savePromise = useRef<Promise<void> | null>(null);
   const blocked = useRef(false);
   const initialized = useRef(false);
+  const pendingRequest = useRef<{ signature: string; payload: z.infer<typeof scopingRequest> } | null>(null);
   const localKey = `meridian-scoping-draft:${workflowId}`;
   const ingest = useCallback((next: ScopingState) => {
     const current = stateRef.current;
@@ -180,20 +182,30 @@ export function useScoping(workflowId: string, locked: boolean) {
     try {
       await flush();
       const s = stateRef.current!.session;
+      // A refreshed session may already include a turn whose HTTP response was
+      // lost. Retry its original identity and revisions instead of paying twice.
+      const signature = JSON.stringify([action, body, s.note_revision]);
+      if (pendingRequest.current?.signature !== signature)
+        pendingRequest.current = {
+          signature,
+          payload: {
+            action, body,
+            expected_revision: s.revision,
+            expected_note_revision: s.note_revision,
+            request_key: crypto.randomUUID(),
+          },
+        };
       const next = await api<ScopingState>(
         `/api/workflows/${workflowId}/scoping/requests`,
         "POST",
-        {
-          action,
-          body,
-          expected_revision: s.revision,
-          expected_note_revision: s.note_revision,
-          request_key: crypto.randomUUID(),
-        },
+        pendingRequest.current.payload,
       );
+      pendingRequest.current = null;
       ingest(next);
       return true;
     } catch (e) {
+      if (e instanceof ApiError && ["STALE_EDIT", "NOTE_CONFLICT", "SCOPING_BUSY", "UPDATED_NOTE", "SCOPE_NOT_READY"].includes(e.code))
+        pendingRequest.current = null;
       setError(errorMessage(e));
       await refresh().catch(() => {});
       return false;
