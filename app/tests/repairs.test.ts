@@ -1351,3 +1351,21 @@ it("allows diagnostic comments and provenance metadata through publication, reco
   expect(invoke).toHaveBeenCalledTimes(1);
   await repairs.finish(next.job.id, "cancelled", "Permitted replay inspected");
 });
+
+it.each([false,true])("preserves scheduling across candidate confirmation rounds (legacy: %s)",async(legacy)=>{
+  const {evaluationConfiguration,evaluationCaseConcurrency}=await import("../src/server/evaluations/configuration");
+  const {job}=await prepared();
+  const attempt=await repairs.beginAttempt(job.id,1);
+  await generation.run(attempt.id,generator,AbortSignal.timeout(10000));
+  const one=await repairs.createEvaluation(attempt.id);
+  const configuration=evaluationConfiguration() as Record<string,Json>;
+  if(legacy)delete configuration.scheduling;
+  await db.query("UPDATE evaluation_runs SET execution_configuration=$2 WHERE id=$1",[one.id,configuration]);
+  await record(job.id,one.id,{shipment:"SYNTHETIC-001",failed_goods:1});
+  await repairs.decide(attempt.id);
+  const two=await repairs.createEvaluation(attempt.id,2);
+  const ready=(await evals.prepare(job.id,two.id))!;
+  expect(ready.evaluation.execution_configuration).toEqual(configuration);
+  expect(evaluationCaseConcurrency(ready.evaluation.execution_configuration)).toBe(legacy?1:2);
+  await repairs.finish(job.id,"cancelled","Scheduling verified.");
+});

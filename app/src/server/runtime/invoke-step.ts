@@ -1,12 +1,11 @@
 import {
-  validateExtraction,
+  EXTRACTION_BATCH_POLICY,
   validateExtractionSchema,
   type ExtractionRequest,
 } from "../../domain/extraction";
-import { evidenceDocuments } from "./extraction";
+import { agentInteraction } from "./agent-interaction";
 import { DomainError } from "../../domain/errors";
-import { createHash } from "node:crypto";
-import type { RecordAudit } from "../../domain/execution-audit";
+import type { RecordAudit, ProviderTrace } from "../../domain/execution-audit";
 import type { Method } from "../../domain/engineering";
 import { stepResult, type Project } from "../../domain/project";
 import type { Json, RuntimeError } from "../../domain/runtime";
@@ -47,6 +46,9 @@ export async function invokeApprovedStep(
   readDocuments?: (ids: string[]) => Promise<ReasoningDocument[]>,
   audit?: RecordAudit,
 ) {
+  let batchIndex: number | undefined;
+  let providerTrace: ProviderTrace | undefined;
+  const saveProviderTrace = (trace: ProviderTrace) => { providerTrace = trace; };
   try {
     signal.throwIfAborted();
     if (method === "human" && !Object.hasOwn(context, "human_response"))
@@ -59,7 +61,7 @@ export async function invokeApprovedStep(
     signal.throwIfAborted();
     await audit?.("initial_output", initial);
     let result = stepResult.parse(initial);
-    if (result.kind === "reason" || result.kind === "extract") {
+    if (result.kind === "reason" || result.kind === "extract" || result.kind === "extract_batch") {
       if (result.kind === "extract")
         validateExtractionSchema(result.output_schema);
       if (method !== "agent")
@@ -68,75 +70,36 @@ export async function invokeApprovedStep(
           "METHOD_VIOLATION",
           "Only an approved Agent step can request model reasoning.",
         );
-      if (result.document_ids.length && !readDocuments)
-        throw new DomainError(
-          422,
-          "DOCUMENT_ACCESS_DENIED",
-          "No captured document reader is available.",
-        );
-      const documents = readDocuments
-        ? await readDocuments(result.document_ids)
-        : [];
-      signal.throwIfAborted();
-      const sourcePages =
-        result.kind === "extract" ? await evidenceDocuments(documents) : [];
-      await audit?.(
-        "model_request",
-        {
-          kind: result.kind,
-          ...(result.kind === "extract"
-            ? {
-                output_schema: result.output_schema,
-                critical_paths: result.critical_paths,
-                source_pages: sourcePages,
-              }
-            : {}),
-          instructions: result.instructions,
-          data: result.data,
-          model: adapters.model ?? { provider: "unknown", name: "unknown" },
-          documents: documents.map((d) => ({
-            artifact_id: d.artifact_id,
-            name: d.name,
-            media_type: d.media_type,
-            byte_size: d.bytes.length,
-            sha256: createHash("sha256").update(d.bytes).digest("hex"),
-          })),
-        },
-        {
-          model: adapters.model?.name ?? "unknown",
-          document_ids: result.document_ids,
-        },
-      );
-      signal.throwIfAborted();
-      if (result.kind === "extract" && !adapters.extract)
-        throw new DomainError(
-          503,
-          "EXTRACTION_UNAVAILABLE",
-          "No evidence-aware extraction provider is configured.",
-        );
-      const raw =
-        result.kind === "extract"
-          ? await adapters.extract!(result, documents, signal)
-          : await adapters.reason(
-              result.instructions,
-              result.data,
-              signal,
-              documents,
-            );
-      signal.throwIfAborted();
-      await audit?.("model_response", raw);
-      const envelope =
-        result.kind === "extract"
-          ? validateExtraction(result, raw, sourcePages)
-          : null;
-      const tool_result = envelope ? envelope.data : raw;
+      let tool_result: Json;
+      let evidence: Json | undefined;
+      if (result.kind === "extract_batch") {
+        // Validate every schema up front; a malformed later schema must not waste earlier calls.
+        for (const request of result.batches) validateExtractionSchema(request.output_schema);
+        const outputs: Json[] = [], fields: Json[] = [];
+        for (const [index, request] of result.batches.entries()) {
+          batchIndex = index;
+          providerTrace = undefined;
+          signal.throwIfAborted();
+          const value = await agentInteraction(request, adapters, signal, readDocuments, audit, index, saveProviderTrace);
+          outputs.push(value.tool_result);
+          fields.push(value.envelope!.fields);
+          if (Buffer.byteLength(JSON.stringify({ outputs, fields })) > EXTRACTION_BATCH_POLICY.max_combined_result_bytes)
+            throw new DomainError(422, "STEP_INPUT_TOO_LARGE", "Combined extraction data and evidence exceed 400 KB. Use a smaller schema or an engineer-reviewed process change; no partial result was published.");
+        }
+        tool_result = { batches: outputs };
+        evidence = { batches: fields };
+      } else {
+        const value = await agentInteraction(result, adapters, signal, readDocuments, audit, undefined, saveProviderTrace);
+        tool_result = value.tool_result;
+        evidence = value.envelope?.fields;
+      }
       const processed = await adapters.invoke(
         project,
         nodeId,
         {
           ...context,
           tool_result,
-          ...(envelope ? { extraction_evidence: envelope.fields } : {}),
+          ...(evidence ? { extraction_evidence: evidence } : {}),
         },
         signal,
       );
@@ -163,12 +126,26 @@ export async function invokeApprovedStep(
       !(error instanceof DomainError && error.code === "AUDIT_UNAVAILABLE")
     ) {
       const failure = invocationFailure(error);
+      const details = error instanceof DomainError && error.code.startsWith("EXTRACTION_")
+        ? error.details as { issues?: { path: string[]; reason: string }[] } | null : null;
+      const issues = details?.issues ?? [];
       await audit?.("failure", {
         code: failure.code,
         category: failure.category,
+        ...(providerTrace ? { provider_trace: providerTrace } : {}),
+        ...(error instanceof DomainError && error.code === "MODEL_RESPONSE_TIMEOUT" ? { timing: error.details } : {}),
         ...(error instanceof DomainError && error.code.startsWith("EXTRACTION_")
           ? { evidence_issues: error.details ?? null }
           : {}),
+      }, {
+        failure_code: failure.code, failure_category: failure.category,
+        ...(providerTrace ? { provider_trace: providerTrace } : {}),
+        ...(batchIndex === undefined ? {} : { batch_index: batchIndex }),
+        ...(error instanceof DomainError && error.code === "MODEL_RESPONSE_TIMEOUT" ? { timing: error.details } : {}),
+        ...(issues.length ? {
+          evidence_issues: issues.slice(0, 5).map(i => ({ path: i.path.slice(0, 16).map(p => p.slice(0, 100)), reason: i.reason.slice(0, 500) })),
+          evidence_issues_omitted: Math.max(0, issues.length - 5),
+        } : {}),
       });
     }
     throw error;
@@ -217,9 +194,12 @@ export function invocationFailure(error: unknown): RuntimeError {
               "EVALUATION_CONFIGURATION_CHANGED",
               "SANDBOX_UNAVAILABLE",
               "MODEL_UNAVAILABLE",
+              "MODEL_RESPONSE_TIMEOUT",
+              "STEP_EXECUTION_TIMEOUT",
               "MODEL_PROJECT_SPEND_LIMIT",
               "MODEL_QUOTA_EXCEEDED",
               "BUDGET_UNAVAILABLE",
+              "TOKEN_PREFLIGHT_TRANSIENT",
               "INFERENCE_BUDGET_LIMIT",
               "AUDIT_UNAVAILABLE",
               "EXTRACTION_UNAVAILABLE",

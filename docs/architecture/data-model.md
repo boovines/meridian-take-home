@@ -299,6 +299,14 @@ This is separate from `step_executions` because a model request, its answer and 
 
 Migration 013 adds `evaluation_runs.execution_configuration`, captured once before execution, and `repair_confirmations` keyed by attempt and round (1–3). A separate relation preserves every evaluation rather than overwriting an attempt’s latest-evaluation pointer. Same-workflow foreign keys and insertion guards tie each run to the candidate, approved plan and locked suite; prior success is required before another round. A session cannot transition to passed without three complete, matching-configuration passes. Completed history is immutable.
 
+### Evaluation infrastructure recovery (migration 016)
+
+`evaluation_case_recoveries` stores one immutable failure record per case result, including its failed workflow run or isolated invocation token. `recovery_count` and `recovery_pending` persist the bounded handoff so delivery retries cannot reset it. Workflow runs are unique by case result and `evaluation_attempt`, replacing the former one-run-per-result constraint. A case retains one authoritative graded result; execution attempts retain distinct trace histories. This avoids rewriting a failed run or duplicating unaffected test cases just to recover a transient provider failure.
+
+### Batched extraction audit capacity (migration 017)
+
+The audit sequence bound increases from 6 to 13: one initial module result, up to five ordered request/response pairs, one postprocessed result, and a possible failure. Events retain the same immutable artifact ownership and invocation fencing; batch indexes live in bounded summary metadata. No business-specific table or duplicated extraction ownership is introduced.
+
 ### Run-origin recovery (migration 014)
 
 `repair_sessions.origin` distinguishes an evaluation repair from recovery of a failed manual run. Evaluation-origin sessions retain mandatory suite and initial/baseline evaluation references. Run-origin sessions instead require the source run and immutable captured bundle; their suite and comparable evaluation may be absent. Approved plan, initial version, execution settings and limits are immutable. A unique source-run index makes automatic handoff and repeated explicit requests idempotent. The same workflow job and active-operation constraint own recovery, reruns and regression checks; no second scheduler or repair engine is introduced.

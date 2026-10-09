@@ -84,9 +84,9 @@ The first command bundles workflows without credentials and runs in CI. The last
 | `src/components/reviews/conversation-message.tsx`, `src/components/reviews/instruction-diff.tsx`, `src/components/reviews/reply-changes.tsx`, `src/components/reviews/thread-card.tsx` | Conversation rendering, word diffs and a shared inline/expanded response flow |
 | `src/server/process-revisions`, `src/components/process-revisions` | Engineer requests, explicit revision lifecycle and new unapproved handoff plans; existing review conversations own replies and per-block decisions |
 | `src/server/engineering` | Versioned plans, generation lifecycle, project assembly and source/download inspection |
-| `src/server/evaluations` | Verified suites, trusted grading, case execution and result history |
+| `src/server/evaluations` | Verified suites, trusted grading, case execution and result history; `automatic-repair.ts` atomically hands an opted-in evaluation to one bounded repair session |
 | `src/server/repairs` | Bounded sessions, candidate ancestry, diagnostic evidence projection and repeated-output field differences, bounded recorded-input replay, focused source patches, generation checkpoints and three-run confirmation |
-| `src/server/inputs` | Capture existing Gmail messages and attachment evidence into immutable input bundles |
+| `src/server/inputs` | Prepare source-backed email packet suggestions and capture existing Gmail messages and attachment evidence into immutable input bundles |
 | `src/server/grouped-execution` | Selected-email orchestration, immutable grouping/clarification evidence, child scopes, aggregation, shared budgets/capacity |
 | `src/server/runtime` | Run/visit history, immutable interaction audit, run-scoped document access, isolated step contracts and human responses |
 | `src/server/artifacts` | Immutable file records, integrity checks and local/private Supabase storage |
@@ -148,7 +148,7 @@ Evidence-aware document extraction uses the pure `domain/extraction` contract, `
 
 For bounded paid verification, set `INFERENCE_BUDGET_USD` and an absolute `INFERENCE_BUDGET_LEDGER` path in ignored local storage. All OpenAI adapters share this ledger across local app/worker processes. The guard currently supports `gpt-5.4` or its `gpt-5.4-2026-03-05` snapshot; configure review, engineering and runtime models consistently. This guard supports processes on one machine sharing a local filesystem; it is not a distributed or provider-enforced billing limit. Budgeted calls explicitly request standard service tier; response model, tier and usage must match the supported pricing before a reservation is settled. Reservations are flushed before dispatch and uncertain charges stay reserved. A stale `.lock` after a crashed writer requires operator inspection; the guard fails closed rather than discarding unknown spend. Keep the ledger when restarting an experiment. An invalid ledger or mismatched ceiling blocks new calls. Token preflight failures stop before inference; unknown request outcomes retain their reservations. Rates are recorded in `openai-client.ts` and must be checked before adding models. Pricing references: [GPT-5.4](https://developers.openai.com/api/docs/models/gpt-5.4) and [service tiers](https://developers.openai.com/api/reference/typescript/resources/responses).
 
-`server/integrations/openai-preflight.ts` owns bounded read-only token-count recovery: at most three attempts for transient failures, honoring cancellation and a shared deadline. It never retries inference or skips a budget reservation. The policy is recorded in evaluation settings; restart idle workers after changing it, and start a new measurement sequence rather than combining results across policies.
+`server/integrations/openai-preflight.ts` owns bounded read-only token-count recovery: at most three attempts for transient failures, with a 35-second per-attempt timeout inside the shared 120-second deadline. It never retries inference or skips a budget reservation. The policy is recorded in evaluation settings; restart idle workers after changing it, and start a new measurement sequence rather than combining results across policies.
 
 `ReasoningDocument.source_page_numbers` preserves original page identities when a caller supplies a focused PDF subset. OpenAI document captions describe that mapping; this does not enable automatic reinspection or add another model call.
 
@@ -159,6 +159,17 @@ On an empty draft, open the circular note button above the canvas zoom controls.
 Apply migrations through `npm run db:migrate` and run the existing Temporal worker for durable live scoping. `OPENAI_SCOPING_MODEL` overrides the model (falls back to `OPENAI_REVIEW_MODEL`, then `gpt-5.4-mini`). For isolated fixture demos only, set `MERIDIAN_SCOPING_PROVIDER=fixture`, `MERIDIAN_DATABASE=local`, and `MERIDIAN_LOCAL_DEMO=true` together. This fixed scenario is not live process synthesis.
 
 `npm run scoping:smoke` explicitly calls the live model with a sanitized request and an ephemeral database. It validates the interview, generated graph, human approval and review gate; it never reads a mailbox or applies to a saved workflow. Configure `OPENAI_API_KEY` and estimate inference spend before running it. The live check is separate from required fixture-based CI.
+
+
+Evaluation scheduling uses `domain/runtime-policy.ts`: two concurrent cases per new suite evaluation and four activity slots per standard worker. Existing runs keep their recorded policy; see [trusted evaluations](../docs/features/trusted-evaluations.md#bounded-case-concurrency). Deploy web and workers consistently for new operations, and let existing workers drain their running operations before retiring them.
+
+`domain/evaluation-recovery.ts` defines the narrow transient case-recovery policy. Evaluation services persist one recovery and its failed-run provenance (migration 016); the Temporal scheduler retries only that case. Apply migrations and deploy matching web/worker code after active operations drain.
+
+`server/runtime/agent-interaction.ts` executes one audited Agent request. `invoke-step.ts` owns method checks, bounded extraction batches and generated postprocessing. The batch policy lives in `domain/extraction.ts`; migration 017 expands per-invocation audit capacity. Extraction field diagnostics are included in the bounded repair catalogue without changing locked grades.
+
+The OpenAI integration keeps token preflight (`server/integrations/openai-preflight.ts`) separate from bounded response transport (`server/integrations/openai-response.ts`). Shared runtime deadline values live in `domain/runtime-policy.ts` and are recorded with evaluation settings.
+
+`server/integrations/inference-trace.ts` collects safe provider-stage metrics per runtime interaction. They flow into immutable execution audit summaries and the repair evidence catalogue. `worker/execution-failure.ts` preserves trusted failure categories through Temporal wrappers.
 
 ## Run recovery
 

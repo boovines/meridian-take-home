@@ -164,3 +164,10 @@ it("keeps a late changed field visible even when both repeated trace previews ar
   }]);
   expect(JSON.stringify(context)).toBe(before);
 });
+
+it("keeps exact field diagnostics and batch ownership in the repair catalogue",()=>{
+  const diagnostic={batch_index:1,evidence_issues:[{path:["records","0","reference"],reason:"Missing field evidence."}],evidence_issues_omitted:2};
+  const context={spec:{board:{}},steps:[],cases:[],results:[],input_inventory:[],previous_attempts:[],traces:[],audit_events:[{id:"failure",kind:"failure",sequence:5,case_id:"case",node_id:"node",attempt_token:"attempt",summary:{...diagnostic,elapsed_ms:10}}]} as unknown as RepairContext;
+  const prompt=JSON.parse(repairPrompt(context,{files:{}} as Project));
+  expect(prompt.execution_audit_events.invocations[0].events[0]).toEqual({id:"failure",kind:"failure",sequence:5,diagnostic:{...diagnostic,elapsed_ms:10}});
+});

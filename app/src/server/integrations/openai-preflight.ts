@@ -1,10 +1,12 @@
+import { annotateInferenceTrace } from "./inference-trace";
 import { setTimeout as delay } from "node:timers/promises";
 import { DomainError } from "../../domain/errors";
 
 export const openAITokenPreflightPolicy = {
-  version: "bounded-v2",
+  version: "bounded-v3",
   max_attempts: 3,
   timeout_ms: 120000,
+  attempt_timeout_ms: 35000,
   retry_delay_ms: [250, 500],
   retry_statuses: [408, 429, 500, 502, 503, 504],
   retry_transport_errors: ["TypeError"],
@@ -25,7 +27,7 @@ export async function countOpenAIInputTokens(
   const failures: string[] = [];
   let attempts = 0;
   const unavailable = (detail: string) => new DomainError(
-    503, "BUDGET_UNAVAILABLE", `${detail}; inference was not started. Preflight attempts: ${attempts}; failures: ${failures.join(", ") || "none"}.`,
+    503, failures.length > 0 && failures.every(f => ["deadline", "attempt_timeout", "transport", "response_transport", "http_408", "http_500", "http_502", "http_503", "http_504"].includes(f)) ? "TOKEN_PREFLIGHT_TRANSIENT" : "BUDGET_UNAVAILABLE", `${detail}; inference was not started. Preflight attempts: ${attempts}; failures: ${failures.join(", ") || "none"}.`,
     { preflight_attempts: attempts, preflight_failures: [...failures] },
   );
   try {
@@ -33,14 +35,21 @@ export async function countOpenAIInputTokens(
       deadline.throwIfAborted();
       attempts = attempt;
       let response: Response | undefined;
+      const attemptSignal = AbortSignal.any([deadline, AbortSignal.timeout(policy.attempt_timeout_ms)]);
       try {
         response = await transport("https://api.openai.com/v1/responses/input_tokens", {
-          ...init, signal: deadline,
+          ...init, signal: attemptSignal,
         });
       } catch (error) {
         deadline.throwIfAborted();
         // Native fetch reports network failures as TypeError. Unknown adapter
         // bugs and explicit aborts are not evidence of a transient network fault.
+        if (attemptSignal.aborted) {
+          failures.push("attempt_timeout");
+          if (attempt === policy.max_attempts) throw unavailable("Input-token preflight timed out after three attempts");
+          await delay(policy.retry_delay_ms[Math.min(attempt - 1, 1)], undefined, { signal: deadline });
+          continue;
+        }
         if (!(error instanceof TypeError)) {
           failures.push("transport_nonretryable");
           throw unavailable("Input-token preflight transport could not proceed");
@@ -50,13 +59,19 @@ export async function countOpenAIInputTokens(
           throw unavailable(`Input-token preflight transport failed after ${attempt} attempts`);
       }
       deadline.throwIfAborted();
+      if (attemptSignal.aborted) {
+        failures.push("attempt_timeout");
+        await response?.body?.cancel().catch(() => {});
+        if (attempt === policy.max_attempts) throw unavailable("Input-token preflight timed out after three attempts");
+        continue;
+      }
       if (response?.ok) {
         let tokens: unknown;
         try { tokens = (await response.json())?.input_tokens; }
         catch (error) {
           deadline.throwIfAborted();
-          if (error instanceof TypeError) {
-            failures.push("response_transport");
+          if (attemptSignal.aborted || error instanceof TypeError) {
+            failures.push(attemptSignal.aborted ? "attempt_timeout" : "response_transport");
             await response.body?.cancel().catch(() => {});
             if (attempt === policy.max_attempts)
               throw unavailable(`Input-token preflight body transport failed after ${attempt} attempts`);
@@ -67,6 +82,11 @@ export async function countOpenAIInputTokens(
           throw unavailable("Input-token preflight returned invalid JSON");
         }
         deadline.throwIfAborted();
+        if (attemptSignal.aborted) {
+          failures.push("attempt_timeout");
+          if (attempt === policy.max_attempts) throw unavailable("Input-token preflight body timed out after three attempts");
+          continue;
+        }
         if (typeof tokens !== "number" || !Number.isInteger(tokens) || tokens < 0 || tokens > policy.max_input_tokens) {
           failures.push("invalid_count");
           throw unavailable("Input exceeds the guard's priced context range or its token count is invalid");
@@ -103,5 +123,7 @@ export async function countOpenAIInputTokens(
       throw unavailable("Input-token preflight exceeded its shared deadline");
     }
     throw error;
+  } finally {
+    annotateInferenceTrace({ preflight_attempts: attempts, preflight_failures: [...failures] });
   }
 }

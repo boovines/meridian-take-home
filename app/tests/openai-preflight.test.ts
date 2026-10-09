@@ -44,7 +44,7 @@ it("stops after three transient failures without making a reservation or inferen
   await expect(meteredOpenAIFetch(async (url) => {
     calls.push(String(url)); return new Response(null, { status: 503 });
   })("https://api.openai.com/v1/responses", request)).rejects.toMatchObject({
-    code: "BUDGET_UNAVAILABLE", message: expect.stringContaining("after 3 attempts"),
+    code: "TOKEN_PREFLIGHT_TRANSIENT", message: expect.stringContaining("after 3 attempts"),
   });
   expect(calls).toHaveLength(3);
   expect(calls.every(url => url.endsWith("/input_tokens"))).toBe(true);
@@ -99,7 +99,7 @@ it("does not send inference on malformed successful counts or an excessive retry
 
 it("records the retry policy and rejects historical configurations without it", () => {
   const current = evaluationConfiguration();
-  expect(current).toMatchObject({ inference_preflight: { version: "bounded-v2", max_attempts: 3 } });
+  expect(current).toMatchObject({ inference_preflight: { version: "bounded-v3", max_attempts: 3 } });
   const legacy = { ...current as Record<string, Json> };
   delete legacy.inference_preflight;
   expect(() => assertEvaluationConfiguration(legacy)).toThrow("Execution settings changed");
@@ -126,7 +126,7 @@ it("classifies its own deadline as infrastructure and retains safe failure evide
     throw new TypeError("fixture private transport details");
   });
   const error = await meteredOpenAIFetch(base)("https://api.openai.com/v1/responses", request).catch(error => error);
-  expect(error).toMatchObject({ code: "BUDGET_UNAVAILABLE", details: { preflight_attempts: 1, preflight_failures: ["deadline"] } });
+  expect(error).toMatchObject({ code: "TOKEN_PREFLIGHT_TRANSIENT", details: { preflight_attempts: 1, preflight_failures: ["deadline"] } });
   const { invocationFailure } = await import("../src/server/runtime/invoke-step");
   expect(invocationFailure(error).category).toBe("infrastructure");
   expect(error.message).not.toContain("private transport");
@@ -142,7 +142,7 @@ it("does not retry unexpected transport errors or discard exhausted HTTP evidenc
   expect(base).toHaveBeenCalledTimes(1);
   const unavailable = vi.fn<typeof fetch>(async () => new Response(null, { status: 503 }));
   await expect(meteredOpenAIFetch(unavailable)("https://api.openai.com/v1/responses", request)).rejects.toMatchObject({
-    code: "BUDGET_UNAVAILABLE", details: { preflight_attempts: 3, preflight_failures: ["http_503", "http_503", "http_503"] },
+    code: "TOKEN_PREFLIGHT_TRANSIENT", details: { preflight_attempts: 3, preflight_failures: ["http_503", "http_503", "http_503"] },
   });
 });
 
@@ -210,4 +210,24 @@ it("retries an interrupted count response body but never retries malformed JSON"
   expect({ counts, inferences }).toEqual({ counts: 2, inferences: 1 });
   const ledger = JSON.parse(await readFile(path.join(dir, "ledger.json"), "utf8"));
   expect(ledger.charges[0].metadata.preflight_failures).toEqual(["response_transport"]);
+});
+
+
+it("retries a stalled token-count attempt within the shared deadline", async () => {
+  const shared = new AbortController(), first = new AbortController();
+  let deadlines = 0;
+  vi.spyOn(AbortSignal, "timeout").mockImplementation(ms => ms === 120000 ? shared.signal : ++deadlines === 1 ? first.signal : new AbortController().signal);
+  let counts = 0, inferences = 0;
+  await meteredOpenAIFetch(async (url) => {
+    if (String(url).endsWith("/input_tokens")) {
+      if (++counts === 1) { first.abort(new DOMException("timeout", "TimeoutError")); throw first.signal.reason; }
+      // Subsequent attempts need a fresh deadline.
+      vi.mocked(AbortSignal.timeout).mockReturnValue(new AbortController().signal);
+      return Response.json({ input_tokens: 10 });
+    }
+    inferences++; return inferenceResponse();
+  })("https://api.openai.com/v1/responses", request);
+  expect({counts, inferences}).toEqual({counts: 2, inferences: 1});
+  const ledger = JSON.parse(await readFile(path.join(dir, "ledger.json"), "utf8"));
+  expect(ledger.charges[0].metadata.preflight_failures).toEqual(["attempt_timeout"]);
 });

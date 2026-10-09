@@ -1,3 +1,4 @@
+import { canRecoverCase } from "../../domain/evaluation-recovery";
 import { statisticsByEvaluation } from "./statistics";
 import { frozenSpec, specForPlan } from "../engineering/plan-service";
 import {
@@ -37,7 +38,7 @@ export async function evaluationById(tx: Queryable, id: string) {
 export async function resultsByEvaluation(tx: Queryable, id: string) {
   return (
     await tx.query(
-      "SELECT r.*,wr.id AS workflow_run_id FROM evaluation_case_results r LEFT JOIN workflow_runs wr ON wr.evaluation_case_result_id=r.id WHERE r.evaluation_run_id=$1 ORDER BY r.created_at,r.id",
+      "SELECT r.*,wr.id AS workflow_run_id,COALESCE((SELECT jsonb_agg(h ORDER BY h.created_at) FROM evaluation_case_recoveries h WHERE h.case_result_id=r.id),'[]'::jsonb) AS recoveries FROM evaluation_case_results r LEFT JOIN workflow_runs wr ON wr.evaluation_case_result_id=r.id AND wr.evaluation_attempt=r.recovery_count WHERE r.evaluation_run_id=$1 ORDER BY r.created_at,r.id",
       [id],
     )
   ).rows as unknown as CaseResult[];
@@ -51,6 +52,7 @@ export class EvaluationService {
       const source = {
         implementation_version_id: data.implementation_version_id,
         suite_version_id: data.suite_version_id,
+        ...(data.auto_repair ? { auto_repair: true } : {}),
       };
       const existing = (
         await tx.query(
@@ -85,6 +87,10 @@ export class EvaluationService {
           "SUITE_NOT_LOCKED",
           "Verify and lock the suite before evaluating.",
         );
+      if (data.auto_repair && (await tx.query(
+        "SELECT id FROM evaluation_suite_versions WHERE workflow_id=$1 AND version_number>$2",
+        [wid, suite.version_number],
+      )).rows.length) throw new DomainError(409, "SUITE_CHANGED", "Lock and select the latest suite revision before automatic repair.");
       const version = (
         await tx.query(
           "SELECT * FROM implementation_versions WHERE workflow_id=$1 AND id=$2",
@@ -228,22 +234,16 @@ export class EvaluationService {
           "JOB_CANCELLED",
           "Evaluation cancelled before starting.",
         );
-      const configuration = evaluationConfiguration();
-      const previous = (
-        await tx.query(
-          "SELECT e.execution_configuration FROM repair_confirmations c JOIN repair_confirmations earlier ON earlier.attempt_id=c.attempt_id AND earlier.round=1 JOIN evaluation_runs e ON e.id=earlier.evaluation_run_id WHERE c.evaluation_run_id=$1 AND c.round>1",
-          [run.id],
-        )
-      ).rows[0];
-      if (previous)
-        assertEvaluationConfiguration(previous.execution_configuration as Json);
-      if (!isDeepStrictEqual(run.execution_configuration, {}))
-        assertEvaluationConfiguration(run.execution_configuration);
-      else
-        await tx.query(
-          "UPDATE evaluation_runs SET execution_configuration=$2 WHERE id=$1",
-          [run.id, configuration],
-        );
+      const previous = (await tx.query(
+        "SELECT e.execution_configuration FROM repair_confirmations c JOIN repair_confirmations earlier ON earlier.attempt_id=c.attempt_id AND earlier.round=1 JOIN evaluation_runs e ON e.id=earlier.evaluation_run_id WHERE c.evaluation_run_id=$1 AND c.round>1", [run.id]
+      )).rows[0];
+      const recorded = !isDeepStrictEqual(run.execution_configuration, {});
+      const configuration = recorded ? run.execution_configuration
+        : previous ? previous.execution_configuration as Json : evaluationConfiguration();
+      assertEvaluationConfiguration(configuration);
+      if (previous && !isDeepStrictEqual(previous.execution_configuration, configuration))
+        throw new DomainError(409, "EVALUATION_CONFIGURATION_CHANGED", "Confirmation rounds require identical execution settings.");
+      if (!recorded) await tx.query("UPDATE evaluation_runs SET execution_configuration=$2 WHERE id=$1", [run.id, configuration]);
       run.execution_configuration = configuration;
       await tx.query(
         "UPDATE workflow_jobs SET status='running',phase='checking build',started_at=coalesce(started_at,now()),updated_at=now() WHERE id=$1",
@@ -289,7 +289,7 @@ export class EvaluationService {
         (c) => c.id === result.case_id,
       )!;
       await tx.query(
-        "UPDATE evaluation_case_results SET status='running',started_at=coalesce(started_at,now()) WHERE id=$1",
+        "UPDATE evaluation_case_results SET status='running',recovery_pending=false,started_at=coalesce(started_at,now()) WHERE id=$1",
         [resultId],
       );
       await tx.query(
@@ -303,14 +303,14 @@ export class EvaluationService {
       if (c.kind === "step") return { skip: false as const, kind: c.kind };
       let run = (
         await tx.query(
-          "SELECT id FROM workflow_runs WHERE evaluation_case_result_id=$1",
-          [resultId],
+          "SELECT id FROM workflow_runs WHERE evaluation_case_result_id=$1 AND evaluation_attempt=$2",
+          [resultId, result.recovery_count ?? 0],
         )
       ).rows[0];
       if (!run)
         run = (
           await tx.query(
-            "INSERT INTO workflow_runs(workflow_id,job_id,implementation_version_id,input_bundle_id,kind,evaluation_case_result_id,limits) VALUES($1,$2,$3,$4,'evaluation',$5,$6) RETURNING id",
+            "INSERT INTO workflow_runs(workflow_id,job_id,implementation_version_id,input_bundle_id,kind,evaluation_case_result_id,limits,evaluation_attempt) VALUES($1,$2,$3,$4,'evaluation',$5,$6,$7) RETURNING id",
             [
               result.workflow_id,
               job.id,
@@ -318,16 +318,22 @@ export class EvaluationService {
               c.input_bundle_id,
               resultId,
               DEMO_LIMITS,
+              result.recovery_count ?? 0,
             ],
           )
         ).rows[0];
       return { skip: false as const, kind: c.kind, run_id: String(run.id) };
     });
   }
+  async needsRecovery(id: string): Promise<boolean> {
+    const row = (await this.db.query("SELECT r.recovery_pending FROM evaluation_case_results r JOIN evaluation_runs e ON e.id=r.evaluation_run_id JOIN workflow_jobs j ON j.id=e.job_id WHERE r.id=$1 AND r.status='running' AND e.status='running' AND j.status='running'", [id])).rows[0];
+    return row?.recovery_pending === true;
+  }
   async recordCase(
     id: string,
     data: { actual: Json } | { error: RuntimeError },
     attemptToken?: string,
+    sourceRunId?: string,
   ) {
     return this.db.transaction(async (tx) => {
       let result = (
@@ -343,7 +349,7 @@ export class EvaluationService {
           id,
         ])
       ).rows[0] as unknown as CaseResult;
-      if (result.status === "finished") return result;
+      if (result.status === "finished" || result.recovery_pending) return result;
       const evaluation = await evaluationById(tx, result.evaluation_run_id),
         job = await jobById(tx, evaluation.job_id);
       if (
@@ -356,6 +362,8 @@ export class EvaluationService {
           "EVALUATION_INACTIVE",
           "This evaluation can no longer publish case results.",
         );
+      if (sourceRunId && !(await tx.query("SELECT id FROM workflow_runs WHERE id=$1 AND evaluation_case_result_id=$2 AND evaluation_attempt=$3", [sourceRunId, id, result.recovery_count ?? 0])).rows.length)
+        throw new DomainError(409, "STALE_EVALUATION_RESULT", "A newer case execution owns this result.");
       if (attemptToken) {
         const token = (
           await tx.query(
@@ -369,6 +377,15 @@ export class EvaluationService {
             "STALE_EVALUATION_RESULT",
             "A newer case invocation owns this result.",
           );
+      }
+      if ("error" in data && canRecoverCase(evaluation.execution_configuration, data.error, result.recovery_count ?? 0)) {
+        assertEvaluationConfiguration(evaluation.execution_configuration);
+        const run = (await tx.query("SELECT id,status FROM workflow_runs WHERE evaluation_case_result_id=$1 AND evaluation_attempt=$2", [id, result.recovery_count ?? 0])).rows[0];
+        if (run && !["failed", "needs_attention", "cancelled", "completed"].includes(String(run.status)))
+          throw new DomainError(409, "CASE_STILL_RUNNING", "Wait for the failed execution to finish before recovery.");
+        await tx.query("INSERT INTO evaluation_case_recoveries(workflow_id,case_result_id,workflow_run_id,attempt_token,failure_category,failure_code,failure_message) VALUES($1,$2,$3,$4,$5,$6,$7)",
+          [result.workflow_id, id, run?.id ?? null, attemptToken ?? null, data.error.category, data.error.code, data.error.message]);
+        return (await tx.query("UPDATE evaluation_case_results SET recovery_count=recovery_count+1,recovery_pending=true,attempt_token=NULL WHERE id=$1 RETURNING *", [id])).rows[0] as unknown as CaseResult;
       }
       const c = (await suiteCases(tx, evaluation.suite_version_id)).find(
         (c) => c.id === result.case_id,

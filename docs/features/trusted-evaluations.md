@@ -4,7 +4,7 @@ Use **Evaluation** in `/workflows/:id/engineer` to compare a code version agains
 
 1. Create a test suite and add full-workflow or one-step cases. Workflow cases use captured inputs; step cases accept a JSON context.
 2. Add output paths and expected values. Choose **Equals exactly**, **Contains a record**, or **Excludes a record**. Inspect the inputs and confirm the expected answers with **Verify inputs & answers**.
-3. Lock the suite, select a code version, and choose **Run full suite**.
+3. Lock the suite, select a code version, and choose **Run full suite**, or **Evaluate and repair** to evaluate and automatically enter bounded repair if implementation failures remain.
 4. Open **Results & history** to compare values, inspect errors, or expand the step trace. Closing the page does not interrupt the work.
 
 The results view keeps the case list beside its details. A pass means every check passed. Failed means a conclusive comparison disagreed. Inconclusive means evidence is incomplete, such as an execution error, missing human fixture, cancellation, or build blocker. Independent cases continue after an individual failure.
@@ -32,6 +32,8 @@ The Test cases view lets the engineer create a named suite, add cases, inspect i
 Comparison labels can identify the independently inspected source page. Engineers can check source evidence as well as final totals when that evidence is included in the final output; the system does not create or verify these expectations automatically. Assertion operators live in the existing JSONB case definition, so no table or migration is added. Suite revision and locking rules apply to operators and expected values together.
 
 A full-workflow case selects a previously captured input and runs the frozen process from its entry point. A one-step case selects a frozen block and supplies its input, previous step outputs, and any required human response. It checks the output of that implementation in isolation, including valid routing. This does not establish full-workflow correctness.
+
+For an isolated combined-report check, an Outcome case can include `"execution": { "mode": "aggregate" }` alongside `input` and `steps` in its JSON context. Supply synthetic group results and coverage in `input`; no Gmail capture or document extraction is needed. The service rejects aggregate mode for other block types. Omitting `execution` preserves ordinary step behavior. The mode is saved with the case, locked with its expectations, and replayed during evaluation and repair. These checks verify report behavior only; they do not verify the source groups’ business conclusions.
 
 Full-workflow cases can include scripted human responses keyed to a block and its visit number. Every required visit needs its own response. Missing or incompatible responses produce an execution error; automated evaluation never waits for a real person or accepts a live response in place of the locked fixture.
 
@@ -76,3 +78,30 @@ When the optional inference budget guard is enabled, token counting may make at 
 The case editor preserves an isolated step case’s captured input when editing. Choose **Use JSON input only** to remove that optional bundle explicitly; selecting a bundle replaces the fixture’s `input` at execution while retaining its prior-step context.
 
 The recorded configuration also includes the runtime heartbeat policy. Let active operations finish or cancel them before restarting the web app and worker consistently for a policy change, then start a distinct confirmation sequence. Already scheduled activity timeouts in Temporal history are not rewritten by updating the worker. Earlier passes under a different policy do not count toward that sequence. The longer heartbeat allowance is liveness tolerance, not permission to extend inference time, repeat failed business answers, or treat infrastructure errors as successful cases.
+
+## Automatic evaluation and repair
+
+**Evaluate and repair** preserves the manual controls and pins the selected code and latest locked suite. The worker completes the initial full evaluation, then atomically reserves one repair session if its failures are repairable. A passing baseline stops without generating code. Input/infrastructure errors, cancellation, or a newer suite revision stop automatic handoff with a reason. The existing repair loop handles up to three attempts and full-suite reruns, including its three-pass candidate confirmation; it never starts additional sessions automatically. This uses additional AI credits and works after the browser closes. Results stay in Results & history; subsequent attempts appear in Repair history. Cancel operation applies to the current evaluation or repair job.
+
+The opt-in is stored in the evaluation job's source request. Evaluation completion and repair creation share the workflow lock and database transaction, preventing competing operations in the handoff. Retry delivery uses the initial evaluation ID as the repair request key. No new schema or alternate grading path is introduced.
+
+
+## Bounded case concurrency
+
+New evaluations run up to two independent cases at once after one successful shared build check. Each free slot takes the next queued case immediately; a slow case does not hold up the other slot. Full-workflow and isolated-step cases use the same scheduler, with their own immutable inputs, traces and results. Every case must finish before the suite is graded or automatic repair begins. Individual case failures preserve their result and allow the remaining cases to run. A shared build failure starts no cases; cancellation, deadline expiry or a fatal scheduler error cancels and drains active work before finalizing the evaluation.
+
+The scheduling policy is recorded in `execution_configuration`. Historical runs without it keep sequential scheduling, including on replay/resume. Confirmation rounds inherit round one's exact settings, so historical sequential evidence is not mixed with parallel confirmation evidence. Repair candidates and their confirmation rounds remain sequential; only cases within each suite overlap.
+
+The default worker has four activity slots, enough for two cases each performing two extraction branches. This is a per-worker capacity limit, not a global provider quota. Existing inference reservations and request deadlines remain in force; parallelism can increase peak request rate and encounter provider throttling even when total intended work is unchanged. No additional machines or higher spending ceiling are required. The optional file-backed spending ledger coordinates processes on one host only; distributing across hosts requires a shared reservation store first.
+
+`tests/evaluation-concurrency.test.ts` exercises bounded overlap, slot refill, isolated failure, build blocking, cancellation/draining, deadline expiry and history replay against a local Temporal server. Persistence tests cover scheduling snapshots, legacy resumes and consistent repair confirmations. These are fixture checks, not a live latency or accuracy benchmark.
+
+## Transient case recovery
+
+New evaluations record a case recovery policy allowing one fresh execution of a case after `TOKEN_PREFLIGHT_TRANSIENT`. Token counting has a 35-second deadline per request and at most three requests within its existing 120-second total allowance. Only transport failures, count timeouts and explicitly transient non-quota HTTP responses qualify; invalid responses, authorization, quota/spending limits and failed assertions do not. No inference starts without a successful count and budget reservation.
+
+A failed workflow execution stays immutable. Migration 016 records its failure and run reference in `evaluation_case_recoveries`, while a new workflow run uses the same code, captured bundle and locked case. Isolated step failures retain their audit invocation token. Case results remain running until recovery finishes, and result responses expose recovery history. Other cases are not repeated. Persistent infrastructure errors still block repair. Cancellation and the original operation deadline apply throughout; a worker restart cannot reset the one-recovery allowance. Legacy evaluation configurations do not acquire this behavior silently.
+
+Recovery is part of the recorded execution policy, not a new passing sample. Three-run confirmation still requires three separate full evaluations with identical configurations; earlier configurations cannot contribute. Repair's current-output traces use the final case execution, while historical failed invocation audits remain inspectable.
+
+Execution configuration also pins the model response and step deadline policy and the runtime SDK retry count. Model-response time starts after token preflight, includes body consumption, and is reported separately from the outer step deadline. Neither timeout is treated as an assertion failure, a pass, or a reason to blindly replay the case. Changing these settings requires a fresh evaluation sequence.

@@ -5,7 +5,7 @@ import { temporalConfig } from "../server/integrations/temporal-config";
 import { startOutbox } from "./dispatch-outbox";
 import * as activities from "./activities";
 import { getDatabase } from "../server/database";
-import { RUNTIME_HEARTBEAT_POLICY } from "../domain/runtime-policy";
+import { RUNTIME_HEARTBEAT_POLICY, WORKER_ACTIVITY_CONCURRENCY } from "../domain/runtime-policy";
 nextEnv.loadEnvConfig(process.cwd());
 const config = temporalConfig();
 const connection = await NativeConnection.connect(config.connection);
@@ -16,7 +16,7 @@ try {
     taskQueue: config.taskQueue,
     workflowsPath: fileURLToPath(new URL("./workflows.ts", import.meta.url)),
     activities,
-    maxConcurrentActivityTaskExecutions: 4,
+    maxConcurrentActivityTaskExecutions: WORKER_ACTIVITY_CONCURRENCY,
     maxHeartbeatThrottleInterval: RUNTIME_HEARTBEAT_POLICY.max_throttle_ms,
   });
   console.log("Meridian worker ready.");

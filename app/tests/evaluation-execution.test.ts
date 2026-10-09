@@ -581,3 +581,209 @@ it("records compiler failure independently of evaluation completion and later ve
   expect((await versions.inspect(f.w.id, f.version.id)).build_check_status).toBe("passed");
   await evals.finish(next.job.id, undefined, true);
 });
+
+it("records parallel scheduling for new evaluations and preserves legacy scheduling on resume", async () => {
+  const { evaluationCaseConcurrency, evaluationConfiguration } = await import("../src/server/evaluations/configuration");
+  const first = await prepared();
+  expect(evaluationCaseConcurrency(first.evaluation.execution_configuration)).toBe(2);
+  await evals.finish(first.job.id, undefined, true);
+  const next = await evals.start(first.f.w.id, {request_key:randomUUID(),implementation_version_id:first.f.version.id,suite_version_id:first.suite.id});
+  const legacy = evaluationConfiguration() as Record<string, import("../src/domain/runtime").Json>;
+  delete legacy.scheduling;
+  await db.query("UPDATE evaluation_runs SET execution_configuration=$2 WHERE id=$1",[next.evaluation.id,legacy]);
+  const resumed = (await evals.prepare(next.job.id))!;
+  expect(resumed.evaluation.execution_configuration).toEqual(legacy);
+  expect(evaluationCaseConcurrency(resumed.evaluation.execution_configuration)).toBe(1);
+  await evals.beginCase(resumed.results[0].id);
+  await evals.finish(next.job.id, undefined, true);
+  expect(() => evaluationCaseConcurrency({...legacy,scheduling:{version:1,case_concurrency:100}})).toThrow("Execution settings changed");
+});
+
+it("preserves a failed workflow attempt and retries just that case with identical inputs", async () => {
+  const {evaluation,results}=await prepared();
+  const c=(await db.query("SELECT id FROM evaluation_cases WHERE suite_version_id=$1 AND kind='workflow' ORDER BY id",[evaluation.suite_version_id])).rows[0];
+  const result=results.find(r=>r.case_id===c.id)!;
+  const first=await evals.beginCase(result.id);
+  if(first.skip || first.kind!=="workflow") throw Error("workflow required");
+  await db.query("UPDATE workflow_runs SET status='failed',failure_code='TOKEN_PREFLIGHT_TRANSIENT',failure_category='infrastructure',failure_message='Synthetic timeout',finished_at=now() WHERE id=$1",[first.run_id]);
+  await execution.workflow(result.id);
+  // Retrying the completion activity must not consume another recovery.
+  await execution.workflow(result.id).catch(e=>{expect(e.code).toBe("NOT_FOUND");});
+  expect(await evals.needsRecovery(result.id)).toBe(true);
+  const second=await evals.beginCase(result.id);
+  if(second.skip || second.kind!=="workflow") throw Error("workflow required");
+  expect(second.run_id).not.toBe(first.run_id);
+  const runs=(await db.query("SELECT implementation_version_id,input_bundle_id,evaluation_attempt,status FROM workflow_runs WHERE evaluation_case_result_id=$1 ORDER BY evaluation_attempt",[result.id])).rows;
+  expect(runs).toHaveLength(2);
+  expect(runs[0].implementation_version_id).toBe(runs[1].implementation_version_id);
+  expect(runs[0].input_bundle_id).toBe(runs[1].input_bundle_id);
+  expect(runs.map(r=>r.status)).toEqual(["failed","queued"]);
+  expect(await evals.needsRecovery(result.id)).toBe(false);
+  const histories=(await db.query("SELECT * FROM evaluation_case_recoveries WHERE case_result_id=$1",[result.id])).rows;
+  expect(histories).toHaveLength(1);
+  await expect(db.query("DELETE FROM evaluation_case_recoveries WHERE case_result_id=$1",[result.id])).rejects.toBeDefined();
+  // Exhaustion is final; no endless automatic reruns.
+  await db.query("UPDATE workflow_runs SET status='failed',failure_code='TOKEN_PREFLIGHT_TRANSIENT',failure_category='infrastructure',failure_message='Synthetic timeout',finished_at=now() WHERE id=$1",[second.run_id]);
+  await execution.workflow(result.id);
+  expect(await evals.needsRecovery(result.id)).toBe(false);
+  const rows=(await import("../src/server/evaluations/evaluation-service")).resultsByEvaluation;
+  const visible=await rows(db,evaluation.id);
+  expect(visible).toHaveLength(results.length);
+  expect(visible.find(r=>r.id===result.id)).toMatchObject({status:"finished",outcome:"error",workflow_run_id:second.run_id,recovery_count:1,recoveries:[{workflow_run_id:first.run_id}]});
+  expect(visible.filter(r=>r.id!==result.id).every(r=>r.status==="queued")).toBe(true);
+});
+
+it.each(["MODEL_QUOTA_EXCEEDED","INFERENCE_BUDGET_LIMIT","BUDGET_UNAVAILABLE","EVALUATION_CONFIGURATION_CHANGED","EXTRACTION_EVIDENCE_INVALID"])("never automatically recovers %s",async code=>{
+  const {results}=await prepared();
+  await evals.beginCase(results[0].id);
+  await evals.recordCase(results[0].id,{error:{category:"infrastructure",code,message:"Synthetic failure"}});
+  expect(await evals.needsRecovery(results[0].id)).toBe(false);
+  expect((await db.query("SELECT status FROM evaluation_case_results WHERE id=$1",[results[0].id])).rows[0].status).toBe("finished");
+});
+
+it("recovers an isolated case and preserves its assertion failure without retrying for a pass",async()=>{
+  const {evaluation,results}=await prepared();
+  const c=(await db.query("SELECT id FROM evaluation_cases WHERE suite_version_id=$1 AND kind='step'",[evaluation.suite_version_id])).rows[0];
+  const result=results.find(r=>r.case_id===c.id)!;
+  await evals.beginCase(result.id);
+  await evals.recordCase(result.id,{error:{category:"infrastructure",code:"TOKEN_PREFLIGHT_TRANSIENT",message:"Synthetic timeout"}});
+  expect(await evals.needsRecovery(result.id)).toBe(true);
+  await evals.beginCase(result.id);
+  await evals.recordCase(result.id,{actual:{shipment:"WRONG"}});
+  expect(await evals.needsRecovery(result.id)).toBe(false);
+  expect((await db.query("SELECT outcome FROM evaluation_case_results WHERE id=$1",[result.id])).rows[0].outcome).toBe("failed");
+});
+
+it("cancellation during recovery finalizes the case without starting another execution",async()=>{
+  const {job,results}=await prepared();
+  const r=results[0];
+  // Use an isolated result so no execution must be artificially completed.
+  const step=(await db.query("SELECT r.id FROM evaluation_case_results r JOIN evaluation_cases c ON c.id=r.case_id WHERE r.evaluation_run_id=$1 AND c.kind='step'",[r.evaluation_run_id])).rows[0];
+  await evals.beginCase(String(step.id));
+  await evals.recordCase(String(step.id),{error:{category:"infrastructure",code:"TOKEN_PREFLIGHT_TRANSIENT",message:"timeout"}});
+  await evals.finish(job.id,undefined,true);
+  expect(await evals.needsRecovery(String(step.id))).toBe(false);
+  expect(await evals.beginCase(String(step.id))).toEqual({skip:true});
+  expect(Number((await db.query("SELECT count(*) FROM evaluation_case_recoveries WHERE case_result_id=$1",[step.id])).rows[0].count)).toBe(1);
+});
+
+it("persists the full five-batch audit and fences its invocation after completion",async()=>{
+  const {evaluation,results}=await prepared();
+  const c=(await db.query("SELECT id FROM evaluation_cases WHERE suite_version_id=$1 AND kind='step'",[evaluation.suite_version_id])).rows[0];
+  const r=results.find(r=>r.case_id===c.id)!;
+  await evals.beginCase(r.id);
+  const token=randomUUID();
+  await db.query("UPDATE evaluation_case_results SET attempt_token=$2 WHERE id=$1",[r.id,token]);
+  const {ExecutionAuditService}=await import("../src/server/runtime/audit-service");
+  const audits=new ExecutionAuditService(db,artifacts),record=audits.recorder(r.workflow_id,{case_result_id:r.id},token);
+  await record("initial_output",{});
+  for(let i=0;i<5;i++){await record("model_request",{}, {batch_index:i});await record("model_response",{}, {batch_index:i});}
+  await record("final_output",{});
+  expect(await audits.list(r.workflow_id,{case_result_id:r.id})).toHaveLength(12);
+  await evals.recordCase(r.id,{actual:{}},token);
+  await expect(record("failure",{})).rejects.toMatchObject({code:"AUDIT_UNAVAILABLE"});
+});
+
+it("carries a real extraction failure and provider stages through saved audit into repair's readable evidence", async () => {
+  const { inferenceStage, annotateInferenceTrace } = await import("../src/server/integrations/inference-trace");
+  const { finishEvaluationWithRepair } = await import("../src/server/evaluations/automatic-repair");
+  const { RepairService } = await import("../src/server/repairs/service");
+  const { repairPrompt } = await import("../src/server/repairs/evidence");
+  const { RepairAuditReader } = await import("../src/server/repairs/audit");
+  const { ExecutionAuditService } = await import("../src/server/runtime/audit-service");
+  const f = await runtimeFixture(db, artifacts, ["trigger","task","outcome"], {
+    name:"Source verification",desired_outcome:"Extract seller",instructions:{task:"Read printed seller"},methods:{task:"agent"},
+  });
+  await f.runs.finish(f.job.id,{status:"cancelled"});
+  const doc = await artifacts.create(f.w.id,"source_document","seller.txt","text/plain",Buffer.from("Seller: Example Ltd"));
+  const bundle = await new BundleService(db).create(f.w.id,{source_kind:"fixture",shipment_reference:null,manifest:{input:{},message_ids:[],artifacts:[{artifact_id:doc.id,name:"seller.txt",message_id:null}]}});
+  const suite = await suites.create(f.w.id,{request_key:randomUUID(),name:"Fixed source answers",parent_suite_version_id:null});
+  const c = await suites.addCase(f.w.id,suite.id,caseInput.parse({case_key:"seller",name:"Seller",kind:"step",node_id:f.nodes[1].id,input_bundle_id:bundle.id,input_data:{input:{},steps:{}},assertions:[{key:"seller",label:"Printed seller",path:["seller"],expected:"Example Ltd"}]}));
+  await suites.verifyCase(f.w.id,suite.id,c.id,{expected_revision:c.revision});
+  await suites.lock(f.w.id,suite.id,{expected_revision:(await suites.state(f.w.id)).suites[0].revision});
+  const started = await evals.start(f.w.id,{request_key:randomUUID(),implementation_version_id:f.version.id,suite_version_id:suite.id,auto_repair:true});
+  const ready=(await evals.prepare(started.job.id))!; const result=ready.results[0];await evals.beginCase(result.id);
+  await execution.step(result.id,{
+    invoke:async()=>({kind:"extract",instructions:"Read seller",data:{},document_ids:[doc.id],output_schema:{type:"object"},critical_paths:[["seller"]]}),
+    reason:async()=>({}),extract:async()=>{
+      await inferenceStage("preflight",async()=>annotateInferenceTrace({input_tokens:50,preflight_attempts:1}));
+      return inferenceStage("response",async()=>({data:{seller:"Example Ltd"},fields:[]}));
+    },
+  },AbortSignal.timeout(10000));
+  const job=await finishEvaluationWithRepair(db,started.job.id);expect(job?.kind).toBe("repair");
+  const repairs=new RepairService(db);await repairs.prepare(job!.id);const attempt=await repairs.beginAttempt(job!.id,1);
+  const context=await repairs.generationContext(attempt.id);
+  const prompt=JSON.parse(repairPrompt(context,(await versions.load(f.w.id,f.version.id)).project));
+  const group=prompt.execution_audit_events.invocations[0];
+  const failed=group.events.find((e:{kind:string})=>e.kind==="failure");
+  expect(failed.diagnostic).toMatchObject({failure_code:"EXTRACTION_EVIDENCE_INVALID",failure_category:"implementation",evidence_issues:[{path:["seller"]}],provider_trace:{input_tokens:50}});
+  const response=group.events.find((e:{kind:string})=>e.kind==="model_response");
+  const reader=new RepairAuditReader(f.w.id,new Set(context.audit_events.map(e=>String(e.id))),new ExecutionAuditService(db,artifacts),AbortSignal.timeout(10000));
+  expect(await reader.read(response.id,["fields"])).toMatchObject({missing:false,value:[]});
+  expect(prompt.locked_cases[0].assertions[0].expected).toBe("Example Ltd");
+  expect(context.results[0]).toMatchObject({failure_category:"implementation",failure_code:"EXTRACTION_EVIDENCE_INVALID"});
+});
+
+it("persists aggregate context for an isolated Outcome evaluation and rejects other block types", async () => {
+  const f = await runtimeFixture(db, artifacts);
+  await f.runs.finish(f.job.id, { status: "cancelled" });
+  const suite = await suites.create(f.w.id, {
+    request_key: randomUUID(),
+    name: "Aggregate contract",
+    parent_suite_version_id: null,
+  });
+  const definition = caseInput.parse({
+    case_key: "complete-coverage",
+    name: "Complete coverage",
+    kind: "step",
+    node_id: f.nodes[2].id,
+    input_data: {
+      input: { coverage: { complete: true } },
+      steps: {},
+      execution: { mode: "aggregate" },
+    },
+    assertions: [{
+      key: "mode",
+      label: "Aggregate mode reaches the generated step",
+      path: ["mode"],
+      expected: "aggregate",
+    }],
+  });
+  await expect(suites.addCase(f.w.id, suite.id, {
+    ...definition,
+    node_id: f.nodes[0].id,
+  })).rejects.toMatchObject({ code: "INVALID_PHASE_NODE" });
+  const c = await suites.addCase(f.w.id, suite.id, definition);
+  await suites.verifyCase(f.w.id, suite.id, c.id, {
+    expected_revision: c.revision,
+  });
+  await suites.lock(f.w.id, suite.id, {
+    expected_revision: (await suites.state(f.w.id)).suites[0].revision,
+  });
+  const launched = await evals.start(f.w.id, {
+    request_key: randomUUID(),
+    implementation_version_id: f.version.id,
+    suite_version_id: suite.id,
+  });
+  const ready = (await evals.prepare(launched.job.id))!;
+  await execution.build(
+    launched.evaluation.id,
+    async () => ({ engine: "fixture", check: "node --check" }),
+    AbortSignal.timeout(10000),
+  );
+  await evals.beginCase(ready.results[0].id);
+  await execution.step(ready.results[0].id, {
+    invoke: async (_project, _node, context) => ({
+      kind: "complete",
+      output: context.execution,
+      matching_connection_ids: [],
+    }),
+    reason: async () => { throw new Error("No model call expected"); },
+  }, AbortSignal.timeout(10000));
+  await evals.finish(launched.job.id);
+  expect((await evals.state(f.w.id, launched.evaluation.id)).runs[0]).toMatchObject({
+    status: "completed",
+    verdict: "passed",
+  });
+  expect((await suites.state(f.w.id)).cases[0].input_data).toEqual(definition.input_data);
+});

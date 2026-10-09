@@ -1,9 +1,10 @@
+import { RUNTIME_DEADLINE_POLICY } from "../../domain/runtime-policy";
 import {
   extractionInstructions,
   type ExtractionRequest,
 } from "../../domain/extraction";
 import { generateText, Output, type UserContent } from "ai";
-import { openai } from "./openai-client";
+import { runtimeOpenAI } from "./openai-client";
 import { DomainError } from "../../domain/errors";
 import type { Json } from "../../domain/runtime";
 import type { ReasoningDocument } from "../runtime/documents";
@@ -57,12 +58,12 @@ export async function reasonForStep(
     return (await modelOutput(
       () =>
         generateText({
-          model: openai(configuration.name),
+          model: runtimeOpenAI(configuration.name),
           output: Output.json(),
           system: configuration.system,
           messages: [{ role: "user", content }],
           maxOutputTokens: configuration.max_output_tokens,
-          maxRetries: 1,
+          maxRetries: RUNTIME_DEADLINE_POLICY.model_sdk_retries,
           abortSignal: signal,
           providerOptions: {
             openai: {

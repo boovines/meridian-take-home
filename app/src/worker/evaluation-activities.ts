@@ -1,9 +1,14 @@
+import { invocationFailure } from "../server/runtime/invoke-step";
+import { hasCaseRecovery } from "../domain/evaluation-recovery";
+import { finishEvaluationWithRepair } from "../server/evaluations/automatic-repair";
+import { evaluationCaseConcurrency } from "../server/evaluations/configuration";
+import { startRepairWorkflow } from "../server/integrations/temporal";
 import { withRecoveryBudget } from "../server/repairs/recovery-budget";
 import { heartbeat, cancellationSignal } from "@temporalio/activity";
 import { getDatabase } from "../server/database";
 import { DomainError } from "../domain/errors";
 import type { RuntimeError } from "../domain/runtime";
-import { RUNTIME_HEARTBEAT_POLICY } from "../domain/runtime-policy";
+import { RUNTIME_DEADLINE_POLICY, RUNTIME_HEARTBEAT_POLICY } from "../domain/runtime-policy";
 import { EvaluationService } from "../server/evaluations/evaluation-service";
 import { EvaluationExecutionService } from "../server/evaluations/execution-service";
 import { validateInSandbox } from "../server/integrations/sandbox-project";
@@ -21,16 +26,18 @@ export async function prepareEvaluation(id: string, evaluationId?: string) {
   return context
     ? {
         evaluation_id: context.evaluation.id,
+        case_recovery: hasCaseRecovery(context.evaluation.execution_configuration),
         deadline_at: context.deadline_at,
         result_ids: context.results.map((r) => r.id),
+        case_concurrency: evaluationCaseConcurrency(context.evaluation.execution_configuration),
       }
     : null;
 }
 export async function beginEvaluationCase(id: string) {
   return new EvaluationService(await getDatabase()).beginCase(id);
 }
-export async function scoreWorkflowCase(id: string) {
-  return new EvaluationExecutionService(await getDatabase()).workflow(id);
+export async function scoreWorkflowCase(id: string, runId?: string) {
+  return new EvaluationExecutionService(await getDatabase()).workflow(id, runId);
 }
 export async function endEvaluation(
   id: string,
@@ -38,12 +45,14 @@ export async function endEvaluation(
   cancelled = false,
   evaluationId?: string,
 ) {
-  return new EvaluationService(await getDatabase()).finish(
+  const next = await finishEvaluationWithRepair(
+    await getDatabase(),
     id,
     error,
     cancelled,
     evaluationId,
   );
+  if (next && ["queued", "cancel_requested"].includes(next.status)) await startRepairWorkflow(next.id);
 }
 export async function checkEvaluationBuild(
   id: string,
@@ -95,6 +104,7 @@ export async function evaluateStepCase(id: string) {
     () => heartbeat(),
     RUNTIME_HEARTBEAT_POLICY.interval_ms,
   );
+  const deadline = AbortSignal.timeout(RUNTIME_DEADLINE_POLICY.step_ms);
   try {
     heartbeat();
     const db = await getDatabase();
@@ -121,23 +131,38 @@ export async function evaluateStepCase(id: string) {
           AbortSignal.any([
             capacitySignal,
             cancellationSignal(),
-            AbortSignal.timeout(150000),
+            deadline,
           ]),
         ),
       cancellationSignal(),
     );
+  } catch (error) {
+    if (cancellationSignal().aborted) throw error;
+    if (error instanceof DomainError) {
+      await new EvaluationService(await getDatabase()).recordCase(id, { error: invocationFailure(error) });
+      return;
+    }
+    if (!deadline.aborted) throw error;
+    await new EvaluationService(await getDatabase()).recordCase(id, { error: {
+      code: "STEP_EXECUTION_TIMEOUT", category: "infrastructure",
+      message: "The step exceeded its 12-minute execution allowance. No incomplete result was accepted; inspect its last recorded stage and reduce work per step.",
+    } });
   } finally {
     clearInterval(pulse);
   }
 }
 
-export async function failEvaluationCase(id: string) {
+export async function failEvaluationCase(id: string, failure?: RuntimeError) {
   return new EvaluationService(await getDatabase()).recordCase(id, {
-    error: {
+    error: failure ?? {
       code: "CASE_EXECUTION_ERROR",
       message:
         "This case's worker could not finish. Other independent cases can still run.",
       category: "infrastructure",
     },
   });
+}
+
+export async function needsEvaluationCaseRecovery(id: string) {
+  return new EvaluationService(await getDatabase()).needsRecovery(id);
 }

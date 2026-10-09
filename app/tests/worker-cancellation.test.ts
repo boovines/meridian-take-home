@@ -179,8 +179,8 @@ it.each([
           .find(e => e?.activityType?.name === activityName);
         expect(scheduled).toBeDefined();
         expect(String(scheduled?.heartbeatTimeout?.seconds)).toBe("60");
-        expect(String(scheduled?.startToCloseTimeout?.seconds)).toBe("180");
-        expect(String(scheduled?.scheduleToCloseTimeout?.seconds)).toBe("420");
+        expect(String(scheduled?.startToCloseTimeout?.seconds)).toBe("750");
+        expect(String(scheduled?.scheduleToCloseTimeout?.seconds)).toBe("900");
         expect(scheduled?.retryPolicy?.maximumAttempts).toBe(2);
       }
       expect(
@@ -377,3 +377,20 @@ it("captures heartbeat settings and rejects missing or changed measurement polic
   }
   expect(() => assertEvaluationConfiguration(current as Parameters<typeof assertEvaluationConfiguration>[0])).not.toThrow();
 });
+
+it("preserves a worker-supplied implementation diagnosis through the real Temporal workflow",async()=>{
+  const {ApplicationFailure}=await import("@temporalio/common");
+  const taskQueue=`typed-failure-${randomUUID()}`;
+  const node={...nodeInput.parse({type:"trigger",title:"Start"}),id:randomUUID()};
+  let result:unknown;
+  const worker=await Worker.create({connection:env.nativeConnection,taskQueue,workflowBundle,activities:{
+    prepareExecution:async()=>({run:{id:randomUUID()},definition:{board:{nodes:[node],connections:[]},methods:{[node.id]:"code"},limits:{step_attempts:100,active_ms:900000}}}),
+    projectExecution:async()=>{},
+    executeOccurrence:async()=>{throw ApplicationFailure.create({type:"EXTRACTION_EVIDENCE_INVALID",message:"Invalid source citation",nonRetryable:true,details:[{failure_category:"implementation"}]});},
+    endExecution:async(_id:string,value:unknown)=>{result=value;},
+  }});
+  await worker.runUntil(async()=>{
+    const handle=await env.client.workflow.start("executeWorkflow",{workflowId:randomUUID(),taskQueue,args:[randomUUID()]});await handle.result();
+  });
+  expect(result).toMatchObject({status:"failed",error:{category:"implementation",code:"EXTRACTION_EVIDENCE_INVALID"}});
+},20000);
