@@ -6,6 +6,7 @@ export const createPlanInput = z
   .object({
     request_key: uuid,
     parent_plan_version_id: uuid.nullable().default(null),
+    frozen_spec_id: uuid.optional(),
   })
   .strict();
 export const planStepPatch = z
@@ -88,9 +89,12 @@ export interface ImplementationVersion {
   created_at: string;
 }
 export interface WorkflowJob {
+  parent_job_id?: string | null;
+  frozen_spec_id?: string;
+  process_version?: number;
   id: string;
   workflow_id: string;
-  kind: "generation" | "evaluation" | "repair" | "execution";
+  kind: "generation" | "evaluation" | "repair" | "execution" | "grouped";
   status:
     | "queued"
     | "running"

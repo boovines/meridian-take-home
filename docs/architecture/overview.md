@@ -46,7 +46,7 @@ PostgreSQL connections are bounded per process. Server-side statement and idle-t
 | --- | --- |
 | Draft workflow | Editable with per-record revisions; semantic content revision excludes position-only changes. |
 | Review input | Captured content and revision; goal clarification records the subsequent analyzed input explicitly. |
-| Frozen spec | Immutable graph and review evidence; exactly one per workflow in the demo. |
+| Frozen spec | Immutable graph and review evidence; one frozen handoff per process revision, retaining earlier revisions. |
 | Implementation plan | Editable draft, immutable after approval; method changes create a new version. |
 | Generated code | Immutable artifact tied to its plan and parent version. |
 | Evaluation suite | Editable draft, immutable after verification/lock; corrections create a new version. |

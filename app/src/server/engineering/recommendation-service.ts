@@ -2,7 +2,7 @@ import { DomainError } from "../../domain/errors";
 import type { Database } from "../database";
 import { recommendMethods } from "../integrations/openai-engineer";
 import { fixtureEngineering } from "./dispatch";
-import { PlanService } from "./plan-service";
+import { PlanService, planById } from "./plan-service";
 export async function suggestPlanMethods(
   db: Database,
   workflowId: string,
@@ -11,7 +11,8 @@ export async function suggestPlanMethods(
   signal: AbortSignal,
 ) {
   const service = new PlanService(db),
-    state = await service.state(workflowId),
+    target = await planById(db, workflowId, planId),
+    state = await service.state(workflowId, target.frozen_spec_id),
     plan = state.plans.find((p) => p.id === planId);
   if (!plan || plan.state !== "draft" || plan.revision !== revision)
     throw new DomainError(

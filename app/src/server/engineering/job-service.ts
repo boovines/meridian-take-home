@@ -9,7 +9,7 @@ import type {
 } from "../../domain/engineering";
 import type { Database, Queryable } from "../database";
 import { workflow } from "../workflows/store";
-import { planById, planSteps, frozenSpec } from "./plan-service";
+import { planById, planSteps, specForPlan } from "./plan-service";
 const terminal = ["succeeded", "failed", "cancelled"];
 export async function jobById(tx: Queryable, id: string): Promise<WorkflowJob> {
   const row = (await tx.query("SELECT * FROM workflow_jobs WHERE id=$1", [id]))
@@ -130,7 +130,7 @@ export class JobService {
           "PLAN_NOT_APPROVED",
           "The operation requires its approved plan.",
         );
-      const spec = await frozenSpec(tx, job.workflow_id),
+      const spec = await specForPlan(tx, job.workflow_id, job.plan_version_id),
         steps = await planSteps(tx, plan.id);
       await tx.query(
         "UPDATE workflow_jobs SET status='running',phase='preparing',started_at=coalesce(started_at,now()),updated_at=now() WHERE id=$1",

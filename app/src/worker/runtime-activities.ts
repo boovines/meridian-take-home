@@ -1,3 +1,4 @@
+import { withRecoveryBudget } from "../server/repairs/recovery-budget";
 import { cancellationSignal, heartbeat } from "@temporalio/activity";
 import { ApplicationFailure } from "@temporalio/common";
 import { DomainError } from "../domain/errors";
@@ -37,16 +38,33 @@ export async function executeOccurrence(data: ScheduleStep, resume = false) {
   const deadline = AbortSignal.timeout(RUNTIME_DEADLINE_POLICY.step_ms);
   try {
     heartbeat();
-    return await new StepService(await getDatabase()).execute(
-      data,
-      {
-        invoke: invokeInSandbox,
-        reason: reasonForStep,
-        extract: extractForStep,
-        model: runtimeModelConfiguration(),
-      },
-      AbortSignal.any([cancellationSignal(), deadline]),
-      resume,
+    const db = await getDatabase();
+    const scope = (
+      await db.query("SELECT job_id FROM workflow_runs WHERE id=$1", [
+        data.run_id,
+      ])
+    ).rows[0];
+    if (!scope) throw new DomainError(404, "NOT_FOUND", "Run not found.");
+    return await withRecoveryBudget(
+      db,
+      String(scope.job_id),
+      (capacitySignal) =>
+        new StepService(db).execute(
+          data,
+          {
+            invoke: invokeInSandbox,
+            reason: reasonForStep,
+            extract: extractForStep,
+            model: runtimeModelConfiguration(),
+          },
+          AbortSignal.any([
+            capacitySignal,
+            cancellationSignal(),
+            deadline,
+          ]),
+          resume,
+        ),
+      cancellationSignal(),
     );
   } catch (error) {
     if (cancellationSignal().aborted) throw error;
@@ -78,4 +96,25 @@ export async function endCaseExecution(
 }
 export async function answerScriptedHuman(runId: string, id: string) {
   return scriptedAnswer(await getDatabase(), runId, id);
+}
+
+export async function checkRecoveryCandidate(runId: string) {
+  const timer = setInterval(
+    () => heartbeat(),
+    RUNTIME_HEARTBEAT_POLICY.interval_ms,
+  );
+  try {
+    const { checkRecoveryBuild } =
+      await import("../server/repairs/recovery-build");
+    const { validateInSandbox } =
+      await import("../server/integrations/sandbox-project");
+    return await checkRecoveryBuild(
+      await getDatabase(),
+      runId,
+      validateInSandbox,
+      AbortSignal.any([cancellationSignal(), AbortSignal.timeout(70000)]),
+    );
+  } finally {
+    clearInterval(timer);
+  }
 }

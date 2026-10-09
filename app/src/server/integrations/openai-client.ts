@@ -5,10 +5,18 @@ import { configuredInferenceBudget } from "./inference-budget";
 import { DomainError } from "../../domain/errors";
 import { countOpenAIInputTokens } from "./openai-preflight";
 
-// Standard GPT-5.4 rates verified 2026-10-08:
+// Standard US endpoint prices, USD per million tokens; verified 2026-10-08.
+// https://developers.openai.com/api/docs/models/gpt-5.4-mini
 // https://developers.openai.com/api/docs/models/gpt-5.4
-const pricedModels = ["gpt-5.4", "gpt-5.4-2026-03-05"];
-
+const prices: Record<
+  string,
+  { input: number; cached: number; output: number }
+> = {
+  "gpt-5.4": { input: 2.5, cached: 0.25, output: 15 },
+  "gpt-5.4-2026-03-05": { input: 2.5, cached: 0.25, output: 15 },
+  "gpt-5.4-mini": { input: 0.75, cached: 0.075, output: 4.5 },
+  "gpt-5.4-mini-2026-03-17": { input: 0.75, cached: 0.075, output: 4.5 },
+};
 export function meteredOpenAIFetch(base: typeof fetch): typeof fetch {
   return async (input, init) => {
     const budget = configuredInferenceBudget();
@@ -32,8 +40,9 @@ export function meteredOpenAIFetch(base: typeof fetch): typeof fetch {
         "Budgeted inference requires the non-streaming OpenAI Responses API.",
       );
     const r = JSON.parse(init.body);
+    const price = prices[r.model];
     if (
-      !pricedModels.includes(r.model) ||
+      !price ||
       r.stream ||
       r.background ||
       r.previous_response_id ||
@@ -46,7 +55,7 @@ export function meteredOpenAIFetch(base: typeof fetch): typeof fetch {
       throw new DomainError(
         503,
         "BUDGET_UNAVAILABLE",
-        "The spending guard allows only priced GPT-5.4 requests with bounded output and function tools.",
+        "Budgeted inference requires a priced GPT-5.4 or GPT-5.4 mini request with bounded output and function tools.",
       );
     // An omitted tier means project-configured "auto", potentially priced higher.
     // Pin the same standard tier used by the reservation and reconciliation.
@@ -65,12 +74,22 @@ export function meteredOpenAIFetch(base: typeof fetch): typeof fetch {
         .filter((k) => r[k] !== undefined)
         .map((k) => [k, r[k]]),
     );
-    const { tokens, attempts, failures } = await countOpenAIInputTokens(
-      base,
-      { ...init, body: JSON.stringify(countBody) },
-    );
+    const { tokens, attempts, failures } = await countOpenAIInputTokens(base, {
+      ...init,
+      body: JSON.stringify(countBody),
+    });
+    // Do not under-reserve a long-context pricing tier. The demo's inputs are
+    // smaller; fail before inference until explicit long-context pricing is added.
+    if (tokens > 272000)
+      throw new DomainError(
+        503,
+        "BUDGET_UNAVAILABLE",
+        "This request exceeds the budget meter's supported context tier.",
+      );
     const estimated =
-      (Math.ceil(tokens * 1.15) * 2.5 + r.max_output_tokens * 15) / 1e6;
+      (Math.ceil(tokens * 1.15) * price.input +
+        r.max_output_tokens * price.output) /
+      1e6;
     const reservation = await budget.reserve(
       "openai",
       estimated,
@@ -95,7 +114,7 @@ export function meteredOpenAIFetch(base: typeof fetch): typeof fetch {
       u = result.usage,
       cached = u?.input_tokens_details?.cached_tokens || 0;
     if (
-      !pricedModels.includes(result.model) ||
+      !prices[result.model] || prices[result.model].input !== price.input ||
       result.service_tier !== "default" ||
       !u ||
       !Number.isInteger(u.input_tokens) ||
@@ -111,10 +130,11 @@ export function meteredOpenAIFetch(base: typeof fetch): typeof fetch {
         "BUDGET_UNAVAILABLE",
         "Priced usage unavailable; spend reservation retained.",
       );
-    const longContext = u.input_tokens > 272000;
+    const longContext = u.input_tokens > 272000 && !r.model.includes("mini");
     const actual =
-      (((u.input_tokens - cached) * 2.5 + cached * 0.25) * (longContext ? 2 : 1) +
-        u.output_tokens * 15 * (longContext ? 1.5 : 1)) / 1e6;
+      (((u.input_tokens - cached) * price.input + cached * price.cached) * (longContext ? 2 : 1) +
+        u.output_tokens * price.output * (longContext ? 1.5 : 1)) /
+      1e6;
     await reservation.settle(actual, {
       response_id: result.id,
       returned_model: result.model,

@@ -2,6 +2,7 @@ import { hasCaseRecovery } from "../domain/evaluation-recovery";
 import { finishEvaluationWithRepair } from "../server/evaluations/automatic-repair";
 import { evaluationCaseConcurrency } from "../server/evaluations/configuration";
 import { startRepairWorkflow } from "../server/integrations/temporal";
+import { withRecoveryBudget } from "../server/repairs/recovery-budget";
 import { heartbeat, cancellationSignal } from "@temporalio/activity";
 import { getDatabase } from "../server/database";
 import { DomainError } from "../domain/errors";
@@ -105,15 +106,34 @@ export async function evaluateStepCase(id: string) {
   const deadline = AbortSignal.timeout(RUNTIME_DEADLINE_POLICY.step_ms);
   try {
     heartbeat();
-    await new EvaluationExecutionService(await getDatabase()).step(
-      id,
-      {
-        invoke: invokeInSandbox,
-        reason: reasonForStep,
-        extract: extractForStep,
-        model: runtimeModelConfiguration(),
-      },
-      AbortSignal.any([cancellationSignal(), deadline]),
+    const db = await getDatabase();
+    const scope = (
+      await db.query(
+        "SELECT e.job_id FROM evaluation_case_results r JOIN evaluation_runs e ON e.id=r.evaluation_run_id WHERE r.id=$1",
+        [id],
+      )
+    ).rows[0];
+    if (!scope)
+      throw new DomainError(404, "NOT_FOUND", "Evaluation case not found.");
+    await withRecoveryBudget(
+      db,
+      String(scope.job_id),
+      (capacitySignal) =>
+        new EvaluationExecutionService(db).step(
+          id,
+          {
+            invoke: invokeInSandbox,
+            reason: reasonForStep,
+            extract: extractForStep,
+            model: runtimeModelConfiguration(),
+          },
+          AbortSignal.any([
+            capacitySignal,
+            cancellationSignal(),
+            deadline,
+          ]),
+        ),
+      cancellationSignal(),
     );
   } catch (error) {
     if (cancellationSignal().aborted) throw error;

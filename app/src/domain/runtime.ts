@@ -69,12 +69,15 @@ export type RunStatus =
   | "needs_attention"
   | "cancelled";
 export interface RunRecord {
+  execution_mode: "workflow" | "grouping" | "aggregate";
+  phase_node_id: string | null;
   id: string;
   workflow_id: string;
   job_id: string;
   implementation_version_id: string;
   input_bundle_id: string;
-  kind: "manual" | "evaluation";
+  kind: "manual" | "evaluation" | "recovery";
+  failure_category: RuntimeError["category"] | null;
   rerun_of_id: string | null;
   status: RunStatus;
   limits: { step_attempts: number; active_ms: number };
