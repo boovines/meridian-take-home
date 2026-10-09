@@ -33,6 +33,10 @@ Each feature document combines usage, rules, failure handling and verification r
 - [Trusted evaluations](features/trusted-evaluations.md)
 - [Bounded repair](features/bounded-repair.md)
 
+## Demo readiness
+
+- [October 9 failure register and repair evidence](guides/demo-readiness.md)
+
 ## Authority and maintenance
 
 PRDs record intended product behavior. Feature contracts describe implemented behavior; confirm it against source and tests when making changes. SQL migrations define the executable database schema. The architecture/data-model audit explains why those boundaries exist. The evidence log records dated checks, not a blanket guarantee about later changes. Flag disagreements explicitly rather than treating an older proposal as current implementation. Current feature contracts describe this checkout; dated evidence and pending PRs do not automatically describe the current running deployment. Setup commands have one canonical home in the app README; walkthroughs link there.
