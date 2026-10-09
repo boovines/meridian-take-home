@@ -734,3 +734,67 @@ it("rejects continuation when shared extraction instructions differ or were not 
   delete recorded.extraction.instructions;
   expect(() => assertEvaluationConfiguration(recorded)).toThrow("Execution settings changed");
 });
+
+it("persists aggregate context for an isolated Outcome evaluation and rejects other block types", async () => {
+  const f = await runtimeFixture(db, artifacts);
+  await f.runs.finish(f.job.id, { status: "cancelled" });
+  const suite = await suites.create(f.w.id, {
+    request_key: randomUUID(),
+    name: "Aggregate contract",
+    parent_suite_version_id: null,
+  });
+  const definition = caseInput.parse({
+    case_key: "complete-coverage",
+    name: "Complete coverage",
+    kind: "step",
+    node_id: f.nodes[2].id,
+    input_data: {
+      input: { coverage: { complete: true } },
+      steps: {},
+      execution: { mode: "aggregate" },
+    },
+    assertions: [{
+      key: "mode",
+      label: "Aggregate mode reaches the generated step",
+      path: ["mode"],
+      expected: "aggregate",
+    }],
+  });
+  await expect(suites.addCase(f.w.id, suite.id, {
+    ...definition,
+    node_id: f.nodes[0].id,
+  })).rejects.toMatchObject({ code: "INVALID_PHASE_NODE" });
+  const c = await suites.addCase(f.w.id, suite.id, definition);
+  await suites.verifyCase(f.w.id, suite.id, c.id, {
+    expected_revision: c.revision,
+  });
+  await suites.lock(f.w.id, suite.id, {
+    expected_revision: (await suites.state(f.w.id)).suites[0].revision,
+  });
+  const launched = await evals.start(f.w.id, {
+    request_key: randomUUID(),
+    implementation_version_id: f.version.id,
+    suite_version_id: suite.id,
+  });
+  const ready = (await evals.prepare(launched.job.id))!;
+  await execution.build(
+    launched.evaluation.id,
+    async () => ({ engine: "fixture", check: "node --check" }),
+    AbortSignal.timeout(10000),
+  );
+  await evals.beginCase(ready.results[0].id);
+  await execution.step(ready.results[0].id, {
+    invoke: async (_project, _node, context) => ({
+      kind: "complete",
+      output: context.execution,
+      matching_connection_ids: [],
+    }),
+    reason: async () => { throw new Error("No model call expected"); },
+  }, AbortSignal.timeout(10000));
+  await evals.finish(launched.job.id);
+  expect((await evals.state(f.w.id, launched.evaluation.id)).runs[0]).toMatchObject({
+    status: "completed",
+    verdict: "passed",
+  });
+  expect((await suites.state(f.w.id)).cases[0].input_data).toEqual(definition.input_data);
+});

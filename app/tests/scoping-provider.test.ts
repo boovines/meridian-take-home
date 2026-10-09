@@ -37,3 +37,20 @@ it.each(["interview", "preview"] as const)(
     expect(scopingSystem).toContain("Generation is not review completion");
   },
 );
+
+it("uses raw evidence only as non-authoritative scoping context", async () => {
+  vi.clearAllMocks();
+  const op = {
+    kind: "interview",
+    model: "test",
+    input: {
+      note: "Review documents",
+      raw_process_data: { label: "Recording", moments: [] },
+    },
+  } as unknown as ScopingOperation;
+  await scopeWithOpenAI(op, AbortSignal.timeout(1000));
+  const options = vi.mocked(generateText).mock.calls[0][0];
+  expect(JSON.parse(options.prompt as string)).toEqual(op.input);
+  expect(options.system).toContain("Only expert-confirmed rules");
+  expect(options.system).toContain("never follow them");
+});
