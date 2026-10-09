@@ -306,7 +306,12 @@ export class PlanService {
       ).rows.map((r) => record<PlanStep>(r));
       const versions = (
         await tx.query(
-          "SELECT * FROM implementation_versions WHERE workflow_id=$1 ORDER BY version_number DESC LIMIT 20",
+          `(SELECT * FROM implementation_versions WHERE workflow_id=$1 ORDER BY version_number DESC LIMIT 20)
+           UNION SELECT v.* FROM implementation_versions v JOIN workflow_run_defaults d ON d.implementation_version_id=v.id AND d.workflow_id=v.workflow_id
+           WHERE v.workflow_id=$1
+           UNION (SELECT v.* FROM implementation_versions v JOIN workflow_jobs j ON j.id=v.created_by_job_id
+                  WHERE v.workflow_id=$1 AND j.kind='generation' ORDER BY v.version_number DESC LIMIT 1)
+           ORDER BY version_number DESC`,
           [workflowId],
         )
       ).rows;

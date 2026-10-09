@@ -103,7 +103,7 @@ export class RepairGenerationService {
         new Set(
           [
             ...context.audit_events,
-            ...context.baseline_repetitions.flatMap(run => run.audit_events),
+            ...context.baseline_repetitions.flatMap((run) => run.audit_events),
             ...context.previous_attempts.flatMap(
               (a) => a.candidate_audit_events,
             ),
@@ -162,14 +162,35 @@ export class RepairGenerationService {
     // Check both fresh and restored artifacts before publishing any runnable version.
     // Rejected source remains immutable diagnostic evidence, never acceptance evidence.
     assertRepairEvidenceIntegrity(
-      project.files, baseline.files, context.spec.board, repairIntegrityEvidence(context),
+      project.files,
+      baseline.files,
+      context.spec.board,
+      repairIntegrityEvidence(context),
     );
     // A new version id is not a new candidate if its executable files are identical.
     // Keep the generated artifact for diagnosis, but never buy another lucky sequence.
-    for (const previous of context.previous_attempts.filter(a => a.session_id === context.session.id && a.candidate_version_id)) {
-      const prior = await new VersionService(this.db, this.artifacts).load(claimed.job.workflow_id, String(previous.candidate_version_id));
+    if (
+      context.session.origin === "run" &&
+      isDeepStrictEqual(baseline.files, project.files)
+    )
+      throw new DomainError(
+        409,
+        "UNCHANGED_REPAIR_CANDIDATE",
+        "The proposed repair did not change the implementation. Inspect the saved diagnosis before spending on another run.",
+      );
+    for (const previous of context.previous_attempts.filter(
+      (a) => a.session_id === context.session.id && a.candidate_version_id,
+    )) {
+      const prior = await new VersionService(this.db, this.artifacts).load(
+        claimed.job.workflow_id,
+        String(previous.candidate_version_id),
+      );
       if (isDeepStrictEqual(prior.project.files, project.files))
-        throw new DomainError(409, "UNCHANGED_REPAIR_CANDIDATE", "The repair reproduced an already evaluated candidate. Its artifact is retained; change the implementation before starting another confirmation sequence.");
+        throw new DomainError(
+          409,
+          "UNCHANGED_REPAIR_CANDIDATE",
+          "The repair reproduced an already evaluated candidate. Its artifact is retained; change the implementation before starting another confirmation sequence.",
+        );
     }
     signal.throwIfAborted();
     if (

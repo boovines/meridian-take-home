@@ -187,3 +187,52 @@ it("classifies spending guards as infrastructure failures, not broken generated 
     expect(invocationFailure(new DomainError(503, code, "Spending guard stopped inference")))
       .toMatchObject({ code, category: "infrastructure" });
 });
+
+it("meters the default mini model and enforces both scoped and operator ceilings", async () => {
+  const { vi } = await import("vitest");
+  const { withInferenceBudget } = await import(
+    "../src/server/integrations/inference-budget"
+  );
+  const { meteredOpenAIFetch } = await import(
+    "../src/server/integrations/openai-client"
+  );
+  const dir = await mkdtemp(path.join(os.tmpdir(), "meridian-mini-budget-"));
+  const globalFile = path.join(dir, "operator.json"),
+    scopedFile = path.join(dir, "scoped.json");
+  vi.stubEnv("INFERENCE_BUDGET_LEDGER", globalFile);
+  vi.stubEnv("INFERENCE_BUDGET_USD", "0.02");
+  try {
+    const fetcher = meteredOpenAIFetch(async (input) =>
+      String(input).endsWith("/input_tokens")
+        ? Response.json({ input_tokens: 1000 })
+        : Response.json({
+            id: "fixture",
+            model: "gpt-5.4-mini-2026-03-17",
+            service_tier: "default",
+            usage: {
+              input_tokens: 1000,
+              output_tokens: 1000,
+              input_tokens_details: { cached_tokens: 500 },
+            },
+          }),
+    );
+    await withInferenceBudget(new InferenceBudget(scopedFile, 0.02), () =>
+      fetcher("https://api.openai.com/v1/responses", {
+        method: "POST",
+        body: JSON.stringify({
+          model: "gpt-5.4-mini",
+          input: "fixture",
+          max_output_tokens: 1000,
+        }),
+      }),
+    );
+    for (const file of [globalFile, scopedFile]) {
+      const ledger = JSON.parse(await readFile(file, "utf8"));
+      expect(ledger.charges[0].actual_usd).toBeCloseTo(0.0049125);
+      expect(ledger.charges[0].state).toBe("settled");
+    }
+  } finally {
+    vi.unstubAllEnvs();
+    await rm(dir, { recursive: true, force: true });
+  }
+});

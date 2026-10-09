@@ -7,6 +7,8 @@ import {
   condition,
 } from "@temporalio/workflow";
 import type * as activities from "./repair-activities";
+import type * as recoveryActivities from "./recovery-activities";
+import { executeRecoveryRun } from "./execution-workflow";
 import { evaluateSuite } from "./evaluation-workflow";
 const io = proxyActivities<
   Pick<
@@ -30,6 +32,10 @@ const cleanup = proxyActivities<Pick<typeof activities, "endRepair">>({
   startToCloseTimeout: "15 seconds",
   retry: { initialInterval: "2 seconds", maximumInterval: "1 minute" },
 });
+const recovery = proxyActivities<typeof recoveryActivities>({
+  startToCloseTimeout: "15 seconds",
+  retry: { maximumAttempts: 5 },
+});
 export async function repairImplementation(jobId: string) {
   let expired = false;
   try {
@@ -39,6 +45,18 @@ export async function repairImplementation(jobId: string) {
     let finished = false;
     await scope.run(async () => {
       const monitor = (async () => {
+        if (context.origin === "run") {
+          while (!finished) {
+            const remaining = await recovery.remainingRecoveryTime(jobId);
+            if (remaining !== null && remaining <= 0) {
+              expired = true;
+              scope.cancel();
+              return;
+            }
+            await condition(() => finished, Math.min(remaining ?? 5000, 5000));
+          }
+          return;
+        }
         const remaining = Math.max(
           0,
           new Date(context.deadline_at).getTime() - Date.now(),
@@ -53,6 +71,17 @@ export async function repairImplementation(jobId: string) {
       // propagates its error through the workflow's normal cleanup handler.
       void monitor.catch(() => {});
       try {
+        if (context.origin === "run") {
+          const baselineId = await recovery.recoveryBaseline(jobId);
+          if (baselineId) {
+            await executeChild(evaluateSuite, {
+              workflowId: `recovery-baseline-${baselineId}`,
+              args: [jobId, baselineId],
+              workflowIdReusePolicy: "REJECT_DUPLICATE",
+            });
+            await recovery.recordRecoveryBaseline(jobId, baselineId);
+          }
+        }
         for (let number = 1; number <= context.attempt_limit; number++) {
           const attemptId = await io.beginRepairAttempt(jobId, number);
           const generated = await heavy.generateRepairCandidate(attemptId);
@@ -65,8 +94,29 @@ export async function repairImplementation(jobId: string) {
             );
             return;
           }
+          if (context.origin === "run") {
+            const runId = await recovery.createRecoveryRerun(attemptId);
+            await executeChild(executeRecoveryRun, {
+              workflowId: `recovery-run-${runId}`,
+              args: [runId],
+              workflowIdReusePolicy: "REJECT_DUPLICATE",
+            });
+            const evaluationId =
+              await recovery.createRecoveryRegression(attemptId);
+            if (evaluationId)
+              await executeChild(evaluateSuite, {
+                workflowId: `recovery-regression-${evaluationId}`,
+                args: [jobId, evaluationId],
+                workflowIdReusePolicy: "REJECT_DUPLICATE",
+              });
+            if ((await recovery.decideRecovery(attemptId)).done) return;
+            continue;
+          }
           for (let round = 1; round <= 3; round++) {
-            const evaluationId = await io.createRepairEvaluation(attemptId, round);
+            const evaluationId = await io.createRepairEvaluation(
+              attemptId,
+              round,
+            );
             await executeChild(evaluateSuite, {
               workflowId: `repair-evaluation-${evaluationId}`,
               args: [jobId, evaluationId],

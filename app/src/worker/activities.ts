@@ -7,6 +7,7 @@ export {
   endExecution,
   readHumanResponse,
   executeOccurrence,
+  checkRecoveryCandidate,
   prepareCaseExecution,
   endCaseExecution,
   answerScriptedHuman,
@@ -22,4 +23,20 @@ export {
   failEvaluationCase,
 } from "./evaluation-activities";
 
-export { prepareRepair, beginRepairAttempt, generateRepairCandidate, createRepairEvaluation, decideRepairAttempt, endRepair } from "./repair-activities";
+export {
+  prepareRepair,
+  beginRepairAttempt,
+  generateRepairCandidate,
+  createRepairEvaluation,
+  decideRepairAttempt,
+  endRepair,
+} from "./repair-activities";
+
+export {
+  recoveryBaseline,
+  recordRecoveryBaseline,
+  createRecoveryRerun,
+  createRecoveryRegression,
+  decideRecovery,
+  remainingRecoveryTime,
+} from "./recovery-activities";

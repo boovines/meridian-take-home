@@ -27,7 +27,9 @@ const cleanup = proxyActivities<
   startToCloseTimeout: "15 seconds",
   retry: { initialInterval: "2 seconds", maximumInterval: "1 minute" },
 });
-const steps = proxyActivities<Pick<typeof activities, "executeOccurrence">>({
+const steps = proxyActivities<
+  Pick<typeof activities, "executeOccurrence" | "checkRecoveryCandidate">
+>({
   startToCloseTimeout: "3 minutes",
   scheduleToCloseTimeout: "7 minutes",
   heartbeatTimeout: RUNTIME_HEARTBEAT_POLICY.timeout_ms,
@@ -41,7 +43,14 @@ export async function executeWorkflow(jobId: string) {
 export async function executeEvaluationCase(runId: string) {
   return executeCaptured("", runId);
 }
-async function executeCaptured(jobId: string, runId?: string) {
+export async function executeRecoveryRun(runId: string) {
+  return executeCaptured("", runId, true);
+}
+async function executeCaptured(
+  jobId: string,
+  runId?: string,
+  recovery = false,
+) {
   const finish = (result: Parameters<typeof cleanup.endExecution>[1]) =>
     runId
       ? cleanup.endCaseExecution(runId, result)
@@ -59,10 +68,17 @@ async function executeCaptured(jobId: string, runId?: string) {
       ? await io.prepareCaseExecution(runId)
       : await io.prepareExecution(jobId);
     if (!context) return;
+    if (recovery) {
+      const build = await steps.checkRecoveryCandidate(context.run.id);
+      if (!build.ok) {
+        await finish({ status: "failed", error: build.error });
+        return;
+      }
+    }
     const scope = new CancellationScope();
     engine = new RuntimeEngine(context.run.id, context.definition, {
       now: () => Date.now(),
-      scriptedHuman: !!runId,
+      scriptedHuman: !!runId && !recovery,
       changed: () => {
         changed++;
       },
@@ -91,7 +107,7 @@ async function executeCaptured(jobId: string, runId?: string) {
       project: (p) => io.projectExecution(context.run.id, p),
       step: (data, resume) => steps.executeOccurrence(data, resume),
       human: async (id, stopped) => {
-        if (runId) {
+        if (runId && !recovery) {
           const response = await io.answerScriptedHuman(runId, id);
           if (!response.ok)
             throw ApplicationFailure.nonRetryable(

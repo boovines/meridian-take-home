@@ -38,7 +38,7 @@ export class HumanService {
       }
       const run = await runById(tx, String(row.run_id)),
         job = await jobById(tx, run.job_id);
-      if (run.kind !== "manual")
+      if (run.kind === "evaluation")
         throw new DomainError(
           422,
           "SCRIPTED_RESPONSE_REQUIRED",

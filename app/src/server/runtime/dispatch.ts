@@ -20,13 +20,17 @@ export async function dispatchExecution(job: WorkflowJob) {
 export async function deliverHumanAnswers(db: Database) {
   const rows = (
     await db.query(
-      `SELECT h.id,r.job_id FROM human_requests h JOIN workflow_runs r ON r.id=h.run_id WHERE h.status='answered' AND h.delivered_at IS NULL AND r.status IN ('running','waiting_for_human') ORDER BY h.answered_at,h.id LIMIT 20`,
+      `SELECT h.id,r.job_id,r.id AS run_id,r.kind FROM human_requests h JOIN workflow_runs r ON r.id=h.run_id WHERE h.status='answered' AND h.delivered_at IS NULL AND r.status IN ('running','waiting_for_human') ORDER BY h.answered_at,h.id LIMIT 20`,
     )
   ).rows;
   for (const row of rows) {
     try {
       await (await temporalClient()).workflow
-        .getHandle(`job-${row.job_id}`)
+        .getHandle(
+          row.kind === "recovery"
+            ? `recovery-run-${row.run_id}`
+            : `job-${row.job_id}`,
+        )
         .signal("humanAnswered", row.id);
       await db.query(
         "UPDATE human_requests SET delivered_at=now() WHERE id=$1 AND status='answered' AND delivered_at IS NULL",

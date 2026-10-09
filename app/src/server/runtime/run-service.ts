@@ -1,3 +1,6 @@
+import { pauseRecoveryClock } from "../repairs/recovery-clock";
+import { RunRecoveryService } from "../repairs/run-recovery-service";
+import { recoveryEligibility } from "../../domain/run-recovery";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import type { z } from "zod";
@@ -166,7 +169,7 @@ export class RunService {
       const row = (
         await tx.query(
           caseRunId
-            ? "SELECT * FROM workflow_runs WHERE job_id=$1 AND id=$2 AND kind='evaluation'"
+            ? "SELECT * FROM workflow_runs WHERE job_id=$1 AND id=$2 AND kind IN ('evaluation','recovery')"
             : "SELECT * FROM workflow_runs WHERE job_id=$1 AND kind='manual'",
           caseRunId ? [jobId, caseRunId] : [jobId],
         )
@@ -213,7 +216,13 @@ export class RunService {
         `UPDATE workflow_runs SET status=$2,progress_sequence=$3,active_elapsed_ms=$4,active_since=$5,updated_at=now() WHERE id=$1 AND progress_sequence<$3 RETURNING id`,
         [id, p.status, p.sequence, p.active_elapsed_ms, p.active_since],
       );
-      if (updated.rows.length && run.kind === "manual")
+      if (updated.rows.length && run.kind === "recovery")
+        await pauseRecoveryClock(
+          tx,
+          run.job_id,
+          p.status === "waiting_for_human",
+        );
+      if (updated.rows.length && run.kind !== "evaluation")
         await tx.query(
           "UPDATE workflow_jobs SET status=$2,phase=$3,progress=$4,updated_at=now() WHERE id=$1",
           [
@@ -248,7 +257,7 @@ export class RunService {
       const row = (
         await tx.query(
           caseRunId
-            ? "SELECT * FROM workflow_runs WHERE job_id=$1 AND id=$2 AND kind='evaluation'"
+            ? "SELECT * FROM workflow_runs WHERE job_id=$1 AND id=$2 AND kind IN ('evaluation','recovery')"
             : "SELECT * FROM workflow_runs WHERE job_id=$1 AND kind='manual'",
           caseRunId ? [jobId, caseRunId] : [jobId],
         )
@@ -331,13 +340,24 @@ export class RunService {
             result.error?.message || null,
           ],
         );
+      if (!caseRunId) {
+        const finished = await runById(tx, String(row.id));
+        if (recoveryEligibility(finished).eligible) {
+          await new RunRecoveryService(this.db).startInTransaction(
+            tx,
+            job.workflow_id,
+            finished.id,
+            finished.id,
+          );
+        }
+      }
     });
   }
   async state(workflowId: string, runId?: string, kind?: "manual") {
     await workflow(this.db, workflowId);
     const runs = (
       await this.db.query(
-        `SELECT * FROM workflow_runs WHERE workflow_id=$1 ${runId ? "AND id=$2" : ""} ${kind === "manual" ? "AND kind='manual'" : ""} ORDER BY created_at DESC,id DESC LIMIT 20`,
+        `SELECT * FROM workflow_runs WHERE workflow_id=$1 ${runId ? "AND id=$2" : ""} ${kind === "manual" ? "AND kind IN ('manual','recovery')" : ""} ORDER BY created_at DESC,id DESC LIMIT 20`,
         runId ? [workflowId, runId] : [workflowId],
       )
     ).rows.map(runRecord);
@@ -350,6 +370,24 @@ export class RunService {
     const selected = runs[0];
     return {
       runs,
+      recovery: selected
+        ? await new RunRecoveryService(this.db).state(workflowId, selected.id)
+        : null,
+      initial_manual_version_id:
+        (
+          await this.db.query(
+            `SELECT v.id FROM implementation_versions v JOIN workflow_jobs j ON j.id=v.created_by_job_id
+           WHERE v.workflow_id=$1 AND j.kind='generation' ORDER BY v.version_number DESC LIMIT 1`,
+            [workflowId],
+          )
+        ).rows[0]?.id ?? null,
+      manual_default:
+        (
+          await this.db.query(
+            "SELECT implementation_version_id,recovery_session_id FROM workflow_run_defaults WHERE workflow_id=$1",
+            [workflowId],
+          )
+        ).rows[0] ?? null,
       steps: selected
         ? (
             await this.db.query(

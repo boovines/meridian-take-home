@@ -198,6 +198,108 @@ it("survives a brief heartbeat-delivery gap without repeating the business invoc
   expect(calls).toEqual([trigger.id, outcome.id]);
 }, 75000);
 
+it.each([false, true])(
+  "run recovery executes its captured input and %s existing regression suite exactly once",
+  async (hasSuite) => {
+    const taskQueue = `recovery-${randomUUID()}`,
+      runId = randomUUID(),
+      evaluationId = randomUUID();
+    const trigger = {
+      ...nodeInput.parse({ type: "trigger", title: "Start" }),
+      id: randomUUID(),
+    };
+    const outcome = {
+      ...nodeInput.parse({ type: "outcome", title: "Report" }),
+      id: randomUUID(),
+    };
+    const edge = {
+      id: randomUUID(),
+      source_node_id: trigger.id,
+      target_node_id: outcome.id,
+      condition: null,
+      is_default: false,
+    };
+    const calls: string[] = [];
+    const worker = await Worker.create({
+      connection: env.nativeConnection,
+      taskQueue,
+      workflowBundle,
+      activities: {
+        prepareRepair: async () => ({
+          origin: "run",
+          attempt_limit: 3,
+          deadline_at: new Date(Date.now() + 600000).toISOString(),
+        }),
+        remainingRecoveryTime: async () => 600000,
+        recoveryBaseline: async () => null,
+        beginRepairAttempt: async () => {
+          calls.push("attempt");
+          return randomUUID();
+        },
+        generateRepairCandidate: async () => ({ ready: true }),
+        createRecoveryRerun: async () => runId,
+        prepareCaseExecution: async () => ({
+          run: { id: runId },
+          definition: {
+            board: { nodes: [trigger, outcome], connections: [edge] },
+            methods: { [trigger.id]: "code", [outcome.id]: "code" },
+            limits: { step_attempts: 100, active_ms: 900000 },
+          },
+        }),
+        checkRecoveryCandidate: async () => {
+          calls.push("build");
+          return { ok: true };
+        },
+        executeOccurrence: async (data: { node_id: string }) => ({
+          kind: "complete",
+          step_id: randomUUID(),
+          connection_ids: data.node_id === trigger.id ? [edge.id] : [],
+        }),
+        projectExecution: async () => {},
+        endCaseExecution: async (_id: string, result: { status: string }) => {
+          calls.push(`run:${result.status}`);
+        },
+        createRecoveryRegression: async () => {
+          calls.push("regression");
+          return hasSuite ? evaluationId : null;
+        },
+        prepareEvaluation: async () => ({
+          evaluation_id: evaluationId,
+          deadline_at: new Date(Date.now() + 600000).toISOString(),
+          result_ids: [],
+        }),
+        checkEvaluationBuild: async () => ({ ok: true }),
+        endEvaluation: async () => {
+          calls.push("evaluation");
+        },
+        decideRecovery: async () => ({ done: true }),
+        endRepair: async () => {
+          calls.push("unexpected-stop");
+        },
+        createRepairEvaluation: async () => {
+          throw new Error(
+            "Run recovery must not launch repeated confirmation.",
+          );
+        },
+      },
+    });
+    await worker.runUntil(async () => {
+      await env.client.workflow.execute("repairImplementation", {
+        taskQueue,
+        workflowId: randomUUID(),
+        args: [randomUUID()],
+      });
+    });
+    expect(calls).toEqual([
+      "attempt",
+      "build",
+      "run:completed",
+      "regression",
+      ...(hasSuite ? ["evaluation"] : []),
+    ]);
+  },
+  20000,
+);
 
 it("captures heartbeat settings and rejects missing or changed measurement policies", async () => {
   const { evaluationConfiguration, assertEvaluationConfiguration } = await import("../src/server/evaluations/configuration");

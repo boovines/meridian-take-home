@@ -147,3 +147,7 @@ For bounded paid verification, set `INFERENCE_BUDGET_USD` and an absolute `INFER
 `server/integrations/openai-preflight.ts` owns bounded read-only token-count recovery: at most three attempts for transient failures, honoring cancellation and a shared deadline. It never retries inference or skips a budget reservation. The policy is recorded in evaluation settings; restart idle workers after changing it, and start a new measurement sequence rather than combining results across policies.
 
 `ReasoningDocument.source_page_numbers` preserves original page identities when a caller supplies a focused PDF subset. OpenAI document captions describe that mapping; this does not enable automatic reinspection or add another model call.
+
+## Run recovery
+
+Migration 014 extends the shared repair lifecycle to failed manual runs. Apply it with the matching web app and worker deployed together; an older worker cannot execute run-origin repair jobs. The existing durable outbox queues automatic recovery after failure. Its default limits are recorded per session: three candidates, two hours of active work, and $5 reserved/recorded inference usage. The optional operator inference ledger remains an additional limit. GPT-5.4 and the app's default GPT-5.4 mini are priced for the standard endpoint; unsupported settings fail before paid inference. See the [recovery contract](../docs/features/bounded-repair.md#recovery-from-a-failed-manual-run) for acceptance, version selection and current limitations.
