@@ -1,3 +1,4 @@
+import { describeExecutionFailure } from "./execution-failure";
 import {
   proxyActivities,
   CancellationScope,
@@ -88,25 +89,7 @@ async function executeCaptured(
         rethrow: (error) => {
           if (isCancellation(error)) throw error;
         },
-        describeFailure: (error) => {
-          let cause: unknown = error;
-          while (cause instanceof Error && "cause" in cause && cause.cause)
-            cause = cause.cause;
-          const type = cause instanceof ApplicationFailure ? cause.type : null;
-          return {
-            code: type || "RUNTIME_FAILED",
-            message:
-              cause instanceof Error
-                ? cause.message.slice(0, 2000)
-                : "The runtime worker failed.",
-            category:
-              type === "RUN_LIMIT" || type === "STEP_RETRY_LIMIT"
-                ? "implementation"
-                : type === "MISSING_HUMAN_FIXTURE"
-                  ? "input"
-                  : "infrastructure",
-          };
-        },
+        describeFailure: describeExecutionFailure,
         project: (p) => io.projectExecution(context.run.id, p),
         step: (data, resume) => steps.executeOccurrence(data, resume),
         human: async (id, stopped) => {

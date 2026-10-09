@@ -26,3 +26,16 @@ it("preserves user cancellation even if the step deadline also expires", async (
   state.execute.mockImplementation(async () => { cancelled.abort(reason); deadline.abort(); throw reason; });
   await expect(executeOccurrence({} as ScheduleStep)).rejects.toBe(reason);
 });
+
+it("preserves a known validation diagnosis even when the enclosing deadline has just expired", async () => {
+  const { DomainError } = await import("../src/domain/errors");
+  state.signal = new AbortController().signal;
+  const deadline = new AbortController(); vi.spyOn(AbortSignal, "timeout").mockReturnValue(deadline.signal);
+  state.execute.mockImplementation(async () => {
+    deadline.abort();
+    throw new DomainError(422, "EXTRACTION_EVIDENCE_INVALID", "Invalid source citation");
+  });
+  await expect(executeOccurrence({} as ScheduleStep)).rejects.toMatchObject({
+    type: "EXTRACTION_EVIDENCE_INVALID", nonRetryable: true, details: [{failure_category:"implementation"}],
+  });
+});

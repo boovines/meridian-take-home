@@ -54,3 +54,15 @@ it.each(["pass","manual","infrastructure","cancel","revision","build"])("handles
   if(mode==="infrastructure"||mode==="revision") expect((await db.query("SELECT status,phase FROM workflow_jobs WHERE id=$1",[f.job.id])).rows[0]).toEqual({status:"failed",phase:"automatic repair needs attention"});
   if(mode==="revision") await expect(f.evals.start(f.f.w.id,{...f.request,request_key:randomUUID()})).rejects.toMatchObject({code:"SUITE_CHANGED"});
 });
+
+it("keeps typed worker validation failures repairable after Temporal wrapping", async()=>{
+  const { ApplicationFailure }=await import("@temporalio/common");
+  const { describeExecutionFailure }=await import("../src/worker/execution-failure");
+  const f=await fixture(); await f.evals.beginCase(f.result.id);
+  const typed=ApplicationFailure.create({type:"EXTRACTION_EVIDENCE_INVALID",message:"Source citation is invalid",nonRetryable:true,details:[{failure_category:"implementation"}]});
+  await f.evals.recordCase(f.result.id,{error:describeExecutionFailure(new Error("Activity failed",{cause:typed}))});
+  const next=await finishEvaluationWithRepair(db,f.job.id);
+  expect(next?.kind).toBe("repair");
+  expect((await db.query("SELECT failure_category FROM evaluation_case_results WHERE id=$1",[f.result.id])).rows[0].failure_category).toBe("implementation");
+  expect((await f.suites.state(f.f.w.id)).cases[0].assertions[0].expected).toBe(1);
+});

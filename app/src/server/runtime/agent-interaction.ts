@@ -1,3 +1,5 @@
+import { captureInferenceTrace } from "../integrations/inference-trace";
+import type { ProviderTrace } from "../../domain/execution-audit";
 import { createHash } from "node:crypto";
 import type { z } from "zod";
 import type { stepResult } from "../../domain/project";
@@ -14,6 +16,7 @@ export async function agentInteraction(
   adapters: StepAdapters, signal: AbortSignal,
   readDocuments?: (ids: string[]) => Promise<ReasoningDocument[]>,
   audit?: RecordAudit, batchIndex?: number,
+  saveProviderTrace?: (trace: ProviderTrace) => void,
 ) {
   if (request.document_ids.length && !readDocuments)
     throw new DomainError(
@@ -52,6 +55,9 @@ export async function agentInteraction(
     {
       model: adapters.model?.name ?? "unknown",
       document_ids: request.document_ids,
+      document_count: documents.length,
+      document_bytes: documents.reduce((sum, d) => sum + d.bytes.length, 0),
+      ...(sourcePages.length ? { page_count: sourcePages.reduce((sum, d) => sum + d.page_count, 0) } : {}),
       ...(batchIndex === undefined ? {} : { batch_index: batchIndex }),
     },
   );
@@ -62,7 +68,8 @@ export async function agentInteraction(
       "EXTRACTION_UNAVAILABLE",
       "No evidence-aware extraction provider is configured.",
     );
-  const raw =
+  let providerTrace: ProviderTrace | undefined;
+  const raw = await captureInferenceTrace(async () =>
     request.kind === "extract"
       ? await adapters.extract!(request, documents, signal)
       : await adapters.reason(
@@ -70,9 +77,9 @@ export async function agentInteraction(
           request.data,
           signal,
           documents,
-        );
+        ), trace => { providerTrace = trace; saveProviderTrace?.(trace); });
   signal.throwIfAborted();
-  await audit?.("model_response", raw, batchIndex === undefined ? {} : { batch_index: batchIndex });
+  await audit?.("model_response", raw, { ...(batchIndex === undefined ? {} : { batch_index: batchIndex }), ...(providerTrace ? { provider_trace: providerTrace } : {}) });
   const envelope =
     request.kind === "extract"
       ? validateExtraction(request, raw, sourcePages)
