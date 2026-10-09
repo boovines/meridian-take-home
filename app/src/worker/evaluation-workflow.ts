@@ -8,7 +8,7 @@ import {
 } from "@temporalio/workflow";
 import type * as activities from "./evaluation-activities";
 import { executeEvaluationCase } from "./execution-workflow";
-import { RUNTIME_HEARTBEAT_POLICY } from "../domain/runtime";
+import { RUNTIME_HEARTBEAT_POLICY } from "../domain/runtime-policy";
 const io = proxyActivities<
   Pick<
     typeof activities,
