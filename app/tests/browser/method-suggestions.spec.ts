@@ -77,7 +77,7 @@ test("suggestions populate methods, persist after refresh, and require approval 
   await readerApproval.click();
   await expect(readerApproval).toBeChecked();
   await expect(readerApproval).toBeEnabled();
-  await page.getByRole("button", { name: "Suggest methods" }).click();
+  await page.getByRole("button", { name: "Recommend methods with AI" }).click();
   await expect(reader).toHaveValue("agent");
   await expect(readerApproval).not.toBeChecked();
   await expect(human).toHaveValue("human");

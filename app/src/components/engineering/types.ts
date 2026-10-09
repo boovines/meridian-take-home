@@ -8,7 +8,12 @@ import type {
 import type { Project } from "@/domain/project";
 export interface EngineeringState {
   workflow: Workflow;
-  spec: { id: string; board: Board };
+  spec: { id: string; board: Board; version_number: number };
+  specs: {
+    id: string;
+    version_number: number;
+    parent_frozen_spec_id: string | null;
+  }[];
   plans: Plan[];
   steps: PlanStep[];
   versions: ImplementationVersion[];

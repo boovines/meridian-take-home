@@ -92,6 +92,9 @@ export interface Workflow {
   state: "draft" | "reviewing" | "frozen";
   revision: number;
   content_revision: number;
+  process_version?: number;
+  base_frozen_spec_id?: string | null;
+  current_frozen_spec_id?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -107,6 +110,7 @@ export interface Connection extends z.infer<typeof connectionInput> {
   revision: number;
 }
 export interface Board {
+  raw_process_data?: import("./process-context").RawProcessContext;
   workflow: Workflow;
   nodes: CanvasNode[];
   connections: Connection[];

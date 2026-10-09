@@ -129,6 +129,7 @@ export interface ScopingMessage {
   created_at: string;
 }
 export interface ScopingInput {
+  raw_process_data?: import("./process-context").RawProcessContext;
   note: string;
   note_revision: number;
   action: z.infer<typeof scopingRequest>["action"];

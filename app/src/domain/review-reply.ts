@@ -16,6 +16,7 @@ export const replyRewrite = z
         z
           .object({
             node_id: uuid,
+            title: z.string().trim().min(1).max(200).nullable().optional(),
             instructions: z.string().trim().min(1).max(20000),
           })
           .strict(),
@@ -59,10 +60,12 @@ export const replyIncorporationEvent = z.object({
     z.object({
       node_id: uuid,
       before: z.object({
+        title: z.string().optional(),
         instructions: z.string(),
         revision: z.number().int().positive(),
       }),
       after: z.object({
+        title: z.string().optional(),
         instructions: z.string(),
         revision: z.number().int().positive(),
       }),
@@ -82,6 +85,7 @@ export const replyProposalDecision = z
     decision: z.enum(["accept", "reject"]),
     node_id: uuid,
     instructions: z.string().trim().min(1).max(20000).optional(),
+    title: z.string().trim().min(1).max(200).optional(),
     expected_revision: z.number().int().positive(),
     request_key: uuid,
   })
@@ -94,6 +98,7 @@ export const replyProposalDecisionEvent = z.object({
   action: z.literal("reply_proposal_decided"),
   node_id: uuid.optional(),
   instructions: z.string().optional(),
+  title: z.string().optional(),
   proposal_message_id: uuid,
   decision: z.enum(["accept", "reject"]),
 });
