@@ -1,3 +1,4 @@
+import { statisticsByEvaluation } from "./statistics";
 import { evaluationConfiguration, assertEvaluationConfiguration } from "./configuration";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
@@ -510,6 +511,7 @@ export class EvaluationService {
       );
     return {
       runs,
+      statistics: await statisticsByEvaluation(this.db, runs.map((run) => run.id)),
       results: runs[0] ? await resultsByEvaluation(this.db, runs[0].id) : [],
     };
   }

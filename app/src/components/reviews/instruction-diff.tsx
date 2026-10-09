@@ -15,7 +15,7 @@ export const InstructionDiff = memo(function InstructionDiff({
     { value: after, added: true, removed: false },
   ];
   return (
-    <div className="instruction-diff">
+    <div className="instruction-diff" role="region" aria-label="Instruction changes" tabIndex={0}>
       <div className="diff-legend">
         <span className="diff-removed-label">− Removed</span>
         <span className="diff-added-label">+ Added</span>
