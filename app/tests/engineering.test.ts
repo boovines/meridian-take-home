@@ -155,7 +155,7 @@ it("rejects stale step saves and clears approval when the selected method change
   });
   expect(changed.approved_at).toBeNull();
 });
-it("keeps AI recommendations advisory and rejects late recommendations after a plan edit", async () => {
+it("saves suggested methods without approving them and rejects stale recommendations", async () => {
   const { w } = await frozen(),
     plan = await plans.create(w.id, {
       request_key: randomUUID(),
@@ -165,7 +165,10 @@ it("keeps AI recommendations advisory and rejects late recommendations after a p
     suggestions = {
       steps: state.steps.map((s) => ({
         node_id: s.node_id,
-        method: s.selected_method,
+        method:
+          s.selected_method === "human"
+            ? ("human" as const)
+            : ("agent" as const),
         reason: "Based on the frozen requirements.",
       })),
     };
@@ -176,10 +179,78 @@ it("keeps AI recommendations advisory and rejects late recommendations after a p
     suggestions,
   );
   expect(proposed.every((s) => s.approved_at === null)).toBe(true);
+  expect(
+    proposed.every((s) => s.selected_method === s.recommended_method),
+  ).toBe(true);
+  expect(
+    (await plans.state(w.id)).steps.filter(
+      (s) => s.selected_method === "agent",
+    ),
+  ).toHaveLength(2);
   await expect(
     plans.recommendations(w.id, plan.id, plan.revision, suggestions),
   ).rejects.toMatchObject({ code: "STALE_EDIT" });
 });
+it("clears only changed approvals and rolls back invalid human recommendations", async () => {
+  const { w, nodes } = await frozen();
+  const plan = await plans.create(w.id, {
+    request_key: randomUUID(),
+    parent_plan_version_id: null,
+  });
+  for (const step of (await plans.state(w.id)).steps) {
+    await plans.editStep(w.id, plan.id, step.node_id, {
+      expected_revision: step.revision,
+      approved: true,
+    });
+  }
+  const before = await plans.state(w.id);
+  const suggestions = {
+    steps: nodes.map((node, index) => ({
+      node_id: node.id,
+      method:
+        index === 0
+          ? ("agent" as const)
+          : index === 1
+            ? ("human" as const)
+            : ("code" as const),
+      reason: "Suggested from requirements.",
+    })),
+  };
+  await expect(
+    plans.recommendations(w.id, plan.id, before.plans[0].revision, {
+      steps: suggestions.steps.map((step) => ({
+        ...step,
+        method: "agent" as const,
+      })),
+    }),
+  ).rejects.toMatchObject({ code: "HUMAN_REQUIRED" });
+  expect((await plans.state(w.id)).steps).toEqual(before.steps);
+  const changed = await plans.recommendations(
+    w.id,
+    plan.id,
+    before.plans[0].revision,
+    suggestions,
+  );
+  expect(changed.find((step) => step.node_id === nodes[0].id)).toMatchObject({
+    selected_method: "agent",
+    approved_at: null,
+  });
+  for (const node of nodes.slice(1)) {
+    expect(changed.find((step) => step.node_id === node.id)?.approved_at).toEqual(
+      before.steps.find((step) => step.node_id === node.id)?.approved_at,
+    );
+  }
+  const after = await plans.state(w.id);
+  await expect(
+    plans.approve(w.id, plan.id, {
+      expected_revision: after.plans[0].revision,
+    }),
+  ).rejects.toMatchObject({ code: "APPROVALS_REQUIRED" });
+  await expect(
+    plans.recommendations(w.id, plan.id, before.plans[0].revision, suggestions),
+  ).rejects.toMatchObject({ code: "STALE_EDIT" });
+});
+
 it("seals artifact bytes, rejects cross-workflow reads and detects later content tampering", async () => {
   const a = await canvas.create({ name: "Artifacts", desired_outcome: "" }),
     b = await canvas.create({ name: "Other workflow", desired_outcome: "" });

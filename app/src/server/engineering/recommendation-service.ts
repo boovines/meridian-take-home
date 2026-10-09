@@ -21,13 +21,16 @@ export async function suggestPlanMethods(
     );
   const suggestions = fixtureEngineering()
     ? {
-        steps: state.steps
-          .filter((s) => s.plan_version_id === planId)
-          .map((s) => ({
-            node_id: s.node_id,
-            method: s.selected_method,
-            reason: "Fixture: this choice matches the frozen requirements.",
-          })),
+        steps: state.spec.board.nodes.map((node) => ({
+          node_id: node.id,
+          method: ["human_handoff", "human_approval"].includes(node.type)
+            ? ("human" as const)
+            : node.type === "information"
+              ? ("agent" as const)
+              : ("code" as const),
+          reason:
+            "Fixture: information steps use Agent, required human steps stay Human, and other steps use Code.",
+        })),
       }
     : await recommendMethods(state.spec.board, signal);
   return service.recommendations(workflowId, planId, revision, suggestions);

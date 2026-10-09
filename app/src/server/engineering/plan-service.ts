@@ -231,11 +231,11 @@ export class PlanService {
             "AI cannot remove a required human step.",
           );
         await tx.query(
-          "UPDATE implementation_plan_steps SET recommended_method=$3,recommendation_reason=$4,revision=revision+1,updated_at=now() WHERE plan_version_id=$1 AND node_id=$2",
+          "UPDATE implementation_plan_steps SET recommended_method=$3,recommendation_reason=$4,approved_at=CASE WHEN selected_method=$3 THEN approved_at ELSE NULL END,selected_method=$3,revision=revision+1,updated_at=now() WHERE plan_version_id=$1 AND node_id=$2",
           [planId, suggestion.node_id, suggestion.method, suggestion.reason],
         );
       }
-      // Recommendations are advisory; do not silently change selected methods or approvals.
+      // Suggest methods populates draft choices, never approves a changed method.
       await tx.query(
         "UPDATE implementation_plan_versions SET revision=revision+1,updated_at=now() WHERE id=$1",
         [planId],

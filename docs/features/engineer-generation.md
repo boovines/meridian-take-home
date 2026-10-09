@@ -28,7 +28,7 @@ The three workspace tabs are Implementation, Agent, and Evaluation. This specifi
 
 ### Implementation
 
-Create a plan from the frozen process. Each step starts with Code selected unless the customer requires a human; the initial choices are unapproved. Suggest methods asks AI for a recommendation and short reason for each step. Recommendations are advisory and do not change selections or approvals. If the plan changes while suggestions are being prepared, those stale suggestions cannot overwrite it.
+Create a plan from the frozen process. Each step starts with Code selected unless the customer requires a human; the initial choices are unapproved. Suggest methods asks AI for a recommendation and short reason for each step. Suggestions populate and save the draft method selections along with their reasons. A changed method clears its previous approval; an unchanged method retains its existing approval. Suggestions never approve a step automatically. The engineer can override any suggestion except a customer-required human method. If the plan changes while suggestions are being prepared, those stale suggestions cannot overwrite it.
 
 The engineer chooses Code, Agent, or Human for each step. Code performs deterministic work, Agent can request semantic interpretation, and Human requires a response before continuing. Human steps explicitly required by the customer cannot be changed to automated methods. Requirements expand in place beside the method and approval controls.
 
