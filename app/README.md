@@ -69,7 +69,7 @@ The first command bundles workflows without credentials and runs in CI. The last
 | Location | Responsibility |
 | --- | --- |
 | `src/app/api/workflows` | Request validation and delegation; no orchestration or model prompts |
-| `src/components/canvas`, `src/components/reviews`, `src/components/engineering`, `src/components/evaluations`, `src/components/repairs`, `src/components/runtime` | Feature UI and browser state |
+| `src/components/scoping`, `src/components/canvas`, `src/components/reviews`, `src/components/engineering`, `src/components/evaluations`, `src/components/repairs`, `src/components/runtime` | Feature UI and browser state |
 | `src/domain` | Typed contracts and pure graph/business rules; `errors.ts` and `validation.ts` hold cross-feature errors and scalar schemas; `repair-integrity.ts` checks for copied evaluation identifiers; `runtime-policy.ts` holds dependency-free activity liveness settings shared by workflows, workers and evaluation snapshots |
 | `src/domain/evaluation-statistics.ts`, `src/server/evaluations/statistics.ts` | Read-only case/assertion counts against each locked suite; history queries omit actual outputs and traces |
 | `src/components/evaluations/use-evaluation-data.ts` | Workspace loading, polling and historical suite/result projections; the panel owns selection and mutation actions |
@@ -77,6 +77,7 @@ The first command bundles workflows without credentials and runs in CI. The last
 | `src/app/globals.css`, `src/styles` | Ordered global style imports, shared foundations and reduced-motion policy; canvas/review styles live with their features |
 | `src/server/canvas` | Targeted, revision-checked canvas mutations |
 | `src/server/workflows/store.ts` | Shared workflow locking and graph reads |
+| `src/server/scoping`, `src/domain/scoping.ts` | Persistent process notes, scoping operations, validated previews, atomic initial graph application and review obligations |
 | `src/server/reviews` | Transactional review, discussion and freeze behavior |
 | `src/server/reviews/reply-service.ts`, `src/server/reviews/reply-proposal-service.ts`, `src/server/integrations/openai-review-reply.ts` | Foreground answer proposals, per-block accept/reject decisions with editable wording, atomic revision-checked instruction saves and audit history |
 | `src/components/reviews/conversation-message.tsx`, `src/components/reviews/instruction-diff.tsx`, `src/components/reviews/reply-changes.tsx`, `src/components/reviews/thread-card.tsx` | Conversation rendering, word diffs and a shared inline/expanded response flow |
@@ -147,3 +148,11 @@ For bounded paid verification, set `INFERENCE_BUDGET_USD` and an absolute `INFER
 `server/integrations/openai-preflight.ts` owns bounded read-only token-count recovery: at most three attempts for transient failures, honoring cancellation and a shared deadline. It never retries inference or skips a budget reservation. The policy is recorded in evaluation settings; restart idle workers after changing it, and start a new measurement sequence rather than combining results across policies.
 
 `ReasoningDocument.source_page_numbers` preserves original page identities when a caller supplies a focused PDF subset. OpenAI document captions describe that mapping; this does not enable automatic reinspection or add another model call.
+
+## Guided workflow scaffolding
+
+On an empty draft, open the circular note button above the canvas zoom controls. Notes autosave; “Help build workflow” starts the explicit scoping interview. Confirm the scope to generate a connected preview, then apply the whole graph. Normal draft review is still mandatory before freeze. See the [feature contract](../docs/features/guided-workflow-scaffolding.md).
+
+Apply migrations through `npm run db:migrate` and run the existing Temporal worker for durable live scoping. `OPENAI_SCOPING_MODEL` overrides the model (falls back to `OPENAI_REVIEW_MODEL`, then `gpt-5.4-mini`). For isolated fixture demos only, set `MERIDIAN_SCOPING_PROVIDER=fixture`, `MERIDIAN_DATABASE=local`, and `MERIDIAN_LOCAL_DEMO=true` together. This fixed scenario is not live process synthesis.
+
+`npm run scoping:smoke` explicitly calls the live model with a sanitized request and an ephemeral database. It validates the interview, generated graph, human approval and review gate; it never reads a mailbox or applies to a saved workflow. Configure `OPENAI_API_KEY` and estimate inference spend before running it. The live check is separate from required fixture-based CI.

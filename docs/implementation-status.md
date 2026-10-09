@@ -267,3 +267,18 @@ Read-only database comparison confirms all original 20 cases/161 assertions, inp
 ### Final v17 report verification — October 8
 
 Chrome started manual run `af569501-47b1-4756-b864-0863fdb46c59` with v17 and the original Gmail input bundle for the saved passing-control shipment. It completed all five visits and showed the expected seven totals: invoices 3 processed / 3 successful / 0 failed, goods 0 failed, batches 4 processed / 3 successful / 1 failed. The unsent preview identifies one invoice/batch relationship as lacking a CoA or supported relationship. The result was verified both in the UI and persisted output. This manual demonstration does not count as another full-suite pass.
+
+
+## Guided workflow scaffolding — October 9, 2026
+
+Implemented the [guided scaffolding contract](features/guided-workflow-scaffolding.md): persistent autosaved notes, an explicit scoping interview, validated graph previews and whole-graph application on empty drafts. Unresolved questions transfer to ordinary review findings; freeze requires a completed review after scaffold application. The split workspace was selected after inspecting three live UI variants; temporary picker code was removed.
+
+Local verification:
+
+- `npm test`: 280 passed, one PostgreSQL-only test skipped locally. Includes scoping persistence, conflicts, concurrent/idempotent application, immutable history, late-result fencing, graph validation, review transfer and freeze safeguards.
+- Scoping Temporal tests ran an ephemeral real Temporal server: a provider activity retried successfully, and cancellation recorded the terminal state while model work was pending. `npm run worker:check` bundled the workflow without runtime database/network imports.
+- Eight scoping browser journeys passed, including recovery after failed autosave/reload, focus/position preservation, mobile reduced motion, preview revisions, nonempty-board rejection, lost-apply-response reconciliation and the full note-to-normal-review flow. Fifteen existing canvas/review browser journeys also passed. These checks used isolated PGlite and deterministic providers.
+- `npm run lint`, `npm run typecheck`, `npm run build`, `npm run docs:check` and `git diff --check` passed. Documentation navigation covered 32 Markdown files.
+- A separate `scoping:smoke` run used live `gpt-5.4-2026-03-05`, synthetic requirements and an ephemeral database under the configured inference-spend guard. It produced eight blocks/nine paths with required human approval, missing-information handoff and a revision loop, preserved the unknown retention question, applied successfully and still required normal review before freeze. No mailbox or saved customer workflow was accessed. This single sample verifies live integration, not repeatability or generated runtime correctness.
+
+Deployment requires applying the new migration and restarting the existing Temporal worker before exposing scoping. Fixture mode requires all three local-demo/provider switches; it is not live generation.

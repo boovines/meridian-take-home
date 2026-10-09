@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import type { Connection as FlowConnection } from "@xyflow/react";
 import Workspace from "../shell/workspace";
+import { ScopingNote } from "../scoping/scoping-note";
 import { ProcessCanvas } from "./process-canvas";
 import {
   NodeInspector,
@@ -50,6 +51,7 @@ export function BoardClient({ id }: { id: string }) {
   const [highlightedThread, setHighlightedThread] = useState<string | null>(
     null,
   );
+  const [canvasInstance, setCanvasInstance] = useState(0);
   const [dirty, setDirty] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false),
     [freezeOpen, setFreezeOpen] = useState(false);
@@ -105,7 +107,8 @@ export function BoardClient({ id }: { id: string }) {
         if (active && version === boardVersion.current) setBoard(b);
       })
       .catch((e) => {
-        if (active && version === boardVersion.current) setError(errorMessage(e));
+        if (active && version === boardVersion.current)
+          setError(errorMessage(e));
       });
     return () => {
       active = false;
@@ -381,7 +384,21 @@ export function BoardClient({ id }: { id: string }) {
                 </div>
               </aside>
               <section className="canvas-stage" aria-label="Process canvas">
+                <ScopingNote
+                  board={board}
+                  onApplied={(next) => {
+                    boardVersion.current++;
+                    setBoard(next);
+                    setCanvasInstance((v) => v + 1);
+                    setSelection(null);
+                    setStatus(
+                      "Initial workflow saved. Review draft before freezing.",
+                    );
+                  }}
+                  onReview={openReviews}
+                />
                 <ProcessCanvas
+                  key={canvasInstance}
                   board={board}
                   findingCounts={counts}
                   reviewHighlight={

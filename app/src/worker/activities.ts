@@ -23,3 +23,5 @@ export {
 } from "./evaluation-activities";
 
 export { prepareRepair, beginRepairAttempt, generateRepairCandidate, createRepairEvaluation, decideRepairAttempt, endRepair } from "./repair-activities";
+
+export { performScoping, endScoping } from "./scoping-activities";

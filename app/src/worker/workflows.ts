@@ -56,3 +56,5 @@ export { executeWorkflow, executeEvaluationCase } from "./execution-workflow";
 export { evaluateSuite } from "./evaluation-workflow";
 
 export { repairImplementation } from "./repair-workflow";
+
+export { scopeWorkflow } from "./scoping-workflow";
