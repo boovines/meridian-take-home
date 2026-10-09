@@ -180,6 +180,8 @@ export function invocationFailure(error: unknown): RuntimeError {
       error instanceof Error ? error.message : "Step invocation failed.";
   const implementationCodes = [
     "STEP_CRASH",
+    "GROUPING_OUTPUT_INVALID",
+    "INVALID_PHASE_ROUTES",
     "METHOD_VIOLATION",
     "STEP_OUTPUT_TOO_LARGE",
     "STEP_INPUT_TOO_LARGE",

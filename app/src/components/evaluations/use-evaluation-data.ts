@@ -10,6 +10,7 @@ export function useEvaluationData(
   suiteId: string,
   runId: string,
   operationActive: boolean,
+  specId: string,
 ) {
   const [suites, setSuites] = useState<SuiteState | null>(null);
   const [history, setHistory] = useState<EvaluationState | null>(null);
@@ -20,11 +21,13 @@ export function useEvaluationData(
   const fetchState = useCallback(
     () =>
       Promise.all([
-        api<SuiteState>(`${base}/suites${suiteId ? `?suite=${suiteId}` : ""}`),
-        api<EvaluationState>(`${base}/evaluations`),
+        api<SuiteState>(
+          `${base}/suites?spec=${specId}${suiteId ? `&suite=${suiteId}` : ""}`,
+        ),
+        api<EvaluationState>(`${base}/evaluations?spec=${specId}`),
         api<BundleSummary[]>(`${base}/input-bundles`),
       ]),
-    [base, suiteId],
+    [base, suiteId, specId],
   );
   const load = useCallback(async () => {
     const [s, h, b] = await fetchState();
