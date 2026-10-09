@@ -166,6 +166,8 @@ Evaluation scheduling uses `domain/runtime-policy.ts`: two concurrent cases per 
 
 `server/runtime/agent-interaction.ts` executes one audited Agent request. `invoke-step.ts` owns method checks, bounded extraction batches and generated postprocessing. The batch policy lives in `domain/extraction.ts`; migration 017 expands per-invocation audit capacity. Extraction field diagnostics are included in the bounded repair catalogue without changing locked grades.
 
+The OpenAI integration keeps token preflight (`server/integrations/openai-preflight.ts`) separate from bounded response transport (`server/integrations/openai-response.ts`). Shared runtime deadline values live in `domain/runtime-policy.ts` and are recorded with evaluation settings.
+
 ## Run recovery
 
 Migration 014 extends the shared repair lifecycle to failed manual runs. Apply it with the matching web app and worker deployed together; an older worker cannot execute run-origin repair jobs. The existing durable outbox queues automatic recovery after failure. Its default limits are recorded per session: three candidates, two hours of active work, and $5 reserved/recorded inference usage. The optional operator inference ledger remains an additional limit. GPT-5.4 and the app's default GPT-5.4 mini are priced for the standard endpoint; unsupported settings fail before paid inference. See the [recovery contract](../docs/features/bounded-repair.md#recovery-from-a-failed-manual-run) for acceptance, version selection and current limitations.

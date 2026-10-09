@@ -1,3 +1,4 @@
+import { fetchOpenAIResponse } from "./openai-response";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createHash } from "node:crypto";
 import { configuredInferenceBudget } from "./inference-budget";
@@ -19,7 +20,6 @@ const prices: Record<
 export function meteredOpenAIFetch(base: typeof fetch): typeof fetch {
   return async (input, init) => {
     const budget = configuredInferenceBudget();
-    if (!budget) return base(input, init);
     const url = new URL(
       typeof input === "string"
         ? input
@@ -27,6 +27,8 @@ export function meteredOpenAIFetch(base: typeof fetch): typeof fetch {
           ? input
           : input.url,
     );
+    if (!budget) return url.origin === "https://api.openai.com" && url.pathname === "/v1/responses"
+      ? fetchOpenAIResponse(base, input, init) : base(input, init);
     if (
       url.origin !== "https://api.openai.com" ||
       url.pathname !== "/v1/responses" ||
@@ -103,7 +105,7 @@ export function meteredOpenAIFetch(base: typeof fetch): typeof fetch {
     );
     // A transport error, timeout or missing usage may still be billed. Leave the
     // reservation intact; every SDK retry must obtain a separate reservation.
-    const response = await base(input, { ...init, body });
+    const response = await fetchOpenAIResponse(base, input, { ...init, body });
     if (!response.ok) {
       await reservation.annotate({ http_status: response.status });
       return response;

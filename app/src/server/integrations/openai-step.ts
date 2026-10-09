@@ -1,3 +1,4 @@
+import { RUNTIME_DEADLINE_POLICY } from "../../domain/runtime-policy";
 import {
   extractionInstructions,
   type ExtractionRequest,
@@ -62,7 +63,7 @@ export async function reasonForStep(
           system: configuration.system,
           messages: [{ role: "user", content }],
           maxOutputTokens: configuration.max_output_tokens,
-          maxRetries: 1,
+          maxRetries: RUNTIME_DEADLINE_POLICY.model_sdk_retries,
           abortSignal: signal,
           providerOptions: {
             openai: {

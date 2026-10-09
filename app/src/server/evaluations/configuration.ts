@@ -7,12 +7,13 @@ import {
   DEMO_LIMITS,
   type Json,
 } from "../../domain/runtime";
-import { RUNTIME_HEARTBEAT_POLICY, EVALUATION_SCHEDULING_POLICY } from "../../domain/runtime-policy";
+import { RUNTIME_DEADLINE_POLICY, RUNTIME_HEARTBEAT_POLICY, EVALUATION_SCHEDULING_POLICY } from "../../domain/runtime-policy";
 import { openAITokenPreflightPolicy } from "../integrations/openai-preflight";
 /** Snapshot non-secret execution settings. Generated prompts/schemas are fixed by the immutable code version. */
 export function evaluationConfiguration(): Json {
   return {
     contract_version: 1,
+    deadlines: { ...RUNTIME_DEADLINE_POLICY },
     case_recovery: JSON.parse(JSON.stringify(EVALUATION_RECOVERY_POLICY)),
     runtime: runtimeModelConfiguration(),
     extraction: { provider: "openai", batching: { ...EXTRACTION_BATCH_POLICY } },
