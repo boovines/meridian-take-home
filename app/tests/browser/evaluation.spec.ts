@@ -86,6 +86,12 @@ test("verifies a suite, runs comparisons, and preserves results when expectation
     .getByLabel("Case name", { exact: true })
     .fill("Two missing fields on one good");
   await page.getByLabel("Check label", { exact: true }).fill("One failed good");
+  const comparison = page.getByRole("combobox", { name: "Comparison", exact: true });
+  await comparison.selectOption("text_includes");
+  await expect(page.getByText("Enter a nonempty JSON string.", { exact: false })).toBeVisible();
+  await comparison.selectOption("array_includes");
+  await expect(page.getByText("Enter any JSON value.", { exact: false })).toBeVisible();
+  await comparison.selectOption("equals");
   await page
     .getByLabel("Output path (JSON array)", { exact: true })
     .fill('["goods_failed"]');

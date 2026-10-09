@@ -281,12 +281,18 @@ export function CaseEditor({
               <option value="equals">Equals exactly</option>
               <option value="contains_record">Contains a record</option>
               <option value="excludes_record">Excludes a record</option>
+              <option value="text_includes">Text includes (ignores case and whitespace)</option>
+              <option value="array_includes">Array includes exact value</option>
             </select>
           </label>
           <p className="field-help" id={`check-comparison-help-${c.key}`}>
-            {c.operator === "equals"
-              ? "Compare the complete JSON value. Array order matters."
-              : "Enter a nonempty JSON object. All its fields must match one record exactly; extra fields are allowed. Missing or non-array output fails either record check."}
+            {c.operator === "text_includes"
+              ? "Enter a nonempty JSON string. Match a substring after lowercasing and removing whitespace; punctuation and digits stay unchanged."
+              : c.operator === "array_includes"
+                ? "Enter any JSON value. One array member must equal it completely; object fields and nested array order must match."
+                : !c.operator || c.operator === "equals"
+                  ? "Compare the complete JSON value. Array order matters."
+                  : "Enter a nonempty JSON object. All its fields must match one record exactly; extra fields are allowed. Missing or non-array output fails either record check."}
           </p>
           <label>
             Expected value (JSON)

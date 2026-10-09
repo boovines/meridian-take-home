@@ -71,6 +71,11 @@ export function grade(
         passed = a.operator === "contains_record" ? contains : !contains;
       }
     }
+    if (a.operator === "text_includes") {
+      const normalize = (text: string) => text.toLowerCase().replace(/\s+/g, "");
+      passed = !missing && typeof value === "string" && typeof a.expected === "string" && a.expected.trim().length > 0 && normalize(value).includes(normalize(a.expected));
+    }
+    if (a.operator === "array_includes") passed = !missing && Array.isArray(value) && value.some(item => equal(item, a.expected));
     return {
       key: a.key,
       label: a.label,

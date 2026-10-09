@@ -206,3 +206,32 @@ it("rejects a same-count regression and accepts only a full non-regressing candi
       .accepted,
   ).toBe(false);
 });
+
+it("checks explicit source text and array membership without fuzzy identifiers or unit conversion", () => {
+  const actual = { manufacturer: "Example Pharma Ltd., Unit 2", strength: "10 mg / 2 mL", batches: ["ABC-1A"] };
+  const checks = [
+    { key: "name", label: "Manufacturer", path: ["manufacturer"], operator: "text_includes" as const, expected: "EXAMPLE PHARMA" },
+    { key: "dose", label: "Printed strength", path: ["strength"], operator: "text_includes" as const, expected: "10mg/2mL" },
+    { key: "wrong", label: "Wrong strength", path: ["strength"], operator: "text_includes" as const, expected: "10mg/mL" },
+    { key: "batch", label: "Raw batch", path: ["batches"], operator: "array_includes" as const, expected: "ABC-1A" },
+    { key: "suffix", label: "No suffix stripping", path: ["batches"], operator: "array_includes" as const, expected: "ABC-1" },
+    { key: "missing", label: "Missing", path: ["absent"], operator: "text_includes" as const, expected: "value" },
+  ];
+  expect(grade(actual, checks).map(c => c.passed)).toEqual([true, true, false, true, false, false]);
+});
+
+it("rejects invalid text expectations and distinguishes exact nested array members", () => {
+  const base = { key: "value", label: "Value", path: ["value"] };
+  for (const expected of ["", " \n\t", null, 12, {}]) {
+    expect(assertionSchema.safeParse({ ...base, operator: "text_includes", expected }).success).toBe(false);
+  }
+  for (const value of [null, 12, [], {}]) {
+    expect(grade({ value }, [{ ...base, operator: "text_includes", expected: "text" }])[0].passed).toBe(false);
+  }
+  const expected = { id: "ABC-1", order: [1, 2] };
+  const assertion = { ...base, operator: "array_includes" as const, expected };
+  expect(grade({ value: [{ order: [1, 2], id: "ABC-1" }] }, [assertion])[0].passed).toBe(true);
+  for (const value of [[{ id: "ABC-1", order: [2, 1] }], [{ ...expected, extra: true }], expected, null]) {
+    expect(grade({ value }, [assertion])[0].passed).toBe(false);
+  }
+});
