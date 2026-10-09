@@ -1,6 +1,12 @@
 "use client";
 import Link from "next/link";
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 import {
   Check,
   ChevronDown,
@@ -12,7 +18,11 @@ import {
 import type { Connection as FlowConnection } from "@xyflow/react";
 import Workspace from "../shell/workspace";
 import { ProcessCanvas } from "./process-canvas";
-import { NodeInspector, ConnectionInspector } from "./inspector";
+import {
+  NodeInspector,
+  ConnectionInspector,
+  type SavedCanvasChange,
+} from "./inspector";
 import { primitives } from "./primitives";
 import { api, ApiError, errorMessage } from "@/lib/api";
 import {
@@ -43,18 +53,59 @@ export function BoardClient({ id }: { id: string }) {
   const [dirty, setDirty] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false),
     [freezeOpen, setFreezeOpen] = useState(false);
+  // A response started before a newer mutation must not replace its result.
+  const boardVersion = useRef(0);
   const load = useCallback(async () => {
-    setBoard(await api<Board>(`/api/workflows/${id}`));
+    const version = ++boardVersion.current;
+    const next = await api<Board>(`/api/workflows/${id}`);
+    if (version === boardVersion.current) setBoard(next);
   }, [id]);
+  const applySaved = useCallback((change: SavedCanvasChange) => {
+    boardVersion.current++;
+    setBoard((current) => {
+      if (!current) return current;
+      if ("node" in change) {
+        const exists = current.nodes.some((node) => node.id === change.node.id);
+        return {
+          ...current,
+          nodes: exists
+            ? current.nodes.map((node) =>
+                node.id === change.node.id ? change.node : node,
+              )
+            : [...current.nodes, change.node],
+        };
+      }
+      if ("connection" in change) {
+        const exists = current.connections.some(
+          (edge) => edge.id === change.connection.id,
+        );
+        return {
+          ...current,
+          connections: exists
+            ? current.connections.map((edge) =>
+                edge.id === change.connection.id ? change.connection : edge,
+              )
+            : [...current.connections, change.connection],
+        };
+      }
+      return { ...current, workflow: change.workflow };
+    });
+    setStatus("All changes saved");
+  }, []);
+  const onBusy = useCallback((saving: boolean) => {
+    if (saving) boardVersion.current++;
+    setBusy(saving);
+  }, []);
   const review = useReview(id, load);
   useEffect(() => {
     let active = true;
+    const version = ++boardVersion.current;
     api<Board>(`/api/workflows/${id}`)
       .then((b) => {
-        if (active) setBoard(b);
+        if (active && version === boardVersion.current) setBoard(b);
       })
       .catch((e) => {
-        if (active) setError(errorMessage(e));
+        if (active && version === boardVersion.current) setError(errorMessage(e));
       });
     return () => {
       active = false;
@@ -70,6 +121,7 @@ export function BoardClient({ id }: { id: string }) {
     return () => window.removeEventListener("beforeunload", warn);
   }, [dirty]);
   function canLeave() {
+    if (busy) return false;
     if (dirty && !window.confirm("Discard the unsaved changes in this panel?"))
       return false;
     setDirty(false);
@@ -85,12 +137,12 @@ export function BoardClient({ id }: { id: string }) {
     }
   }
   async function mutate(fn: () => Promise<void>) {
+    boardVersion.current++;
     setBusy(true);
     setError("");
     setStatus("Saving…");
     try {
       await fn();
-      await review.refresh();
       setStatus("All changes saved");
     } catch (e) {
       setError(errorMessage(e));
@@ -108,6 +160,7 @@ export function BoardClient({ id }: { id: string }) {
         x: position?.x ?? 80 + (board.nodes.length % 3) * 270,
         y: position?.y ?? 60 + Math.floor(board.nodes.length / 3) * 190,
       });
+      applySaved({ node: n });
       setReviewOpen(false);
       setSelection({ kind: "node", id: n.id });
       setGoalOpen(false);
@@ -121,16 +174,22 @@ export function BoardClient({ id }: { id: string }) {
         "POST",
         { source_node_id: c.source, target_node_id: c.target },
       );
+      applySaved({ connection: edge });
       if (canLeave()) setSelection({ kind: "connection", id: edge.id });
     });
   }
   async function move(n: CanvasNode, x: number, y: number) {
     await mutate(async () => {
-      await api(`/api/workflows/${id}/nodes/${n.id}`, "PATCH", {
-        expected_revision: n.revision,
-        x,
-        y,
-      });
+      const saved = await api<CanvasNode>(
+        `/api/workflows/${id}/nodes/${n.id}`,
+        "PATCH",
+        {
+          expected_revision: n.revision,
+          x,
+          y,
+        },
+      );
+      applySaved({ node: saved });
     });
   }
   const selectedNode = board?.nodes.find(
@@ -154,21 +213,19 @@ export function BoardClient({ id }: { id: string }) {
     }
   };
   const locked = busy || board?.workflow.state !== "draft";
-  const inspectorProps = board
-    ? {
-        board,
-        locked,
-        onSaved: async () => {
-          await review.refresh();
-          setStatus("All changes saved");
-        },
-        onClose: () => {
-          if (canLeave()) setSelection(null);
-        },
-        onDirty: setDirty,
-        onBusy: setBusy,
-      }
-    : null;
+  const inspectorProps = {
+    locked,
+    onSaved: async (change?: SavedCanvasChange) => {
+      if (change) applySaved(change);
+      else await review.refresh();
+      setStatus("All changes saved");
+    },
+    onClose: () => {
+      if (canLeave()) setSelection(null);
+    },
+    onDirty: setDirty,
+    onBusy,
+  };
   return (
     <Workspace
       title={board?.workflow.name || "Workflow"}
@@ -384,16 +441,18 @@ export function BoardClient({ id }: { id: string }) {
                   onLocate={select}
                   onHighlight={setHighlightedThread}
                 />
-              ) : selectedNode && inspectorProps ? (
+              ) : selectedNode ? (
                 <NodeInspector
                   key={selectedNode.id}
                   node={selectedNode}
+                  board={board}
                   {...inspectorProps}
                 />
-              ) : selectedConnection && inspectorProps ? (
+              ) : selectedConnection ? (
                 <ConnectionInspector
                   key={selectedConnection.id}
                   connection={selectedConnection}
+                  board={board}
                   {...inspectorProps}
                 />
               ) : goalOpen ? (
@@ -401,7 +460,8 @@ export function BoardClient({ id }: { id: string }) {
                   key={board.workflow.id}
                   workflow={board.workflow}
                   locked={locked}
-                  onSaved={load}
+                  onSaved={applySaved}
+                  onBusy={onBusy}
                   onDirty={setDirty}
                   onClose={() => {
                     if (canLeave()) setGoalOpen(false);
@@ -426,12 +486,14 @@ function WorkflowDetails({
   workflow,
   locked,
   onSaved,
+  onBusy,
   onDirty,
   onClose,
 }: {
   workflow: Workflow;
   locked: boolean;
-  onSaved: () => Promise<void>;
+  onSaved: (change: SavedCanvasChange) => void;
+  onBusy: (saving: boolean) => void;
   onDirty: (v: boolean) => void;
   onClose: () => void;
 }) {
@@ -444,6 +506,7 @@ function WorkflowDetails({
   async function save(e: FormEvent) {
     e.preventDefault();
     setSaving(true);
+    onBusy(true);
     setError("");
     try {
       const w = await api<Workflow>(`/api/workflows/${workflow.id}`, "PATCH", {
@@ -453,13 +516,14 @@ function WorkflowDetails({
       });
       setRevision(w.revision);
       onDirty(false);
-      await onSaved();
+      onSaved({ workflow: w });
     } catch (e) {
       setError(errorMessage(e));
       if (e instanceof ApiError && e.code === "STALE_EDIT")
         setConflict((e.details as { current: Workflow }).current);
     } finally {
       setSaving(false);
+      onBusy(false);
     }
   }
   return (

@@ -20,7 +20,7 @@ The workflow library at `/` lists the most recently updated workflows. Create wo
 
 The board shows a block palette, a movable and zoomable canvas, and a detail panel for the selected block or connection. Workflow details edits the name and the outcome the process should accomplish. Explicit Save actions persist text. A save-status indicator identifies unsaved panel edits.
 
-Customers can add seven kinds of block: Trigger, Information, Task, Check, Human handoff, Human approval, and Outcome. Each has a name and plain-language instructions, with contextual prompts explaining the information to provide. Adding a block saves it immediately. Click a palette item or drag it onto the canvas; dropped coordinates account for the current pan and zoom. Moving a block saves its position when the drag ends. After a detail save, the button shows a checkmark and Saved until the fields change again.
+Customers can add seven kinds of block: Trigger, Information, Task, Check, Human handoff, Human approval, and Outcome. Each has a name and plain-language instructions, with contextual prompts explaining the information to provide. Adding a block saves it immediately. Successful additions, moves, connections and detail saves apply the returned database record directly to the mounted board; ordinary saves do not refetch the board or reviews. Opening or closing panels preserves pan and zoom. The initial view fits the board, and the canvas Fit view control remains available to recenter it. Click a palette item or drag it onto the canvas; dropped coordinates account for the current pan and zoom. Moving a block saves its position when the drag ends. After a detail save, the button shows a checkmark and Saved until the fields change again.
 
 Connect a bottom dot to another block's top dot, or choose a next block in the detail panel. Return paths and incomplete drafts are allowed. Clicking a connection opens its condition editor. Conditions are plain language. A connection can be marked Otherwise; this clears its condition. Each source block can have only one Otherwise connection.
 
@@ -32,7 +32,7 @@ Save rejects stale changes when another tab has changed the same item. The draft
 
 Removing a block asks for confirmation, removes its connected paths, and clears merge references to it. The removed content remains in history, but restore and undo are not exposed in the current interface. Removing a connection takes effect immediately. Changing panels with unsaved detail text asks whether to discard it; browser unload also warns. Internal navigation to the workflow library currently does not show that discard warning.
 
-Errors remain visible and reload does not silently replace unsaved panel text. A failed drag-save can leave the local position visible until reload; it is not reported as saved. Draft creation does not send email, execute work, or start an agent.
+Deletions and review actions refresh authoritative state in place to include related paths, merge pairings and findings. Older in-flight board reads cannot replace a newer acknowledged mutation. Errors remain visible and reload does not silently replace unsaved panel text. A failed drag-save can leave the local position visible until reload; it is not reported as saved. Draft creation does not send email, execute work, or start an agent.
 
 ### Limits and remaining work
 
@@ -41,3 +41,5 @@ Errors remain visible and reload does not silently replace unsaved panel text. A
 - The library shows up to 100 workflows; pagination, search, collaboration, and ownership controls are not implemented.
 - The canvas primarily targets laptop and desktop use. Narrow layouts retain the block palette as icons and overlay the detail panel.
 - Product scope and future requirements remain in the [whiteboard PRD](../product/whiteboard.md). Implemented review, generation and evaluation behavior is documented in the adjacent feature contracts.
+
+Board and review fetches are ordered independently. A late initial or refresh response cannot replace a newer acknowledged board save or a newer review result.
