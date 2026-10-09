@@ -89,7 +89,7 @@ Independently verify supplied expected values before locking fixtures. Mismatche
 - Failed generation still leaves an attempt record. Three attempts stop the session; method, frozen-process, or expected-answer changes require engineer attention sooner.
 - A corrected suite creates a new version and requires a fresh baseline evaluation/session. Prior evidence remains intact.
 - Verify that candidate code cannot write trusted fixtures, evaluator code, or acceptance records. A prompt telling it not to is insufficient isolation.
-- Direct copies of distinctive test identifiers must be rejected before repair publication and diagnostic execution, including restored checkpoints. Keep the rejected source and error without publishing a runnable version. This lexical safeguard does not establish freedom from all benchmark memorization.
+- New runtime-text copies of qualifying business-evidence identifiers must be rejected before repair publication and diagnostic execution, including restored checkpoints. Verify comment/name and metadata false positives, frozen/baseline exemptions, whole-token and escape rules, bounded/cyclic scans, and safe location diagnostics. Keep rejected source without publishing a runnable version. This limited copy check does not establish freedom from benchmark memorization.
 
 ## Runtime and recovery checks
 

@@ -20,6 +20,8 @@ it.each([
     'import { workflow } from "@/server/workflows/store";',
   ],
   ["src/domain/probe.ts", 'import { readFile } from "node:fs";'],
+  ["src/domain/probe.ts", 'import { readFile } from "fs";'],
+  ["src/domain/probe.ts", 'import { readFile } from "fs/promises";'],
   [
     "src/components/evaluations/probe.ts",
     'import { db } from "../../server/database";',
@@ -30,6 +32,14 @@ it.each([
     'import * as activities from "./runtime-activities";',
   ],
   ["src/worker/probe-workflow.ts", 'import { db } from "../server/database";'],
+  ["src/worker/probe-workflow.ts", 'import { readFile } from "node:fs";'],
+  ["src/worker/probe-workflow.ts", 'import { readFile } from "fs";'],
+  [
+    "src/worker/probe-workflow.ts",
+    'import { readFile } from "node:fs/promises";',
+  ],
+  ["src/worker/probe-workflow.ts", 'import { readFile } from "fs/promises";'],
+  ["src/worker/probe-workflow.ts", 'import { create } from "domain";'],
   [
     "src/worker/probe-workflow.ts",
     'import { Client } from "@temporalio/client";',
@@ -46,6 +56,12 @@ it.each([
   [
     "src/worker/probe-workflow.ts",
     'import { proxyActivities } from "@temporalio/workflow";',
+  ],
+  ["src/worker/probe-workflow.ts", 'import type { Stats } from "fs";'],
+  ["src/worker/probe-workflow.ts", 'import type { Stats } from "node:fs";'],
+  [
+    "src/worker/probe-workflow.ts",
+    'import { selectRoutes } from "../domain/runtime-engine";',
   ],
   [
     "src/components/evaluations/probe.ts",

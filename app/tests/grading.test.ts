@@ -219,3 +219,19 @@ it("checks explicit source text and array membership without fuzzy identifiers o
   ];
   expect(grade(actual, checks).map(c => c.passed)).toEqual([true, true, false, true, false, false]);
 });
+
+it("rejects invalid text expectations and distinguishes exact nested array members", () => {
+  const base = { key: "value", label: "Value", path: ["value"] };
+  for (const expected of ["", " \n\t", null, 12, {}]) {
+    expect(assertionSchema.safeParse({ ...base, operator: "text_includes", expected }).success).toBe(false);
+  }
+  for (const value of [null, 12, [], {}]) {
+    expect(grade({ value }, [{ ...base, operator: "text_includes", expected: "text" }])[0].passed).toBe(false);
+  }
+  const expected = { id: "ABC-1", order: [1, 2] };
+  const assertion = { ...base, operator: "array_includes" as const, expected };
+  expect(grade({ value: [{ order: [1, 2], id: "ABC-1" }] }, [assertion])[0].passed).toBe(true);
+  for (const value of [[{ id: "ABC-1", order: [2, 1] }], [{ ...expected, extra: true }], expected, null]) {
+    expect(grade({ value }, [assertion])[0].passed).toBe(false);
+  }
+});
