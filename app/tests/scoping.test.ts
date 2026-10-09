@@ -10,6 +10,7 @@ import { FindingService } from "../src/server/reviews/finding-service";
 import {
   scopeReady,
   scaffoldBoard,
+  scopeForDraft,
   type ScopingOperation,
 } from "../src/domain/scoping";
 import { nodeInput } from "../src/domain/canvas";
@@ -98,9 +99,10 @@ it("persists note revisions independently, rejects conflicts and preserves raw n
   expect(
     scopeReady((state.versions[0].data as { scope: typeof readyScope }).scope),
   ).toBe(false);
-  await expect(request(w.id, "preview")).rejects.toMatchObject({
-    code: "SCOPE_NOT_READY",
-  });
+  const draft = await request(w.id, "preview");
+  expect(draft.input.scope?.unresolved.map((u) => u.question)).toContain(
+    "Confirm the workflow's humans before implementation.",
+  );
 });
 it("applies a connected graph once, retains human approval/loop and requires real post-apply review", async () => {
   const w = await setup();
@@ -166,18 +168,29 @@ it("applies a connected graph once, retains human approval/loop and requires rea
     scoping.saveNote(w.id, { note: "locked", expected_revision: 2 }),
   ).rejects.toMatchObject({ code: "WORKFLOW_LOCKED" });
   // A qualifying v1 scaffold review cannot satisfy a newly opened v2 revision.
-  const { ProcessRevisionService } = await import("../src/server/process-revisions/service");
-  await new ProcessRevisionService(db).start(w.id, { source_frozen_spec_id: String(spec.id) });
+  const { ProcessRevisionService } =
+    await import("../src/server/process-revisions/service");
+  await new ProcessRevisionService(db).start(w.id, {
+    source_frozen_spec_id: String(spec.id),
+  });
   expect((await freeze.readiness(w.id)).completed_review_id).toBeNull();
-  await expect(freeze.freeze(w.id, { expected_content_revision: 1, acknowledge_unreviewed: true }))
-    .rejects.toMatchObject({ code: "NOT_READY" });
-  const revisedReview = await reviews.start(w.id, { request_key: randomUUID() });
+  await expect(
+    freeze.freeze(w.id, {
+      expected_content_revision: 1,
+      acknowledge_unreviewed: true,
+    }),
+  ).rejects.toMatchObject({ code: "NOT_READY" });
+  const revisedReview = await reviews.start(w.id, {
+    request_key: randomUUID(),
+  });
   await reviews.prepare(revisedReview.id);
   await reviews.publish(revisedReview.id, { findings: [] });
-  const revisedSpec = await freeze.freeze(w.id, { expected_content_revision: 1, acknowledge_unreviewed: false });
+  const revisedSpec = await freeze.freeze(w.id, {
+    expected_content_revision: 1,
+    acknowledge_unreviewed: false,
+  });
   expect(revisedSpec.version_number).toBe(2);
   expect(revisedSpec.parent_frozen_spec_id).toBe(spec.id);
-
 });
 it("does not overwrite a manually populated or stale board", async () => {
   const w = await setup(),
@@ -442,4 +455,103 @@ it("rolls back every inserted block when persistence fails partway through apply
   expect((await canvas.load(w.id)).workflow.content_revision).toBe(0);
   expect((await scoping.state(w.id)).session.applied_preview_id).toBeNull();
   expect((await apply.apply(w.id, data)).nodes).toHaveLength(4);
+});
+
+it("limits question rounds across reloads and note updates without counting failed or duplicate requests", async () => {
+  const w = await setup();
+  const failed = await request(w.id, "start");
+  await scoping.finish(failed.id, "failed", "Try again");
+  const first = await request(w.id, "start");
+  expect(first.input.question_rounds_remaining).toBe(2);
+  await finish(first);
+  const second = await request(w.id, "answer", "I do not know yet.");
+  expect(second.input.question_rounds_remaining).toBe(1);
+  await scoping.publish(second.id, {
+    message: "One more question?",
+    scope: fixtureScope(first).scope,
+  });
+  const third = await request(w.id, "answer", "Keep that open for review.");
+  expect(third.input.question_rounds_remaining).toBe(0);
+  await scoping.publish(third.id, {
+    message: "What is the exact address?",
+    scope: fixtureScope(first).scope,
+  });
+  let state = await new ScopingService(db).state(w.id);
+  expect(state.messages.at(-1)?.body).toContain(
+    "Your draft can be generated now",
+  );
+  expect(state.messages.at(-1)?.body).not.toContain("exact address");
+  await scoping.saveNote(w.id, {
+    note: "Updated notes with another detail",
+    expected_revision: state.session.note_revision,
+  });
+  const update = await request(w.id, "notes");
+  expect(update.input.question_rounds_remaining).toBe(0);
+  await finish(update);
+  state = await scoping.state(w.id);
+  const payload = {
+    action: "answer" as const,
+    body: "Optional correction",
+    expected_revision: state.session.revision,
+    expected_note_revision: state.session.note_revision,
+    request_key: randomUUID(),
+  };
+  const one = await scoping.request(w.id, payload);
+  expect((await scoping.request(w.id, payload)).id).toBe(one.id);
+  expect(one.input.question_rounds_remaining).toBe(0);
+});
+it("carries structural gaps into preview, application and mandatory review without inventing coverage", async () => {
+  const w = await setup();
+  await finish(await request(w.id, "start"));
+  const op = await request(w.id, "preview");
+  expect(op.input.scope?.coverage.humans).toBeNull();
+  expect(op.input.scope?.blockers.length).toBeGreaterThan(0);
+  expect(op.input.scope?.unresolved.map((u) => u.question).sort()).toEqual(
+    [
+      "How long should the approved response be retained?",
+      "Confirm who approves and how rejection continues.",
+      "Confirm the workflow's routing before implementation.",
+      "Confirm the workflow's humans before implementation.",
+    ].sort(),
+  );
+  await finish(op);
+  const state = await scoping.state(w.id);
+  const board = await apply.apply(w.id, {
+    preview_id: state.session.current_preview_id!,
+    expected_revision: state.session.revision,
+    expected_workflow_revision: w.revision,
+    request_key: randomUUID(),
+  });
+  expect(board.nodes.length).toBeGreaterThan(0);
+  const review = await reviews.start(w.id, { request_key: randomUUID() });
+  const input = await reviews.prepare(review.id);
+  expect(
+    input?.discussion.threads.filter((t) => t.kind === "finding"),
+  ).toHaveLength(4);
+  await reviews.publish(review.id, { findings: [] });
+  await expect(
+    freeze.freeze(w.id, {
+      expected_content_revision: board.workflow.content_revision,
+      acknowledge_unreviewed: true,
+    }),
+  ).rejects.toMatchObject({ code: "NOT_READY" });
+});
+it("draft gap keys preserve existing questions even on key collisions", () => {
+  const scope = {
+    ...readyScope,
+    coverage: { ...readyScope.coverage, humans: null },
+    blockers: ["Who approves?"],
+    unresolved: [{ key: "draft_blocker_0", question: "Existing detail" }],
+  };
+  const draft = scopeForDraft(scope);
+  expect(draft.unresolved.map((u) => u.question).sort()).toEqual(
+    [
+      "Existing detail",
+      "Who approves?",
+      "Confirm the workflow's humans before implementation.",
+    ].sort(),
+  );
+  expect(new Set(draft.unresolved.map((u) => u.key)).size).toBe(3);
+  expect(scope.unresolved).toHaveLength(1);
+  expect(draft.coverage.humans).toBeNull();
 });

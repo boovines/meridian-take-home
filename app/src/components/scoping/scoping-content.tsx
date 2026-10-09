@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { ArrowUp, Check, Sparkles, StickyNote, GitBranch } from "lucide-react";
 import type { Board } from "@/domain/canvas";
-import { scopeReady } from "@/domain/scoping";
+import { scopeForDraft, MAX_SCOPING_QUESTION_ROUNDS } from "@/domain/scoping";
 import type { ScopingController } from "./use-scoping";
 import { ScopeSummary } from "./scope-summary";
 import { ScaffoldPreview } from "./scaffold-preview";
@@ -37,7 +37,7 @@ export function ScopingContent({
   );
   const previewScope =
     previewScopeVersion && "scope" in previewScopeVersion.data
-      ? previewScopeVersion.data.scope
+      ? scopeForDraft(previewScopeVersion.data.scope)
       : null;
   const graph = pv && "graph" in pv.data ? pv.data.graph : null;
   const noteChanged =
@@ -155,7 +155,7 @@ export function ScopingContent({
     >
       <div className="scoping-section-heading">
         <h3>Shape the workflow</h3>
-        <span>Scoping conversation</span>
+        <span>At most {MAX_SCOPING_QUESTION_ROUNDS} question rounds</span>
       </div>
       {!state?.messages.length && (
         <div className="scoping-welcome">
@@ -231,12 +231,12 @@ export function ScopingContent({
             </div>
           ) : (
             <>
-              {scope && scopeReady(scope) && (
+              {scope && (
                 <div className="scoping-ready">
                   <strong>Ready for a first draft</strong>
                   <p>
-                    Generate a preview to confirm the scope and assumptions
-                    above. Nothing is added until you apply it.
+                    Generate from what you know. Missing details stay open for
+                    review. Nothing is added until you apply it.
                   </p>
                   <button
                     className="primary"
@@ -263,7 +263,7 @@ export function ScopingContent({
                     onChange={(e) => setAnswer(e.target.value)}
                     maxLength={20000}
                     placeholder={
-                      scope && scopeReady(scope)
+                      scope
                         ? "Add context or request a change…"
                         : "Share the details, or say what is still unknown…"
                     }

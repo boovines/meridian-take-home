@@ -105,7 +105,17 @@ export function fixtureScope(op: ScopingOperation) {
     return {
       message:
         "Here is a connected draft with human approval and a revision loop. Inspect it before applying; retention remains a review question.",
-      graph: readyScaffold,
+      graph: {
+        ...readyScaffold,
+        unresolved_anchors: (op.input.scope?.unresolved || []).map(
+          (u) =>
+            readyScaffold.unresolved_anchors.find((a) => a.key === u.key) || {
+              key: u.key,
+              node_keys: [],
+              connection_keys: [],
+            },
+        ),
+      },
     };
   if (op.input.action === "start")
     return {
