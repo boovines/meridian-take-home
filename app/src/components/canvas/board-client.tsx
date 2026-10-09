@@ -109,12 +109,13 @@ export function BoardClient({
   const review = useReview(id, load);
   useEffect(() => {
     let active = true;
+    const version = ++boardVersion.current;
     api<Board>(`/api/workflows/${id}`)
       .then((b) => {
-        if (active) setBoard(b);
+        if (active && version === boardVersion.current) setBoard(b);
       })
       .catch((e) => {
-        if (active) setError(errorMessage(e));
+        if (active && version === boardVersion.current) setError(errorMessage(e));
       });
     return () => {
       active = false;

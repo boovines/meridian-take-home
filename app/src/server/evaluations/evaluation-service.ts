@@ -1,3 +1,4 @@
+import { statisticsByEvaluation } from "./statistics";
 import { frozenSpec, specForPlan } from "../engineering/plan-service";
 import {
   evaluationConfiguration,
@@ -526,6 +527,7 @@ export class EvaluationService {
       );
     return {
       runs,
+      statistics: await statisticsByEvaluation(this.db, runs.map((run) => run.id)),
       results: runs[0] ? await resultsByEvaluation(this.db, runs[0].id) : [],
     };
   }

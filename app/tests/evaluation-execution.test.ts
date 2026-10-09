@@ -134,6 +134,7 @@ async function prepared() {
 it("records a full suite with independent passes, assertion failures and execution errors", async () => {
   const { f, job, evaluation, results } = await prepared();
   expect(results).toHaveLength(4); // all cases accounted for before any invocation
+  await execution.build(evaluation.id, async () => ({ engine: "vercel-sandbox", check: "node --check" }), AbortSignal.timeout(10000));
   const adapters = {
     invoke: async (
       _p: unknown,
@@ -200,6 +201,10 @@ it("records a full suite with independent passes, assertion failures and executi
     status: "completed",
     verdict: "inconclusive",
   });
+  expect(state.statistics[evaluation.id]).toEqual({
+    cases: {total:4,passed:2,failed:1,error:1,not_run:0,running:0,queued:0,missing:0},
+    assertions: {total:4,passed:2,failed:1,unscored:1},
+  });
   expect(state.results.map((r) => r.outcome).sort()).toEqual([
     "error",
     "failed",
@@ -224,6 +229,15 @@ it("records a full suite with independent passes, assertion failures and executi
     suite_version_id: evaluation.suite_version_id,
   });
   await evals.prepare(rerun.job.id);
+  const history = await evals.state(f.w.id);
+  expect(history.statistics[evaluation.id]).toEqual(state.statistics[evaluation.id]);
+  expect(history.statistics[rerun.evaluation.id]).toEqual({
+    cases: {total:4,passed:0,failed:0,error:0,not_run:0,running:0,queued:4,missing:0},
+    assertions: {total:4,passed:0,failed:0,unscored:4},
+  });
+  const another = await prepared();
+  expect((await evals.state(another.f.w.id)).statistics[evaluation.id]).toBeUndefined();
+  await expect(evals.state(another.f.w.id, evaluation.id)).rejects.toMatchObject({code:"NOT_FOUND"});
   const detail = await versions.inspect(f.w.id, f.version.id);
   expect(detail.evaluation).toMatchObject({ status: "running" });
   expect(detail.build_check_status).toBe("passed");
@@ -251,6 +265,10 @@ it("a shared build blocker preserves coverage and marks unrun cases without inve
   expect(
     (await versions.inspect(f.w.id, f.version.id)).build_check_status,
   ).toBe("failed");
+  expect(state.statistics[evaluation.id]).toMatchObject({
+    cases: {total:4,passed:0,failed:0,error:0,not_run:4},
+    assertions: {total:4,passed:0,failed:0,unscored:4},
+  });
   expect(state.results).toHaveLength(4);
   expect(
     state.results.every(
@@ -449,22 +467,19 @@ it("isolated Agent cases read only their captured bundle and override mutable fi
       extract: async (_request, documents) => {
         expect(documents[0].bytes.toString()).toBe("Seller: Example Ltd");
         return {
-          metadata: { provider: "fixture" },
-          output: {
-            data: { seller: "Example Ltd" },
-            fields: [
-              {
-                path: ["seller"],
-                raw_value: "Example Ltd",
-                normalized_value: "Example Ltd",
-                status: "found",
-                explanation: null,
-                evidence: [
-                  { artifact_id: doc.id, page: 1, text: "Seller: Example Ltd" },
-                ],
-              },
-            ],
-          },
+          data: { seller: "Example Ltd" },
+          fields: [
+            {
+              path: ["seller"],
+              raw_value: "Example Ltd",
+              normalized_value: "Example Ltd",
+              status: "found",
+              explanation: null,
+              evidence: [
+                { artifact_id: doc.id, page: 1, text: "Seller: Example Ltd" },
+              ],
+            },
+          ],
         };
       },
     },
@@ -490,4 +505,79 @@ it("stops a resumed isolated invocation when the worker configuration changed af
     expect((await db.query("SELECT outcome,failure_code,failure_category FROM evaluation_case_results WHERE id=$1", [r.id])).rows[0]).toMatchObject({outcome:"error",failure_code:"EVALUATION_CONFIGURATION_CHANGED",failure_category:"infrastructure"});
   } finally { vi.unstubAllEnvs(); }
   await evals.finish(job.id, undefined, true);
+});
+
+it("bounds history to 20 runs and retains exact older suite denominators on direct inspection", async () => {
+  const { f, job, evaluation, suite } = await prepared();
+  await evals.finish(job.id, undefined, true);
+  const revision = await suites.create(f.w.id, {
+    request_key: randomUUID(), name: "Smaller verified revision", parent_suite_version_id: suite.id,
+  });
+  const revised = await suites.state(f.w.id, revision.id);
+  await suites.removeCase(f.w.id, revision.id, revised.cases[0].id, {expected_revision: revised.cases[0].revision});
+  for (const c of revised.cases.slice(1)) {
+    await suites.verifyCase(f.w.id, revision.id, c.id, {expected_revision:c.revision});
+  }
+  await suites.lock(f.w.id, revision.id, {expected_revision: (await suites.state(f.w.id,revision.id)).suites[0].revision});
+  for (let i=0; i<20; i++) {
+    const next = await evals.start(f.w.id, {request_key: randomUUID(), implementation_version_id: f.version.id, suite_version_id: revision.id});
+    await evals.finish(next.job.id, undefined, true);
+  }
+  const history = await evals.state(f.w.id);
+  expect(history.runs).toHaveLength(20);
+  expect(Object.keys(history.statistics)).toHaveLength(20);
+  expect(history.statistics[evaluation.id]).toBeUndefined();
+  expect(Object.values(history.statistics).every(s => s.cases.total === 3 && s.assertions.total === 3 && s.assertions.unscored === 3)).toBe(true);
+  const original = await evals.state(f.w.id, evaluation.id);
+  expect(original.statistics[evaluation.id]).toMatchObject({cases:{total:4,not_run:4},assertions:{total:4,unscored:4}});
+});
+
+it("does not infer a build pass from fixture validation or completed evaluation status", async () => {
+  const { f, job, evaluation, results } = await prepared();
+  await execution.build(evaluation.id, async () => ({ engine: "fixture" }), AbortSignal.timeout(10000));
+  for (const result of results) {
+    await evals.beginCase(result.id);
+    await evals.recordCase(result.id, { error: { code:"FIXTURE_ERROR", category:"infrastructure", message:"Fixture execution without syntax validation" } });
+  }
+  await evals.finish(job.id);
+  const detail = await versions.inspect(f.w.id, f.version.id);
+  expect(detail.evaluation).toMatchObject({ status: "completed" });
+  expect(detail.build_check_status).toBeNull();
+});
+
+it("keeps explicit build evidence through cancellation without sharing it across code versions", async () => {
+  const { f, job, evaluation } = await prepared();
+  await execution.build(evaluation.id, async () => ({ engine: "vercel-sandbox", check: "node --check" }), AbortSignal.timeout(10000));
+  expect((await versions.inspect(f.w.id, f.version.id)).build_check_status).toBe("passed");
+  await expect(db.query("UPDATE evaluation_runs SET build_check_status='failed' WHERE id=$1", [evaluation.id])).rejects.toMatchObject({code:"23514"});
+  await evals.finish(job.id, undefined, true);
+  expect((await versions.inspect(f.w.id, f.version.id)).build_check_status).toBe("passed");
+  const next = (await db.query(`INSERT INTO implementation_versions(workflow_id,plan_version_id,version_number,parent_version_id,created_by_job_id,generation_key,artifact_id,entrypoint,node_file_map)
+    SELECT workflow_id,plan_version_id,version_number+1,id,created_by_job_id,'build-evidence-scope',artifact_id,entrypoint,node_file_map FROM implementation_versions WHERE id=$1 RETURNING id`, [f.version.id])).rows[0];
+  expect((await versions.inspect(f.w.id, String(next.id))).build_check_status).toBeNull();
+  await expect(versions.inspect(randomUUID(), f.version.id)).rejects.toMatchObject({code:"NOT_FOUND"});
+});
+
+it("rejects late build success after cancellation and does not invent infrastructure verdicts", async () => {
+  const { f, job, evaluation } = await prepared();
+  await expect(execution.build(evaluation.id, async () => { throw new Error("fixture unavailable"); }, AbortSignal.timeout(10000))).rejects.toThrow("fixture unavailable");
+  expect((await versions.inspect(f.w.id, f.version.id)).build_check_status).toBeNull();
+  await expect(execution.build(evaluation.id, async () => {
+    await evals.finish(job.id, undefined, true);
+    return { engine: "vercel-sandbox", check: "node --check" };
+  }, AbortSignal.timeout(10000))).rejects.toMatchObject({code:"EVALUATION_INACTIVE"});
+  expect((await versions.inspect(f.w.id, f.version.id)).build_check_status).toBeNull();
+});
+
+it("records compiler failure independently of evaluation completion and later verified success supersedes it", async () => {
+  const { DomainError } = await import("../src/domain/errors");
+  const { f, job, evaluation } = await prepared();
+  await expect(execution.build(evaluation.id, async () => { throw new DomainError(422, "PROJECT_BUILD_FAILED", "fixture syntax failure"); }, AbortSignal.timeout(10000))).rejects.toMatchObject({code:"PROJECT_BUILD_FAILED"});
+  expect((await versions.inspect(f.w.id, f.version.id)).build_check_status).toBe("failed");
+  await evals.finish(job.id, { code:"PROJECT_BUILD_FAILED", message:"fixture syntax failure", category:"implementation" });
+  const next = await evals.start(f.w.id, { request_key:randomUUID(), implementation_version_id:f.version.id, suite_version_id:evaluation.suite_version_id });
+  await evals.prepare(next.job.id);
+  await execution.build(next.evaluation.id, async () => ({ engine:"vercel-sandbox", check:"node --check" }), AbortSignal.timeout(10000));
+  expect((await versions.inspect(f.w.id, f.version.id)).build_check_status).toBe("passed");
+  await evals.finish(next.job.id, undefined, true);
 });

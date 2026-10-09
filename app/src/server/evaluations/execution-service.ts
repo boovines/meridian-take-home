@@ -37,7 +37,7 @@ export class EvaluationExecutionService {
   ) {
     const e = await evaluationById(this.db, id),
       job = await jobById(this.db, e.job_id);
-    if (job.status !== "running")
+    if (job.status !== "running" || e.status !== "running")
       throw new DomainError(
         409,
         "EVALUATION_INACTIVE",
@@ -47,7 +47,25 @@ export class EvaluationExecutionService {
       e.workflow_id,
       e.implementation_version_id,
     );
-    await validate(project, signal);
+    const record = async (status: "passed" | "failed") => this.db.transaction(async tx => {
+      await workflow(tx, e.workflow_id, true);
+      signal.throwIfAborted();
+      const current = await evaluationById(tx, id), currentJob = await jobById(tx, e.job_id);
+      if (current.status !== "running" || currentJob.status !== "running")
+        throw new DomainError(409, "EVALUATION_INACTIVE", "Evaluation no longer accepts build evidence.");
+      await tx.query("UPDATE evaluation_runs SET build_check_status=$2,build_checked_at=now() WHERE id=$1 AND build_check_status IS NULL", [id, status]);
+    });
+    let result: unknown;
+    try { result = await validate(project, signal); }
+    catch (error) {
+      signal.throwIfAborted();
+      if (error instanceof DomainError && error.code === "PROJECT_BUILD_FAILED") await record("failed");
+      throw error;
+    }
+    signal.throwIfAborted();
+    // Fixture validation and arbitrary adapters are not compiler evidence.
+    if (result && typeof result === "object" && "engine" in result && "check" in result &&
+        result.engine === "vercel-sandbox" && result.check === "node --check") await record("passed");
   }
   async step(id: string, adapters: StepAdapters, signal: AbortSignal) {
     const result = (
