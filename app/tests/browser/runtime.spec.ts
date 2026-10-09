@@ -6,6 +6,7 @@ test("captures a packet, records a human decision, previews a report, and retrie
 }, testInfo) => {
   const workflowId = crypto.randomUUID(),
     versionId = crypto.randomUUID(),
+    specId = crypto.randomUUID(),
     bundleId = crypto.randomUUID(),
     nodeId = crypto.randomUUID(),
     jobId = crypto.randomUUID();
@@ -69,9 +70,16 @@ test("captures a packet, records a human decision, previews a report, and retrie
             name: "Shipment review",
             desired_outcome: "Inspect and preview a shipment report.",
           },
+          specs: [{ id: specId, version_number: 1, created_at: date }],
           spec: {
-            id: crypto.randomUUID(),
+            id: specId,
+            version_number: 1,
             board: {
+              workflow: {
+                id: workflowId,
+                name: "Shipment review",
+                desired_outcome: "Inspect and preview a shipment report.",
+              },
               nodes: [{ id: nodeId, title: "Review shipment" }],
               connections: [],
             },

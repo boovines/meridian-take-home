@@ -20,7 +20,7 @@ import type { Project } from "../../domain/project";
 import type { Database, Queryable } from "../database";
 import { workflow } from "../workflows/store";
 import { jobById } from "../engineering/job-service";
-import { planById, planSteps, frozenSpec } from "../engineering/plan-service";
+import { planById, planSteps, specForPlan } from "../engineering/plan-service";
 import {
   EvaluationService,
   evaluationById,
@@ -521,7 +521,11 @@ export class RepairService {
       plan,
       baseline_repetitions,
       steps: await planSteps(this.db, plan.id),
-      spec: await frozenSpec(this.db, session.workflow_id),
+      spec: await specForPlan(
+        this.db,
+        session.workflow_id,
+        session.plan_version_id,
+      ),
       evaluation,
       results: baselineResults,
       cases,
@@ -589,7 +593,7 @@ export class RepairService {
           "INVALID_CANDIDATE",
           "The candidate must belong to this repair attempt and its approved plan.",
         );
-      const spec = await frozenSpec(tx, job.workflow_id),
+      const spec = await specForPlan(tx, job.workflow_id, job.plan_version_id),
         steps = await planSteps(tx, job.plan_version_id);
       if (
         project.frozen_spec_id !== spec.id ||

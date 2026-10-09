@@ -1,3 +1,4 @@
+import { discussable } from "../process-revisions/conversation";
 import type { z } from "zod";
 import { DomainError } from "../../domain/errors";
 import {
@@ -12,12 +13,7 @@ import type {
   messageInput,
 } from "../../domain/review";
 import type { Database, Queryable } from "../database";
-import {
-  editable,
-  expectRevision,
-  readBoard,
-  workflow,
-} from "../workflows/store";
+import { expectRevision, readBoard, workflow } from "../workflows/store";
 import { appendMessage, reviewRecord, threadById } from "./discussion-store";
 import { rewriteReviewReply } from "../integrations/openai-review-reply";
 
@@ -64,7 +60,7 @@ export class ReplyService {
         const thread = await threadById(tx, workflowId, threadId);
         const existing = await previous(tx, threadId, data);
         if (existing) return { existing };
-        editable(w);
+        discussable(w, thread);
         if (data.expected_revision !== undefined)
           expectRevision(thread, data.expected_revision);
         if (thread.kind === "clarification")
@@ -94,7 +90,7 @@ export class ReplyService {
             "INVALID_REPLY",
             "Reply to an existing message in this thread.",
           );
-        if (thread.kind === "note")
+        if (thread.kind === "note" && !thread.engineer_request)
           return {
             existing: await appendMessage(tx, thread, {
               author: "customer",
@@ -118,9 +114,12 @@ export class ReplyService {
           context: {
             board,
             anchors,
-            targets: board.nodes.filter((n) =>
-              anchors.some((a) => a.node_id === n.id),
-            ),
+            targets:
+              thread.engineer_request && !anchors.length
+                ? board.nodes
+                : board.nodes.filter((n) =>
+                    anchors.some((a) => a.node_id === n.id),
+                  ),
             thread,
             messages,
             answer: data.body,
@@ -163,11 +162,12 @@ export class ReplyService {
       const existing = await previous(tx, threadId, data);
       if (existing) return existing;
       signal.throwIfAborted();
-      editable(w);
+      discussable(w, thread);
       const board = await readBoard(tx, workflowId);
       if (
         thread.revision !== context.thread.revision ||
         w.content_revision !== context.board.workflow.content_revision ||
+        w.process_version !== context.board.workflow.process_version ||
         context.targets.some(
           (n) =>
             board.nodes.find((current) => current.id === n.id)?.revision !==
@@ -181,16 +181,19 @@ export class ReplyService {
         );
       const edits = result.updates.flatMap((update) => {
         const node = context.targets.find((n) => n.id === update.node_id)!;
-        return node.instructions === update.instructions
+        return node.instructions === update.instructions &&
+          (!update.title || node.title === update.title)
           ? []
           : [
               {
                 node_id: node.id,
                 before: {
+                  title: node.title,
                   instructions: node.instructions,
                   revision: node.revision,
                 },
                 after: {
+                  title: update.title ?? node.title,
                   instructions: update.instructions,
                   revision: node.revision + 1,
                 },

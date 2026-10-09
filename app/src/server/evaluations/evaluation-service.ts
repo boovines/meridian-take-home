@@ -1,5 +1,9 @@
 import { statisticsByEvaluation } from "./statistics";
-import { evaluationConfiguration, assertEvaluationConfiguration } from "./configuration";
+import { frozenSpec, specForPlan } from "../engineering/plan-service";
+import {
+  evaluationConfiguration,
+  assertEvaluationConfiguration,
+} from "./configuration";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import type { z } from "zod";
@@ -170,7 +174,9 @@ export class EvaluationService {
       suite.state !== "locked" ||
       job.suite_version_id !== suiteId ||
       !version ||
-      version.plan_version_id !== job.plan_version_id
+      version.plan_version_id !== job.plan_version_id ||
+      suite.frozen_spec_id !==
+        (await specForPlan(tx, job.workflow_id, job.plan_version_id)).id
     )
       throw new DomainError(
         422,
@@ -223,12 +229,21 @@ export class EvaluationService {
           "Evaluation cancelled before starting.",
         );
       const configuration = evaluationConfiguration();
-      const previous = (await tx.query(
-        "SELECT e.execution_configuration FROM repair_confirmations c JOIN repair_confirmations earlier ON earlier.attempt_id=c.attempt_id AND earlier.round=1 JOIN evaluation_runs e ON e.id=earlier.evaluation_run_id WHERE c.evaluation_run_id=$1 AND c.round>1", [run.id]
-      )).rows[0];
-      if (previous) assertEvaluationConfiguration(previous.execution_configuration as Json);
-      if (!isDeepStrictEqual(run.execution_configuration, {})) assertEvaluationConfiguration(run.execution_configuration);
-      else await tx.query("UPDATE evaluation_runs SET execution_configuration=$2 WHERE id=$1", [run.id, configuration]);
+      const previous = (
+        await tx.query(
+          "SELECT e.execution_configuration FROM repair_confirmations c JOIN repair_confirmations earlier ON earlier.attempt_id=c.attempt_id AND earlier.round=1 JOIN evaluation_runs e ON e.id=earlier.evaluation_run_id WHERE c.evaluation_run_id=$1 AND c.round>1",
+          [run.id],
+        )
+      ).rows[0];
+      if (previous)
+        assertEvaluationConfiguration(previous.execution_configuration as Json);
+      if (!isDeepStrictEqual(run.execution_configuration, {}))
+        assertEvaluationConfiguration(run.execution_configuration);
+      else
+        await tx.query(
+          "UPDATE evaluation_runs SET execution_configuration=$2 WHERE id=$1",
+          [run.id, configuration],
+        );
       run.execution_configuration = configuration;
       await tx.query(
         "UPDATE workflow_jobs SET status='running',phase='checking build',started_at=coalesce(started_at,now()),updated_at=now() WHERE id=$1",
@@ -495,12 +510,13 @@ export class EvaluationService {
         ],
       );
   }
-  async state(wid: string, id?: string) {
+  async state(wid: string, id?: string, specId?: string) {
     await workflow(this.db, wid);
+    const spec = id ? null : await frozenSpec(this.db, wid, specId);
     const runs = (
       await this.db.query(
-        `SELECT e.*,v.version_number AS code_version_number,s.version_number AS suite_version_number FROM evaluation_runs e JOIN implementation_versions v ON v.id=e.implementation_version_id JOIN evaluation_suite_versions s ON s.id=e.suite_version_id WHERE e.workflow_id=$1 ${id ? "AND e.id=$2" : ""} ORDER BY e.created_at DESC,e.id DESC LIMIT 20`,
-        id ? [wid, id] : [wid],
+        `SELECT e.*,v.version_number AS code_version_number,s.version_number AS suite_version_number FROM evaluation_runs e JOIN implementation_versions v ON v.id=e.implementation_version_id JOIN evaluation_suite_versions s ON s.id=e.suite_version_id WHERE e.workflow_id=$1 ${id ? "AND e.id=$2" : "AND s.frozen_spec_id=$2"} ORDER BY e.created_at DESC,e.id DESC LIMIT 20`,
+        id ? [wid, id] : [wid, spec!.id],
       )
     ).rows as unknown as EvaluationRun[];
     if (id && !runs.length)

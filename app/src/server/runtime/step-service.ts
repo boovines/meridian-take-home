@@ -15,7 +15,7 @@ import { selectRoutes } from "../../domain/runtime";
 import type { Database } from "../database";
 import { workflow } from "../workflows/store";
 import { jobById } from "../engineering/job-service";
-import { frozenSpec, planSteps } from "../engineering/plan-service";
+import { specForPlan, planSteps } from "../engineering/plan-service";
 import { VersionService } from "../engineering/version-service";
 import { finishedRuns, runById, stepById } from "./store";
 
@@ -48,7 +48,7 @@ export class StepService {
           "RUN_INACTIVE",
           "Run no longer accepts execution results.",
         );
-      const spec = await frozenSpec(tx, run.workflow_id),
+      const spec = await specForPlan(tx, run.workflow_id, job.plan_version_id),
         node = spec.board.nodes.find((n) => n.id === data.node_id);
       const method = (await planSteps(tx, job.plan_version_id)).find(
         (s) => s.node_id === data.node_id,
@@ -244,7 +244,12 @@ export class StepService {
     const { run, stepId, token, node, method, board, context } = prepared;
     try {
       if (run.kind === "evaluation") {
-        const row = (await this.db.query("SELECT e.execution_configuration FROM workflow_runs r JOIN evaluation_case_results c ON c.id=r.evaluation_case_result_id JOIN evaluation_runs e ON e.id=c.evaluation_run_id WHERE r.id=$1", [run.id])).rows[0];
+        const row = (
+          await this.db.query(
+            "SELECT e.execution_configuration FROM workflow_runs r JOIN evaluation_case_results c ON c.id=r.evaluation_case_result_id JOIN evaluation_runs e ON e.id=c.evaluation_run_id WHERE r.id=$1",
+            [run.id],
+          )
+        ).rows[0];
         assertEvaluationConfiguration(row?.execution_configuration as Json);
       }
       const { project } = await this.versions.load(

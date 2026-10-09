@@ -28,7 +28,7 @@ Review draft checks both ambiguity and simplification opportunities. It explains
 
 Freeze requires at least one completed review, no open AI findings, and valid structure: exactly one Trigger, valid endpoints, every active block reachable from the Trigger, explicit split modes, and valid parallel pairing. Drafts may remain incomplete. If content changed after review, the customer may acknowledge a warning and freeze without another review. The demo demonstrates two review rounds, separately from the product's one-review minimum.
 
-Freeze atomically captures an immutable specification and locks the board. No revisions after handoff or permissions system are required for the demo. Resolved customer decisions settle AI findings; structural checks remain independent of AI judgment.
+Freeze atomically captures an immutable specification and locks the board. Further changes require an explicit revision draft and a fresh review; a permissions system remains outside scope. Resolved customer decisions settle AI findings; structural checks remain independent of AI judgment.
 
 ## Product Experience
 
@@ -74,7 +74,7 @@ Stale saves return a conflict with the current revision. Review results and free
 
 ## Proposed extension: engineer-requested process revisions
 
-Status: interview complete; implementation pending. This extension replaces the earlier exclusion of post-handoff revisions once implemented. It does not make frozen specifications mutable or permit autonomous repair to change business rules.
+Status: implemented in the process-revisions branch; live deployment and expert approval remain pending. This extension replaces the earlier exclusion of post-handoff revisions. It does not make frozen specifications mutable or permit autonomous repair to change business rules.
 
 ### Request and approve changes
 

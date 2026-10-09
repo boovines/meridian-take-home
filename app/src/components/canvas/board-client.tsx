@@ -35,9 +35,16 @@ import {
   nodeTypes,
 } from "@/domain/canvas";
 import { useReview } from "../reviews/use-review";
+import { RevisionNotice } from "../process-revisions/revision-notice";
 import { ReviewPanel } from "../reviews/review-panel";
 import { FreezeDialog } from "../reviews/freeze-dialog";
-export function BoardClient({ id }: { id: string }) {
+export function BoardClient({
+  id,
+  openRequests = false,
+}: {
+  id: string;
+  openRequests?: boolean;
+}) {
   const [board, setBoard] = useState<Board | null>(null),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
@@ -51,7 +58,10 @@ export function BoardClient({ id }: { id: string }) {
     null,
   );
   const [dirty, setDirty] = useState(false);
-  const [reviewOpen, setReviewOpen] = useState(false),
+  const [conversationId, setConversationId] = useState<string | null>(
+    openRequests ? "first_request" : null,
+  );
+  const [reviewOpen, setReviewOpen] = useState(openRequests),
     [freezeOpen, setFreezeOpen] = useState(false);
   // A response started before a newer mutation must not replace its result.
   const boardVersion = useRef(0);
@@ -251,6 +261,25 @@ export function BoardClient({ id }: { id: string }) {
             </button>
           </div>
         )}
+        <RevisionNotice
+          count={
+            review.state.threads.filter(
+              (t) => t.engineer_request && t.status === "open",
+            ).length
+          }
+          onOpen={() => {
+            openReviews();
+            setConversationId("first_request");
+          }}
+        />
+        {board?.workflow.base_frozen_spec_id &&
+          board.workflow.state !== "frozen" && (
+            <div className="state-banner">
+              Editing draft v{board.workflow.process_version} · based on frozen
+              v{(board.workflow.process_version ?? 2) - 1}. Engineering
+              continues from the approved version.
+            </div>
+          )}
         {board?.workflow.state === "reviewing" && (
           <div className="state-banner" role="status">
             Review in progress. The canvas is temporarily read-only.
@@ -259,8 +288,9 @@ export function BoardClient({ id }: { id: string }) {
         )}
         {board?.workflow.state === "frozen" && (
           <div className="state-banner">
-            <LockKeyhole size={15} /> Frozen for engineer handoff. This process
-            and its review decisions are saved.
+            <LockKeyhole size={15} /> Frozen v
+            {board.workflow.process_version ?? 1} for engineer handoff. This
+            process and its review decisions are saved.
             <Link className="button-link" href={`/workflows/${id}/engineer`}>
               Open engineer workspace
             </Link>
@@ -433,6 +463,8 @@ export function BoardClient({ id }: { id: string }) {
               </section>
               {reviewOpen ? (
                 <ReviewPanel
+                  conversationId={conversationId}
+                  onConversationChange={setConversationId}
                   board={board}
                   state={review.state}
                   onRefresh={review.refresh}

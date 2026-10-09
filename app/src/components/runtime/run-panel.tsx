@@ -56,7 +56,9 @@ export function RunPanel({
   const readState = useCallback(
     async (id?: string) => {
       const sequence = ++refreshSequence.current;
-      const list = await api<RunState>(`${base}/runs?kind=manual`);
+      const list = await api<RunState>(
+        `${base}/runs?kind=manual&spec=${state.spec.id}`,
+      );
       let chosen = id || selected || list.runs[0]?.id;
       let next = chosen
         ? list.runs[0]?.id === chosen
@@ -70,7 +72,7 @@ export function RunPanel({
       }
       return { sequence, list, chosen, next };
     },
-    [base, selected],
+    [base, selected, state.spec.id],
   );
   const publishState = useCallback(
     (value: Awaited<ReturnType<typeof readState>>) => {

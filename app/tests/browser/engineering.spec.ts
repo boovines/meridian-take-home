@@ -65,7 +65,7 @@ test("approves a plan, downloads generated source, and keeps previous versions o
   await expect(
     page.getByLabel("Method for Approve report", { exact: true }),
   ).toBeDisabled();
-  await page.getByRole("button", { name: "Suggest methods" }).click();
+  await page.getByRole("button", { name: "Recommend methods with AI" }).click();
   await expect(
     page.getByText("AI suggests human.", { exact: true }),
   ).toBeVisible();

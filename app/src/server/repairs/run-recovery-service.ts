@@ -138,8 +138,8 @@ export class RunRecoveryService {
     ).rows[0] as unknown as ImplementationVersion;
     const suite = (
       await tx.query(
-        "SELECT id FROM evaluation_suite_versions WHERE workflow_id=$1 AND state='locked' ORDER BY version_number DESC LIMIT 1",
-        [wid],
+        "SELECT id FROM evaluation_suite_versions WHERE workflow_id=$1 AND frozen_spec_id=(SELECT frozen_spec_id FROM implementation_plan_versions WHERE id=$2) AND state='locked' ORDER BY version_number DESC LIMIT 1",
+        [wid, version.plan_version_id],
       )
     ).rows[0];
     const config = evaluationConfiguration();
@@ -449,7 +449,7 @@ export class RunRecoveryService {
       );
       if (accepted)
         await tx.query(
-          "INSERT INTO workflow_run_defaults(workflow_id,implementation_version_id,recovery_session_id) VALUES($1,$2,$3) ON CONFLICT(workflow_id) DO UPDATE SET implementation_version_id=excluded.implementation_version_id,recovery_session_id=excluded.recovery_session_id,updated_at=now()",
+          "INSERT INTO workflow_run_defaults(workflow_id,implementation_version_id,recovery_session_id,frozen_spec_id) VALUES($1,$2,$3,(SELECT p.frozen_spec_id FROM implementation_plan_versions p JOIN implementation_versions v ON v.plan_version_id=p.id WHERE v.id=$2)) ON CONFLICT(workflow_id,frozen_spec_id) DO UPDATE SET implementation_version_id=excluded.implementation_version_id,recovery_session_id=excluded.recovery_session_id,updated_at=now()",
           [session.workflow_id, attempt.candidate_version_id, session.id],
         );
       await tx.query(

@@ -810,3 +810,56 @@ it("reports missing saved source as an operational blocker without exposing stor
     "Storage requires configuration",
   );
 });
+
+it("finishes historical recovery after v2 handoff without promoting v1 code into the v2 defaults", async () => {
+  const { ProcessRevisionService } = await import(
+    "../src/server/process-revisions/service"
+  );
+  const { ReviewService } = await import(
+    "../src/server/reviews/review-service"
+  );
+  const { FreezeService } = await import(
+    "../src/server/reviews/freeze-service"
+  );
+  const { PlanService } = await import(
+    "../src/server/engineering/plan-service"
+  );
+  const { CanvasService } = await import("../src/server/canvas/service");
+  const f = await failed(),
+    { attempt, runId } = await candidate(f);
+  const plans = new PlanService(db),
+    v1 = (await plans.state(f.w.id)).spec;
+  await new ProcessRevisionService(db).start(f.w.id, {
+    source_frozen_spec_id: v1.id,
+  });
+  const reviews = new ReviewService(db),
+    r = await reviews.start(f.w.id, { request_key: randomUUID() });
+  await reviews.prepare(r.id);
+  await reviews.publish(r.id, { findings: [] });
+  const board = await new CanvasService(db).load(f.w.id);
+  const v2 = await new FreezeService(db).freeze(f.w.id, {
+    expected_content_revision: board.workflow.content_revision,
+    acknowledge_unreviewed: false,
+  });
+  await completeRerun(f, runId);
+  expect(await f.recovery.decide(attempt.id)).toEqual({ done: true });
+  const historical = await f.runs.state(f.w.id, undefined, "manual", v1.id);
+  const current = await f.runs.state(
+    f.w.id,
+    undefined,
+    "manual",
+    String(v2.id),
+  );
+  expect(historical.manual_default?.implementation_version_id).toBe(
+    (await runById(db, runId)).implementation_version_id,
+  );
+  expect(current.manual_default).toBeNull();
+  expect(current.initial_manual_version_id).toBeNull();
+  expect((await plans.state(f.w.id)).versions).toHaveLength(0);
+  await expect(
+    db.query(
+      "UPDATE workflow_run_defaults SET frozen_spec_id=$2 WHERE workflow_id=$1",
+      [f.w.id, v2.id],
+    ),
+  ).rejects.toMatchObject({ code: "23514" });
+});
