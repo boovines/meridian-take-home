@@ -167,6 +167,7 @@ export function repairPrompt(
         steps: context.steps,
         baseline_project: baseline,
         baseline_evaluation: context.evaluation,
+        clarification_context: "clarification_context" in context ? context.clarification_context : undefined,
         source_run: "source_run" in context ? context.source_run : undefined,
         recovery_contract:
           context.session?.origin === "run"

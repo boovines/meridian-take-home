@@ -310,3 +310,12 @@ Migration 013 adds `evaluation_runs.execution_configuration`, captured once befo
 `recovery_inference_charges` records individual provider reservations and settlements. Separate rows retain charges across lost responses and worker restarts without rewriting a growing session JSON blob. The session index supports bounded cost aggregation. Reservations serialize under the existing workflow lock; model calls happen outside transactions. Charges hold provider/usage metadata and request hashes, not source documents or credentials. Unknown usage retains the original hold. RLS denies direct anonymous REST access, as for the other application tables.
 
 A durable paused timestamp records human waiting. Resuming extends the same job deadline by elapsed waiting time; it does not create a fresh attempt, spend allowance or timer. Session histories remain bounded in the demo UI; production retention and measured traffic capacity remain future work.
+
+
+### Engineer clarification (migration 015)
+
+`engineer_questions` owns one durable question per recovery attempt, its affected nodes/source references, immutable answer, reuse choice and answer idempotency key. Separate rows let the app address and resume a specific question without conflating implementation discussion with runtime human approvals. Unique attempt and workflow/answer-key constraints bound questions and prevent duplicate submission. Session indexes support the history view. Same-workflow foreign keys and guards tie questions to run-origin attempts; the service validates reference ownership before writing.
+
+`workflow_clarifications` records only explicit reuse, linking a question to its immutable frozen spec. It duplicates neither the answer nor the process definition. Its scope index supports future recovery context selection; input-specific answers are selected by the originating session's captured bundle instead. Both answered questions and reuse provenance are immutable.
+
+`repair_clarification_contexts` freezes the exact context seen by each of at most two generation invocations per candidate. The continuation gets a new snapshot containing the answer; the original diagnosis snapshot remains unchanged. Attempt/invocation and token uniqueness prevent ambiguous provenance, while insertion guards require the active claimed invocation. Generated artifact metadata references the used snapshot. JSON is appropriate here because the bounded snapshot is immutable evidence, not independently editable discussion. All three tables enable RLS, matching server-only access elsewhere.

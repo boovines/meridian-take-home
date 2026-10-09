@@ -787,3 +787,26 @@ it("retains a syntax failure and its diagnostic without executing the broken can
   ).toHaveLength(0);
   await f.repairs.finish(f.repairJob.id, "cancelled", "Test complete");
 });
+
+it("reports missing saved source as an operational blocker without exposing storage paths", async () => {
+  const f = await failed();
+  const unavailable = new ArtifactService(db, {
+    backend: "local",
+    write: async () => {},
+    read: async () => {
+      throw new Error("ENOENT /private/location/payload");
+    },
+  });
+  await expect(
+    unavailable.read(f.w.id, f.version.artifact_id),
+  ).rejects.toMatchObject({
+    code: "ARTIFACT_UNAVAILABLE",
+    message:
+      "The saved file is unavailable. Check the configured artifact storage location and access before retrying.",
+  });
+  await f.repairs.finish(
+    f.repairJob.id,
+    "needs_attention",
+    "Storage requires configuration",
+  );
+});

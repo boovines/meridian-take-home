@@ -8,6 +8,10 @@ Updated as features land. An unchecked item is not complete, even if supporting 
 
 Historical provider experiments are retained below; alternate-provider integration is outside the supported implementation. At that earlier checkpoint, the partial document-only comparison completed four Llama calls (46/46 selected checks) and eight OpenAI calls (92/92). It is incomplete and establishes neither a winner nor full workflow accuracy. The live returns journey completed three consecutive six-case passes with recorded configuration; that narrower text-input result does not establish PDF reliability.
 
+## Run recovery and engineer clarification — October 8
+
+The open stack [#58](https://github.com/boovines/meridian-take-home/pull/58) → [#59](https://github.com/boovines/meridian-take-home/pull/59) adds automatic recovery of failed manual runs and durable engineer questions. MMAU1407799 completed on repair attempt 2 after fixing extraction evidence paths and a validation output-contract mismatch. Its accepted v3 is the visibly unverified manual default; a failed batch remains in the report. The session cost $0.9220 and used the original captured input and approved plan. No locked suite exists on this workflow, so this does not establish business correctness or change the earlier repeatability evidence. Clarification persistence, reload, scope, source reinspection, cancellation and worker restart are fixture-tested. See [the full acceptance record](features/bounded-repair.md#live-run-recovery-acceptance--october-8-2026).
+
 ## Authoritative context
 
 The original assignment and updated agent notes were reread in Chrome on October 7. They require React, Temporal, Composio, Supabase; anchored AI comments; at least two review rounds in the demo; immutable spec; a reusable code-first agent scaffold; real generated code; fixed-output evaluations; and repair using the supplied inbox as the primary dataset.

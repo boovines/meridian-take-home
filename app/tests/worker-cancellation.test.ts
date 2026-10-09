@@ -14,6 +14,63 @@ import { RUNTIME_HEARTBEAT_POLICY } from "../src/domain/runtime-policy";
 
 let env: TestWorkflowEnvironment;
 let workflowBundle: WorkflowBundle;
+
+it.each(["answer", "cancel"])(
+  "persists an open recovery question across a worker restart and handles %s",
+  async (action) => {
+    const taskQueue = `question-restart-${randomUUID()}`;
+    const attemptId = randomUUID();
+    const waiting = Promise.withResolvers<void>();
+    let question = "open";
+    const generated: string[] = [];
+    const ended: string[] = [];
+    const activities = {
+      prepareRepair: async () => ({ origin: "run", attempt_limit: 3 }),
+      remainingRecoveryTime: async () => question === "open" ? null : 600000,
+      recoveryBaseline: async () => null,
+      beginRepairAttempt: async () => attemptId,
+      generateRepairCandidate: async (id: string) => {
+        generated.push(id);
+        return generated.length === 1
+          ? { ready: false, waiting: true }
+          : { ready: false, reason: "Source requires engineer attention." };
+      },
+      recoveryQuestionState: async () => {
+        waiting.resolve();
+        return question;
+      },
+      endRepair: async (_id: string, status: string) => {
+        ended.push(status);
+      },
+    };
+    const options = { connection: env.nativeConnection, taskQueue, workflowBundle, activities };
+    const first = await Worker.create(options);
+    const running = first.run();
+    const handle = await env.client.workflow.start("repairImplementation", {
+      taskQueue, workflowId: randomUUID(), args: [randomUUID()],
+    });
+    try {
+      await waiting.promise;
+    } finally {
+      first.shutdown();
+      await running;
+    }
+    expect(generated).toEqual([attemptId]);
+    expect((await handle.describe()).status.name).toBe("RUNNING");
+    if (action === "answer") question = "answered";
+    else await handle.cancel();
+    const second = await Worker.create(options);
+    await second.runUntil(async () => {
+      await handle.result();
+    });
+    expect(generated).toEqual(action === "answer" ? [attemptId, attemptId] : [attemptId]);
+    expect(ended).toEqual([action === "answer" ? "needs_attention" : "cancelled"]);
+    const history = await handle.fetchHistory();
+    expect(history.events?.filter((e) => e.workflowTaskFailedEventAttributes)).toHaveLength(0);
+  },
+  20000,
+);
+
 beforeAll(async () => {
   // A local ephemeral server exercises actual cancellation scopes and worker tasks.
   // No app database, cloud namespace, model, mailbox or credentials are involved.
@@ -236,7 +293,13 @@ it.each([false, true])(
           calls.push("attempt");
           return randomUUID();
         },
-        generateRepairCandidate: async () => ({ ready: true }),
+        generateRepairCandidate: async () => {
+          calls.push("generate");
+          return hasSuite && calls.filter((c) => c === "generate").length === 1
+            ? { ready: false, waiting: true }
+            : { ready: true };
+        },
+        recoveryQuestionState: async () => "answered",
         createRecoveryRerun: async () => runId,
         prepareCaseExecution: async () => ({
           run: { id: runId },
@@ -292,6 +355,8 @@ it.each([false, true])(
     });
     expect(calls).toEqual([
       "attempt",
+      "generate",
+      ...(hasSuite ? ["generate"] : []),
       "build",
       "run:completed",
       "regression",

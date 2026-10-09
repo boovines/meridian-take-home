@@ -1,3 +1,4 @@
+import { ClarificationService } from "../server/repairs/clarification-service";
 import { withRecoveryBudget } from "../server/repairs/recovery-budget";
 import { heartbeat, cancellationSignal } from "@temporalio/activity";
 import { ApplicationFailure } from "@temporalio/common";
@@ -47,6 +48,9 @@ export async function generateRepairCandidate(id: string) {
         ]),
       ),
     );
+    const question = await new ClarificationService(db).questionForAttempt(id);
+    if (question?.status === "open")
+      return { ready: false as const, waiting: true as const };
     return { ready: true as const };
   } catch (error) {
     if (error instanceof DomainError)

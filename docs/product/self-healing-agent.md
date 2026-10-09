@@ -87,7 +87,7 @@ The [architecture](../architecture/overview.md) and [verification plan](../verif
 
 ## Current implementation checkpoint
 
-The proposed run-recovery extension below is not implemented. It changes manual-run recovery only; the explicit evaluation-driven repair behavior described above remains the current implementation.
+The run-recovery extension below is implemented in the open PR stack and has completed live execution-recovery acceptance. It changes manual-run recovery only; evaluation-driven repair still requires an explicit action.
 
 The [generation](../features/engineer-generation.md), [runtime](../features/workflow-runtime.md), and [evaluation](../features/trusted-evaluations.md) guides describe implemented behavior and routes. The evaluation screen supports full-workflow and JSON-output step checks, explicit verification, sealed suite revisions, full-suite execution, comparison details and visit traces. Arbitrary unit-test code and broad OCR benchmarks remain deferred. Evaluation starts explicitly. Bounded repair is implemented; automatic first evaluation, arbitrary test-code execution and broad OCR benchmarking remain deferred.
 
@@ -97,7 +97,7 @@ Repair is now implemented with a three-attempt limit and a recorded two-hour ses
 
 ## Proposed extension: recovery from a failed manual run
 
-Status: scoped in the October 8 engineer interview; implementation pending. This section supersedes “repair always requires an explicit action” for future manual-run failures once shipped. Evaluation repair and repeated confirmation remain explicit actions.
+Status: implemented in the open recovery/clarification stack; fixture and live recovery verification are recorded in the feature contract. This section supersedes “repair always requires an explicit action” for future manual-run failures once shipped. Evaluation repair and repeated confirmation remain explicit actions.
 
 ### User experience and completion
 
@@ -133,7 +133,7 @@ An answer applies to the current captured shipment by default. Add **Use for fut
 
 Extend the existing repair lifecycle rather than creating a second repair engine. Model the repair origin explicitly as a failed manual run or an evaluation; a run-origin session may have no trusted suite. Pin source run, input bundle, approved plan, initial version, optional suite and comparable baseline, retained candidate, limits and stop reason. Existing evaluation-origin constraints must stay enforceable. Attempts link their diagnosis, code version, rerun, optional regression evaluation and acceptance decision.
 
-Engineer questions need independently addressable, durable records tied to a recovery session and attempt, with open/answered/canceled state and idempotent answer submission. Reusable clarification records need their own scope and provenance because they outlive the session; freeze the context used by each attempt. Store a separate workflow reference for the default manual-run version, updated atomically only after acceptance, rather than inferring it from the newest generated version. These are proposed model changes, not claims about existing SQL tables. Final migrations must preserve workflow ownership and history and index session/run/question lookups.
+Engineer questions need independently addressable, durable records tied to a recovery session and attempt, with open/answered/canceled state and idempotent answer submission. Reusable clarification records need their own scope and provenance because they outlive the session; freeze the context used by each attempt. Store a separate workflow reference for the default manual-run version, updated atomically only after acceptance, rather than inferring it from the newest generated version. Migrations 014–015 implement these records with workflow ownership, immutable history and indexed session/run/question lookups.
 
 Proposed API actions are: start recovery for a failed run, inspect its session and questions, and submit an answer with an explicit reuse choice. Reuse the existing durable-job cancellation and code/run inspection routes. Start and answer operations require idempotency keys and reject stale or terminal-session submissions. Automatic failure handling should call the same recovery service as the explicit action.
 

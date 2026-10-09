@@ -32,7 +32,7 @@ Each session records three attempts, two generation invocations per attempt, a t
 
 The **Attempt timeline** layout was selected after inspecting three local variants (status callout, attempt timeline and two-column ledger). Its stage line and ordered attempts preserve space for diagnosis and evidence. Picker scaffolding was removed.
 
-**Current boundary:** natural-language engineer questions, scoped reusable answers and continuation are a separate planned extension. Recovery presently stops with its retained explanation when the generator requires an engineer decision. A source run has one recovery session; rerunning the same source operation does not silently reset a spent or exhausted session.
+**Current boundary:** run-origin recovery supports the scoped engineer clarification flow below. Changes to the approved process or methods still stop with a retained explanation. A source run has one recovery session; rerunning the same source operation does not silently reset a spent or exhausted session.
 
 ## Persistence and execution
 
@@ -126,6 +126,32 @@ The repair document tool accepts up to three original PDF page numbers per read.
 
 Historical candidate evidence does not extend the current session’s duplicate-candidate ban across explicit engineer restarts. A restart still requires its own complete confirmation sequence; prior passes cannot contribute.
 
-Run-recovery verification uses isolated service fixtures for automatic/idempotent handoff, actual extraction evidence rejection and persisted audit inspection, immutable inputs, complete comparable regression, preserved existing failures, rejected regressions, unverified defaults, no recursive recovery, syntax failures, cancellation, spend reservation across restarts, three-attempt exhaustion and human-wait accounting. Its browser fixture follows failure → diagnosis → reload → repaired report, checks the default label, and revisits the original failure. Fixture model/step adapters do not establish autonomous repair quality. Live shipment recovery has not yet been verified for this extension.
+Run-recovery verification uses isolated service fixtures for automatic/idempotent handoff, actual extraction evidence rejection and persisted audit inspection, immutable inputs, complete comparable regression, preserved existing failures, rejected regressions, unverified defaults, no recursive recovery, syntax failures, cancellation, spend reservation across restarts, three-attempt exhaustion and human-wait accounting. Its browser fixture follows failure → diagnosis → reload → repaired report, checks the default label, and revisits the original failure. Fixture model/step adapters do not establish autonomous repair quality. The live shipment result below verifies this extension separately from the fixture checks.
 
 Before any recovery is accepted, manual version selection defaults to the latest original generation, not the newest repair candidate. The version list retains that selection even when more than twenty newer candidates exist. Rejected candidates remain inspectable and explicitly selectable without silently becoming the default.
+
+
+### Engineer clarification and continuation
+
+Run-origin diagnosis can ask one specific question per candidate, with affected blocks and references to its captured documents/audit events. The web view keeps that question across reloads, offers a text answer and **Submit and continue**, and retains cancellation. These questions are separate from human approvals in the frozen process. An answer applies to the captured input by default; **Use for future runs of this workflow** is explicitly opt-in.
+
+The answer transaction is idempotent, rejects closed/canceled sessions, extends the existing deadline only by durable waiting time and resumes the same candidate. It does not reset generation invocations, candidate attempts, or cost limits. Each candidate has two generation invocations total: if the first asks a question, the second must patch or stop. A worker polls the persisted answer while waiting, so a missed browser response or worker restart does not lose continuation. No model calls occur during the wait.
+
+Each invocation receives an immutable snapshot of input-scoped and explicitly reusable clarifications. The generated artifact records that snapshot and its source inspections. Answers guide inspection and cannot act as source evidence: a patch after an answer requires a compatibility assessment against frozen rules plus fresh inspection of the relevant current documents (or audit evidence for a workflow without documents). A process-changing or unsupported answer stops recovery. Compatibility classification is model-mediated, not a formal proof of semantic equivalence; frozen specs, approved methods, host evidence contracts and regression checks remain independent safeguards.
+
+Migration 015 stores questions, explicitly reusable provenance and invocation snapshots. `POST /api/workflows/:id/engineer-questions/:questionId/answer` accepts a request key, answer and reuse flag. Questions/history are returned in run recovery state. Persistence tests cover duplicate submission, cancellation, no evidence substitution, process-change rejection, immutable snapshots, waiting-time accounting and cross-input reuse boundaries. Browser fixtures cover question → reload → answer → continuation → repaired report. These fixtures do not establish live model accuracy.
+
+Clarification durability is also exercised against a local Temporal server: an open question survives worker shutdown and history replay, answering continues the same attempt, and cancellation finishes without another generation call. The provider test checks the serialized structured-output schema: both nullable clarification fields must be required by OpenAI, even when no question or assessment is supplied. A live token-count request verified this schema without starting inference.
+
+
+### Live run-recovery acceptance — October 8, 2026
+
+The combined open PR stack (#58 → #59) was exercised through the in-app Agent → Run workflow screen against Supabase, Temporal Cloud, OpenAI and Vercel Sandbox. Manual run `e440355b-aaca-48f4-be83-c5e86b4509d2` for MMAU1407799 failed its extraction evidence contract and automatically created recovery session `6de8d277-8384-49e5-8512-f63ed7961051`.
+
+Attempt 1 repaired object-valued critical paths in both readers. Its rerun cleared extraction but crashed because a negative business result used `validation_status: "fail"` instead of the consumer's expected execution-status values. The candidate was retained as rejected. Attempt 2 reused those fixes, clarified the validation output contract, and normalized compatible output fields without turning failed batches into successful ones. Both candidates passed their isolated syntax checks. The original failure, approved plan, captured input, host evidence validation and earlier versions remained intact; no application code contains a shipment-specific matching fix.
+
+Rerun `a3e4e817-e977-4897-9e04-6368304317bb` completed all five steps. Version `96616666-7eab-4767-bbae-dced9318365f` (v3) became the manual default, and the app displayed **Completed after repair** and **Business results not yet verified**. The report contains one invoice, zero failed goods and one failed batch. This is an execution-recovery result, not a ground-truth accuracy claim: this workflow has no locked suite, and no repeated confirmation or business-accuracy evaluation was silently launched.
+
+The accepted session consumed $0.9220 of its $5 inference ceiling. The local verification ledger, including prerequisite manual runs, recorded $1.4126 settled plus $0.2510 held for an earlier uncertain request; that hold was not cleared or refunded by the harness. Earlier storage-path and expired-sandbox-access attempts remain historical failures. A strict-output schema issue found during token preflight was fixed and regression-tested before repeating the live flow; its rejected preflight did not start inference.
+
+No engineer question was necessary for this shipment. Clarification is verified through the separate persisted service/browser fixtures and real Temporal worker-restart tests above, not claimed as a live model question. The combined local suite passed **233 tests, one skipped**. Both PR heads passed static, worker, PostgreSQL, PGlite, production-build and browser CI. PRs remain open and unmerged.

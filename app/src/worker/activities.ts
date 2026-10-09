@@ -33,6 +33,7 @@ export {
 } from "./repair-activities";
 
 export {
+  recoveryQuestionState,
   recoveryBaseline,
   recordRecoveryBaseline,
   createRecoveryRerun,
