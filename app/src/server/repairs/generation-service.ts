@@ -12,8 +12,8 @@ import { VersionService } from "../engineering/version-service";
 import { RepairService } from "./service";
 import { changedStepSources, type PreviousSourceEvidence } from "./evidence";
 import { completeRepairSources } from "./patch";
-import { RepairDocumentReader, type ReadRepairDocument } from "./documents";
-import { RepairAuditReader, type ReadRepairAudit } from "./audit";
+import { repairDocumentBudget, RepairDocumentReader, type ReadRepairDocument } from "./documents";
+import { repairAuditBudget, RepairAuditReader, type ReadRepairAudit } from "./audit";
 import { ExecutionAuditService } from "../runtime/audit-service";
 export type RepairContext = Awaited<
   ReturnType<RepairService["generationContext"]>
@@ -95,6 +95,7 @@ export class RepairGenerationService {
         ),
         this.artifacts,
         signal,
+        repairDocumentBudget(this.db, attemptId, claimed.token),
       );
       const audits = new RepairAuditReader(
         claimed.job.workflow_id,
@@ -108,6 +109,7 @@ export class RepairGenerationService {
         ),
         new ExecutionAuditService(this.db, this.artifacts),
         signal,
+        repairAuditBudget(this.db, attemptId, claimed.token),
       );
       const replay = new RepairStepReplay(
         this.db,
@@ -157,7 +159,7 @@ export class RepairGenerationService {
     }
     // A new version id is not a new candidate if its executable files are identical.
     // Keep the generated artifact for diagnosis, but never buy another lucky sequence.
-    for (const previous of context.previous_attempts.filter(a => a.candidate_version_id)) {
+    for (const previous of context.previous_attempts.filter(a => a.session_id === context.session.id && a.candidate_version_id)) {
       const prior = await new VersionService(this.db, this.artifacts).load(claimed.job.workflow_id, String(previous.candidate_version_id));
       if (isDeepStrictEqual(prior.project.files, project.files))
         throw new DomainError(409, "UNCHANGED_REPAIR_CANDIDATE", "The repair reproduced an already evaluated candidate. Its artifact is retained; change the implementation before starting another confirmation sequence.");
