@@ -1,6 +1,6 @@
 # Data model decisions and justification
 
-Audit date: October 8, 2026. Scope: the agreed take-home features, with growth considered but no claimed production capacity. This document explains the implemented tables, important field groups, relationships, and alternatives. Migrations 001–016 are the source of truth for exact fields and constraints; the earlier schema specifications preserve planning context. The migrations run against Supabase and PostgreSQL in CI. No production load test has been run.
+Documentation reconciled with the merged implementation: October 9, 2026. Scope: the agreed take-home features, with growth considered but no claimed production capacity. This document explains the implemented tables, important field groups, relationships, and alternatives. The complete [migration directory](../../app/migrations) is the source of truth for exact fields and constraints; the earlier schema specifications preserve planning context. The migrations run against Supabase and PostgreSQL in CI. No production load test has been run.
 
 ## Audit conclusion
 
@@ -14,9 +14,9 @@ The main domain boundaries are justified by independently edited or versioned re
 | Case verification freshness | Editing a case clears its verification; adding a case starts unverified. All edits advance the suite revision, and lock checks that revision plus every case’s verification. | A prior verification cannot cover edited case content. Unchanged independently verified cases need not be reverified. |
 | Fixture responses addressed by an ambiguous visit number | Add a per-node visit number separately from the run-wide scheduling number. | Parallel execution order must not change which response a human step receives. |
 | Model/settings sufficient to explain review behavior | Add `reviewer_version`, identifying the deployed prompt/application revision. | The same model can produce different review behavior with a changed prompt. This is provenance, not guaranteed reproducibility. |
-| Custom leases and parallel coordination implicitly required | Temporal owns scheduling and per-occurrence fork/join state; omit SQL coordination tables and leases. | The database stores inspection history and idempotent dispatch intents without becoming a second scheduler. |
+| Custom leases and parallel coordination implicitly required | Temporal owns scheduling and per-occurrence fork/join state; omit duplicate SQL branch scheduling. Grouped activity leases only bound capacity. | The database stores inspection history and idempotent dispatch intents without becoming a second scheduler. |
 
-The executable schema has **32 application tables**: the 26 original canvas/review/engineering/runtime tables plus six audit, recovery, clarification and process-request extensions documented below. The two proposed parallel coordination tables were intentionally omitted because Temporal owns that state. The count follows record lifecycles; it is not a scalability target or a count of services.
+The executable schema follows record lifecycles across canvas, review, engineering, runtime, audit, recovery, clarification, scoping and grouped execution. The proposed SQL parallel-branch coordination tables were omitted because Temporal owns that state. Table count is neither a scalability target nor a count of services.
 
 ## How a table earns its place
 
@@ -138,7 +138,7 @@ One row records one attempt's starting baseline, diagnosis, optional candidate/e
 
 Unique session/attempt number and unique candidate identity preserve ordering and provenance. Neither code versions nor evaluations alone capture generation failures, rejected candidates, or why the baseline did not advance. Diagnosis is model-produced advice; the trusted result and acceptance rule determine promotion.
 
-## Runtime and artifacts: six tables
+## Runtime and artifacts
 
 ### 19. `artifacts` — keep
 
@@ -305,7 +305,7 @@ Migration 013 adds `evaluation_runs.execution_configuration`, captured once befo
 
 `repair_attempts` gains an internal rerun reference and durable build result alongside the existing candidate/evaluation references. A rerun has ordinary step occurrences, audit events and human requests; its distinct runtime kind prevents recursive recovery. Composite ownership constraints and SQL guards tie the run to the source input, candidate, plan and parent operation. Successful build/rerun evidence is required for an accepted recovery; the service also requires complete comparable regression evidence when a suite is pinned. Candidate, rerun and saved build references cannot be replaced after recording. Original runs and terminal attempts remain immutable.
 
-`workflow_run_defaults` has one row per workflow pointing to the accepted recovery version and its provenance. Separating this reference from newest-code and evaluation-baseline pointers prevents rejected candidates or one mechanically successful run from silently becoming confirmed evaluation evidence. The primary-key lookup supports run setup; only an accepted recovery can update it.
+`workflow_run_defaults` has one row per workflow and frozen specification (extended by migration 016), pointing to the accepted recovery version and its provenance. Separating this reference from newest-code and evaluation-baseline pointers prevents rejected candidates or one mechanically successful run from silently becoming confirmed evaluation evidence. The primary-key lookup supports run setup; only an accepted recovery can update it.
 
 `recovery_inference_charges` records individual provider reservations and settlements. Separate rows retain charges across lost responses and worker restarts without rewriting a growing session JSON blob. The session index supports bounded cost aggregation. Reservations serialize under the existing workflow lock; model calls happen outside transactions. Charges hold provider/usage metadata and request hashes, not source documents or credentials. Unknown usage retains the original hold. RLS denies direct anonymous REST access, as for the other application tables.
 
@@ -334,3 +334,16 @@ Reviews and findings carry `process_version`, assigned by the database on insert
 Plan and suite draft uniqueness is per frozen version, while the expensive-operation limit stays per workflow. Human-method constraints consult the frozen graph. A handoff creates a new plan transactionally: only unchanged executable contexts retain method choices, and no approvals are copied. Code and execution artifacts remain linked through their original plan. Evaluation insertion rejects mismatched code/suite specifications so old test passes cannot validate a new process accidentally.
 
 `workflow_run_defaults` uses `(workflow_id, frozen_spec_id)` as its key. Recovery evidence must refer to that same specification. This allows an older operation to finish after a new handoff without replacing the current version’s run default. Version-specific history queries use the existing ownership relationships rather than copying code, runs or evaluations into new revision rows.
+
+
+## Guided scoping (migration 015_workflow_scoping)
+
+[The migration](../../app/migrations/015_workflow_scoping.sql) adds five distinct lifecycles. `scoping_sessions` stores the workflow's current note, optimistic revisions and current/applied preview pointers. `scoping_operations` records interview/preview requests, captured inputs, deadlines and failures, including operations that never produce a preview; workflow/request uniqueness and a partial active-operation index prevent competing requests. `scoping_versions` stores immutable scope and graph-preview aggregates, tied to the operation and source note revision. `scoping_messages` preserves immutable conversation history with a workflow/sequence index. `scoping_obligations` maps unresolved preview questions into ordinary review threads without creating duplicate blockers when application is retried.
+
+These are separate from editable canvas rows because a preview has not yet been approved. Applying the preview uses the existing canvas and review services; it does not create another executable graph store. See the [feature contract](../features/guided-workflow-scaffolding.md) and [persistence tests](../../app/tests/scoping.test.ts).
+
+## Grouped execution (migration 017)
+
+[The migration](../../app/migrations/017_grouped_execution.sql) adds `grouped_executions` for parent input and fixed limits; `grouping_decisions` for versioned grouping results and their source run; `grouped_children` for independently executing groups, sealed inputs and successor lineage; and `grouping_questions` for durable clarification and idempotent answers. Parent/time and pending-question indexes support progress and continuation queries. Composite foreign keys preserve workflow ownership. Existing `workflow_jobs.parent_job_id` makes children part of one top-level operation, rather than competing for the same workflow slot.
+
+`grouped_inference_charges` retains reservations/settlements through retries and unknown outcomes. `grouped_activity_leases` bounds concurrent heavy activities with expiring leases; it is a capacity control, not a replacement for Temporal scheduling or runtime split/merge state. Separate child and decision rows preserve completed work when another group fails or a new answer changes only part of the grouping. Source bytes, ordinary runs, repairs and traces reuse existing storage. See the [feature contract](../features/grouped-execution.md) and [persistence tests](../../app/tests/grouped-runtime.test.ts). These constraints establish bounded behavior, not measured production throughput.

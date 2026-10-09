@@ -74,6 +74,6 @@ A revised process needs a completed review for that revision, dispositions on it
 
 The **Frozen process** selector scopes plans, code, suites, evaluations and manual-run defaults. Earlier operations keep their original process even if a new version is frozen while they run. A recovered historical implementation can become that historical version’s default only. The global operation banner identifies the version currently executing; it continues to prevent competing expensive operations.
 
-The demo records engineer/customer actions but does not authenticate separate roles. There is one mutable draft, no simultaneous branches, automatic notifications or automatic graph rewrites. Grouped email execution is a separate pending feature.
+The demo records engineer/customer actions but does not authenticate separate roles. There is one mutable draft, no simultaneous branches, automatic notifications or automatic graph rewrites. Grouped email execution is a separate [implemented feature](grouped-execution.md), with its own acceptance evidence.
 
 Verification: the process-revision browser journey exercises request, reply, per-block approval, fresh review, v2 handoff/generation and v1 history. Persistence tests cover idempotent requests/revision starts, rejected and stale edits, immutable specifications, required human gates and historical generation/recovery pinning. Fixture success does not establish live model quality.

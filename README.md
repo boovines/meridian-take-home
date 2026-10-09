@@ -1,67 +1,91 @@
 # Meridian Studio
 
-A process owner maps a workflow, resolves anchored AI findings, and freezes a handoff. An engineer approves how its steps are implemented, generates inspectable code, evaluates it against fixed expectations, and starts bounded repair sessions. The import-receiving example reads captured Gmail documents and previews a shipment report.
+A process owner maps a workflow, resolves anchored AI findings, and freezes a specification. An engineer approves Code, Agent or Human methods, generates inspectable step modules, evaluates them against locked expectations, and starts bounded repair. The import-receiving example reads existing Gmail documents and previews a shipment report; its business rules are supplied to generated code, not hardcoded into the platform.
 
-Start with the [documentation index](docs/README.md), [app setup](app/README.md), the [demo walkthrough](docs/guides/demo.md), the [technical handoff](docs/guides/handoff.md), and [verified implementation status](docs/implementation-status.md). Live checks and fixture tests are reported separately.
-
-The [take-home minimum audit](docs/guides/take-home-minimum.md) maps the assignment to concrete product evidence and the recording sequence. The complete product loop is implemented and demonstrated. Historical shipment v17 met the demo repeatability gate: three consecutive fresh runs each passed 24/24 cases and 207/207 assertions under identical recorded settings. This establishes the locked-suite result, not unseen-document reliability or correctness of every source citation.
+This repository implements the [Meridian take-home assignment](https://app.notion.com/p/Meridian-Take-Home-Project-3adfdc07926d80dc9b59f9ce64e07155). Start with **[setup](app/README.md#run-locally)**, then the **[end-to-end walkthrough](docs/guides/demo.md)**. The [documentation index](docs/README.md) links the PRDs, diagrams, feature contracts and schema rationale.
 
 ## Run
 
-Use Node 24. From `app/`, run `npm ci`, configure `.env.local` using `.env.example`, and apply remote migrations with `npm run db:migrate`. Run `npm run dev` and `npm run worker` in separate terminals. The worker uses Temporal Cloud; generated code runs in Vercel Sandbox. See the app README for Supabase TLS, private artifact storage, provider setup, and local fixture development.
+Use **Node 24 and npm**. Choose one setup path:
 
-The demo binds to localhost. Hosting requires a persistent worker, shared private artifact storage, and access protection; team/role permissions are outside scope. Reports are previews and Gmail access is read-only.
+- **Local fixture preview:** `cd app`, `npm ci`, then the [fixture command](app/README.md#local-fixture-preview-no-service-credentials). It uses local PGlite and synthetic providers. No Temporal worker is needed; this does not demonstrate real AI or Gmail.
+- **Live workflow:** follow the [service configuration](app/README.md#live-services), apply all migrations, then run `npm run dev` and `npm run worker` in separate terminals from `app/`. The web app defaults to `http://127.0.0.1:3000`.
+
+The live stack is React/Next.js, Supabase Postgres, Temporal Cloud with a persistent Node worker, Composio Gmail, OpenAI, and Vercel Sandbox for generated execution. The [setup reference](app/README.md#live-services) covers credentials, verified database TLS, artifact storage and Sandbox access. Hosting also requires access protection and shared private storage; the current demo binds to localhost. Gmail is read-only and reports are not sent.
+
+## Primitive set and rationale
+
+The canvas has seven business concepts, defined in [the canvas contract](app/src/domain/canvas.ts). Implementation method is chosen later, so customers do not have to decide how software should execute each step.
+
+| Primitive | Meaning and reason for keeping it separate |
+| --- | --- |
+| Trigger | Identifies the input or event that starts a run. |
+| Information | Gathers or interprets evidence needed by later steps. |
+| Task | Performs work and produces a result. |
+| Check | Makes a business decision and selects the next path. |
+| Human handoff | Pauses for a person's information or judgment. |
+| Human approval | Requires an explicit approval or rejection. |
+| Outcome | Defines the result delivered at the end. |
+
+Connections express conditions and return paths. Parallel splits have an explicitly paired merge. One trigger, reachable blocks and supported routing are required at freeze; see [graph validation](app/src/domain/validate-graph.ts) and its [tests](app/tests/graph.test.ts). Optional [guided scoping](docs/features/guided-workflow-scaffolding.md) turns plain-text notes and a conversation into an initial graph preview; the customer explicitly applies it and still completes ordinary review.
+
+## Comments, revisions and frozen data
+
+Mutable nodes and connections use separate rows with optimistic revisions for targeted edits. `discussion_threads`, append-only `discussion_messages`, and `thread_anchors` support findings and notes attached to multiple blocks or connections. The UI distinguishes Open, Answered, Rejected and Resolved. Replies alone do not approve proposed edits, and ordinary notes do not block freeze.
+
+Freeze saves the graph, desired outcome and review decisions as immutable `frozen_specs` JSON. An explicit process revision opens a new working draft while preserving the earlier spec, plans, code and results. The new handoff requires its own review and produces an unapproved implementation plan; old passes do not validate a changed process. See the [review contract](docs/features/review-handoff.md), [revision behavior](docs/features/engineer-generation.md#engineer-requested-process-revisions), [SQL migrations](app/migrations), and [revision persistence tests](app/tests/process-revisions.test.ts).
+
+Separate rows fit independently edited records; snapshots fit immutable aggregates consumed together. Files and large traces live in artifact storage with ownership and hashes in the database. [Data-model rationale](docs/architecture/data-model.md) explains constraints, indexes and alternatives; migrations define the executable schema.
+
+## Why a graph for requirements and code for execution?
+
+A state machine can return to a previous step when information is missing; a DAG cannot represent that loop. The canvas makes those business decisions discussable with a nontechnical owner. The generated implementation is ordinary JavaScript, which a coding agent can inspect, diff and repair. [Project assembly](app/src/server/engineering/project.ts) supplies the shared contract and [repair generation](app/src/server/repairs/generation-service.ts) retains versioned source.
+
+This is a deliberate hybrid. Temporal and the trusted host retain routing, human gates and grading; generated modules implement steps and request permitted tools. Repair can change code and prompts within approved methods, but cannot change the frozen process or expected answers. The download therefore depends on the host contract—it is not a standalone orchestration replacement. See [system boundaries](docs/architecture/overview.md) and the [repair contract](docs/features/bounded-repair.md).
+
+## What is verified?
+
+| Claim | Evidence and limit |
+| --- | --- |
+| Customer authoring, review and immutable handoff | [Feature contracts](docs/README.md#implemented-features), [browser journeys](app/tests/browser), and [migrations](app/migrations). Fixture checks establish the covered behavior, not live model quality. |
+| Generated execution and bounded repair | [Runtime](docs/features/workflow-runtime.md), [repair acceptance rules](docs/features/bounded-repair.md), and [repair tests](app/tests/repairs.test.ts). A build pass is not a business-accuracy result. |
+| Historical shipment repeatability | The [dated evidence log](docs/implementation-status.md) records three fresh v17 runs of 24 cases/207 assertions under the same settings. That result belongs to that code, suite and configuration; it does not establish accuracy for later versions, unseen documents or every source citation. |
+| Assignment demonstration | The [requirement audit](docs/guides/take-home-minimum.md) identifies recorded review rounds, frozen spec, generated code, evaluations and handoff artifacts. Historical recordings are separate from current checkout verification. |
+
+A repair candidate advances its baseline only after full-suite non-regression checks. Confirmation requires three consecutive fresh full-suite passes for that candidate and configuration. Exposed cases are regression tests, not held-out validation. See the [verification guide](docs/verification.md) for the test boundaries and commands.
 
 ## Repository layout
 
 ```text
 app/
-  src/app/           Pages and thin HTTP endpoints
-  src/components/    UI grouped by canvas, review, engineering, evaluation, repair, runtime
-  src/domain/        Typed contracts and pure validation/routing/grading rules
-  src/server/        Transactional feature services and separate provider adapters
-  src/worker/        Deterministic Temporal workflows and I/O activities
-  migrations/        Ordered executable database schema
-  tests/             Service/domain tests, browser journeys, sanitized fixtures
-  scripts/           Operator commands and explicit live service checks
-    demo/            Example business requirements, draft seeding, suite import
-  README.md          Setup, commands, module map, integration details
-
+  src/app/         Pages and thin HTTP endpoints
+  src/components/  UI grouped by feature
+  src/domain/      Typed contracts and pure validation/routing/grading rules
+  src/server/      Transactional services and provider adapters
+  src/worker/      Temporal workflows and I/O activities
+  migrations/      Ordered executable schema
+  tests/           Domain/persistence tests, browser journeys and fixtures
+  scripts/         Operator commands, live checks and example setup
+  README.md        Setup, commands and detailed module map
 docs/
-  README.md          Documentation entry point and authority map
-  product/           Product requirements
-  architecture/      System diagrams and data-model rationale
-  features/          Implemented behavior and operator guidance
-  guides/            Demo and handoff walkthroughs
-  archive/interviews/ Original interview decisions and schema proposals
-.github/workflows/   Required CI without live model/Gmail credentials
-.runtime/            Ignored inputs, artifacts, databases and local investigation
+  product/         PRDs and approved specifications
+  architecture/    System diagrams and schema rationale
+  features/        Current behavior and failure contracts
+  guides/          Demo, assignment audit and handoff
+  archive/         Superseded interview/design records
+.github/workflows/ CI using sanitized fixtures
+.runtime/, work/   Ignored local artifacts and scratch work
 ```
 
-Application files follow feature boundaries. API handlers validate requests and delegate; services own transactions; provider adapters own network calls. Temporal owns execution scheduling. The example's shipment rules are requirements for generated code, not special cases built into the reusable runtime. The full [file map](app/README.md#file-map) explains each folder.
-
-## Design and data model
-
-The revised [Whiteboard PRD](docs/product/whiteboard.md) and [Self-Healing Agent PRD](docs/product/self-healing-agent.md) retain product decisions. [Architecture and diagrams](docs/architecture/overview.md) describe boundaries and invariants. The [data-model decision audit](docs/architecture/data-model.md) explains table boundaries, keys, indexes and alternatives; `app/migrations` is the executable schema. [Archived interview](docs/archive/interviews/README.md) proposals include conditional tables that were intentionally omitted once Temporal became the scheduling authority.
-
-Mutable nodes and connections have independent rows and optimistic revisions. Immutable snapshots, input manifests and generated artifacts retain the exact context used by reviews, runs and evaluations. The frozen process, approved plan and locked expectations cannot be rewritten by a repair agent. Each repair session retains every candidate and only advances its baseline after full-suite regression checks. Confirmation requires three consecutive fresh full-suite passes for the same candidate and configuration; one historical pass is insufficient.
-
-## Verification and development
-
-From `app/`, run `npm run lint`, `npm run typecheck`, `npm test`, `npm run worker:check`, `npm run build`, and `npm run test:browser`. Install the browser once with `npx playwright install chromium`. GitHub Actions runs these checks on ordinary and stacked PRs, with the full test suite on both PGlite and PostgreSQL 17 and isolated local storage for browser journeys. Separate check results and downloadable test reports identify failures; the required `app` gate requires every application check to pass. Live scripts are opt-in and consume configured provider resources.
-
-Follow [CONTRIBUTING.md](CONTRIBUTING.md): feature branches, focused PRs, actual verification, and explicit approval before merging. Feature PRs remain open as a dependent stack; passing CI is not merge permission. Never commit credentials, mailbox content, or real shipment documents. The [evidence log](docs/implementation-status.md) distinguishes implemented behavior, verified integrations, and remaining limitations.
+The [module map](app/README.md#file-map) explains ownership. Follow [CONTRIBUTING.md](CONTRIBUTING.md): focused feature branches, actual verification, open PRs and explicit approval before merging. Never commit credentials, mailbox content or real shipment documents.
 
 ## Future work (outside demo scope)
 
-- **Branch and collaborate on process revisions.** One expert-controlled revision draft is implemented; simultaneous branches, merging, notifications and role permissions remain future work.
-- **Import IDE edits and connect repositories.** For the demo, engineers can preview generated code and diffs and download the project; evaluation and repair operate on app-managed code versions. Later, support importing external edits or synchronizing a Git repository, with each evaluation tied to the exact code version tested.
-- **Continuously monitor Gmail.** Demo runs start from an explicitly selected shipment email or shipment number. Automatic runs on new mail are deferred.
-- **Support multiple workflow triggers.** The demo requires exactly one active Trigger block when freezing a workflow. Later, support multiple entry points with explicit trigger selection and input contracts for each entry point.
-- **Support overlapping parallel sections.** The demo requires explicitly paired parallel splits and merges. More general overlapping parallel routing is deferred.
-- **Deliver report emails.** The demo captures and previews the intended report. Actual email delivery is deferred.
-- **Generate maps from existing sources.** SOP upload for an initial canvas is a low-priority stretch; automated process mining from business systems is outside demo scope.
-- **Verify citation meaning.** Page bounds and artifact identity do not prove that a cited page supports an extracted value. A live spot-check found a correct batch value with an incorrect page citation outside the locked suite; add source-verified citation expectations before claiming fully auditable extraction.
-- **Benchmark extraction more broadly.** Start with targeted checks on representative demo PDFs; broad comparisons across OCR systems and document collections are deferred.
-- **Change documents during a paused run.** Human responses are text or decisions in the demo. New documents require a new input bundle and run; in-run document uploads and dependency-aware reprocessing are deferred.
-- **Resume failed runs from checkpoints.** A user-requested retry starts from the beginning with the same code and inputs, linked to the failed run. General failed-step resume is deferred.
+Priorities follow the observed limits in the [evidence log](docs/implementation-status.md) and [handoff](docs/guides/handoff.md#verification-and-further-work):
+
+- **Stronger extraction evidence and independent validation.** Verify that citations support their values, add independently reviewed negative cases, and measure cost and repeatability on fresh documents before claiming general reliability.
+- **Production access and operations.** Add authenticated organization permissions, retention, deployment controls and measured load testing; benchmark history growth before choosing partitioning or sharding.
+- **Repository round trip.** Import IDE edits into immutable code versions and evaluate the exact imported revision. Today the app previews/downloads code and evaluates app-managed versions.
+- **Richer process authoring.** Add multiple triggers, overlapping parallel sections and collaborative revision branches. One expert-controlled revision draft and explicitly paired parallel sections already exist.
+- **Broader integrations.** Add SOP-file ingestion and process mining. Plain-text notes and approved initial graph generation already exist. Continuous Gmail monitoring and actual report delivery remain deferred.
+- **More flexible run recovery.** Add document replacement during human waits and general failed-step resume. Today changed documents create a new input bundle; an explicit retry starts a linked run from the beginning.
