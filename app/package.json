@@ -26,7 +26,8 @@
     "gmail:smoke": "tsx scripts/gmail-smoke.ts",
     "demo:seed": "tsx scripts/demo/seed.ts",
     "demo:suite": "tsx scripts/demo/load-suite.ts",
-    "docs:check": "tsx scripts/check-docs.ts"
+    "docs:check": "tsx scripts/check-docs.ts",
+    "artifacts:mirror": "tsx scripts/mirror-artifacts.ts"
   },
   "engines": {
     "node": ">=22"
