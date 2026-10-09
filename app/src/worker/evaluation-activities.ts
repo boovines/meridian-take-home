@@ -1,3 +1,5 @@
+import { finishEvaluationWithRepair } from "../server/evaluations/automatic-repair";
+import { startRepairWorkflow } from "../server/integrations/temporal";
 import { withRecoveryBudget } from "../server/repairs/recovery-budget";
 import { heartbeat, cancellationSignal } from "@temporalio/activity";
 import { getDatabase } from "../server/database";
@@ -38,12 +40,14 @@ export async function endEvaluation(
   cancelled = false,
   evaluationId?: string,
 ) {
-  return new EvaluationService(await getDatabase()).finish(
+  const next = await finishEvaluationWithRepair(
+    await getDatabase(),
     id,
     error,
     cancelled,
     evaluationId,
   );
+  if (next && ["queued", "cancel_requested"].includes(next.status)) await startRepairWorkflow(next.id);
 }
 export async function checkEvaluationBuild(
   id: string,

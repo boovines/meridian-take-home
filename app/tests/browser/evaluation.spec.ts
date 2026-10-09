@@ -4,7 +4,7 @@ async function post(request: APIRequestContext, url: string, data: unknown) {
   expect(r.ok()).toBe(true);
   return r.json();
 }
-test("verifies a suite, runs comparisons, and preserves results when expectations are revised", async ({
+for (const automatic of [false, true]) test(`verifies a suite with ${automatic ? "automatic" : "manual"} repair and preserves revisions`, async ({
   page,
   request,
 }, testInfo) => {
@@ -130,7 +130,7 @@ test("verifies a suite, runs comparisons, and preserves results when expectation
     .getByRole("button", { name: "Lock verified suite", exact: true })
     .click();
   await page
-    .getByRole("button", { name: "Run full suite", exact: true })
+    .getByRole("button", { name: automatic ? "Evaluate and repair" : "Run full suite", exact: true })
     .click();
   await expect(
     page.getByRole("button", {
@@ -177,7 +177,7 @@ test("verifies a suite, runs comparisons, and preserves results when expectation
     fullPage: true,
   });
   await page
-    .getByRole("button", { name: "Repair and rerun", exact: true })
+    .getByRole("button", { name: automatic ? "Repair history" : "Repair and rerun", exact: true })
     .click();
   await expect(
     page.getByRole("region", { name: "Repair attempt history" }),
@@ -252,7 +252,7 @@ test("verifies a suite, runs comparisons, and preserves results when expectation
     .getByRole("combobox", { name: "Code to evaluate", exact: true })
     .selectOption(initialCode!);
   await page
-    .getByRole("button", { name: "Run full suite", exact: true })
+    .getByRole("button", { name: automatic ? "Evaluate and repair" : "Run full suite", exact: true })
     .click();
   await expect(
     page.getByRole("button", {
@@ -263,6 +263,7 @@ test("verifies a suite, runs comparisons, and preserves results when expectation
     page.getByText("Code v1 · suite v2 · 1 / 1 cases passed", { exact: false }),
   ).toBeVisible();
   await expect(statistics).toContainText("Assertions passed3 / 3");
+  expect((await (await request.get(`${base}/repairs`)).json()).sessions).toHaveLength(1);
   const historyChart = page.getByRole("region", {
     name: "Recent evaluation outcomes",
   });
@@ -286,6 +287,7 @@ test("verifies a suite, runs comparisons, and preserves results when expectation
   ).toBeVisible();
   await expect(statistics).toHaveCount(0);
   await expect(statistics).toContainText("Assertions passed3 / 3");
+  expect((await (await request.get(`${base}/repairs`)).json()).sessions).toHaveLength(1);
   await page.unroute("**/evaluations/*");
   // Deliver the old selection after the new one is already displayed.
   let releaseOld!: () => void;
@@ -308,12 +310,14 @@ test("verifies a suite, runs comparisons, and preserves results when expectation
   await newest.click();
   await expect(newest).toHaveAttribute("aria-pressed", "true");
   await expect(statistics).toContainText("Assertions passed3 / 3");
+  expect((await (await request.get(`${base}/repairs`)).json()).sessions).toHaveLength(1);
   const oldDelivered = page.waitForResponse(response => /\/evaluations\/[^/]+$/.test(response.url()));
   releaseOld();
   await oldDelivered;
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   await expect(newest).toHaveAttribute("aria-pressed", "true");
   await expect(statistics).toContainText("Assertions passed3 / 3");
+  expect((await (await request.get(`${base}/repairs`)).json()).sessions).toHaveLength(1);
   await page.unroute("**/evaluations/*");
   await page.emulateMedia({ reducedMotion: "reduce" });
   await firstRun.click();

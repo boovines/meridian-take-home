@@ -1,3 +1,4 @@
+import { finishEvaluationWithRepair } from "../../src/server/evaluations/automatic-repair";
 // Test-only executor: exercises persistence/grading with a known pass-through fixture.
 // It never evaluates project source and is only loaded by the guarded local dispatcher.
 import type { Database } from "../../src/server/database";
@@ -63,5 +64,9 @@ export async function evaluateFixture(
     'UPDATE workflow_jobs SET progress=progress||\'{"engine":"fixture"}\'::jsonb WHERE id=$1',
     [jobId],
   );
-  await evals.finish(jobId, undefined, false, evaluationId);
+  const next = await finishEvaluationWithRepair(db, jobId, undefined, false, evaluationId);
+  if (next) {
+    const { repairFixture } = await import("./repair-runner");
+    await repairFixture(db, next.id);
+  }
 }

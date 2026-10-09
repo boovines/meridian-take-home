@@ -122,6 +122,7 @@ export const startEvaluationInput = z
     request_key: uuid,
     implementation_version_id: uuid,
     suite_version_id: uuid,
+    auto_repair: z.boolean().optional(),
   })
   .strict();
 export interface SuiteVersion {

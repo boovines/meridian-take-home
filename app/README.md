@@ -83,7 +83,7 @@ The first command bundles workflows without credentials and runs in CI. The last
 | `src/components/reviews/conversation-message.tsx`, `src/components/reviews/instruction-diff.tsx`, `src/components/reviews/reply-changes.tsx`, `src/components/reviews/thread-card.tsx` | Conversation rendering, word diffs and a shared inline/expanded response flow |
 | `src/server/process-revisions`, `src/components/process-revisions` | Engineer requests, explicit revision lifecycle and new unapproved handoff plans; existing review conversations own replies and per-block decisions |
 | `src/server/engineering` | Versioned plans, generation lifecycle, project assembly and source/download inspection |
-| `src/server/evaluations` | Verified suites, trusted grading, case execution and result history |
+| `src/server/evaluations` | Verified suites, trusted grading, case execution and result history; `automatic-repair.ts` atomically hands an opted-in evaluation to one bounded repair session |
 | `src/server/repairs` | Bounded sessions, candidate ancestry, diagnostic evidence projection and repeated-output field differences, bounded recorded-input replay, focused source patches, generation checkpoints and three-run confirmation |
 | `src/server/inputs` | Prepare source-backed email packet suggestions and capture existing Gmail messages and attachment evidence into immutable input bundles |
 | `src/server/grouped-execution` | Selected-email orchestration, immutable grouping/clarification evidence, child scopes, aggregation, shared budgets/capacity |

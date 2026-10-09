@@ -51,6 +51,7 @@ export class EvaluationService {
       const source = {
         implementation_version_id: data.implementation_version_id,
         suite_version_id: data.suite_version_id,
+        ...(data.auto_repair ? { auto_repair: true } : {}),
       };
       const existing = (
         await tx.query(
@@ -85,6 +86,10 @@ export class EvaluationService {
           "SUITE_NOT_LOCKED",
           "Verify and lock the suite before evaluating.",
         );
+      if (data.auto_repair && (await tx.query(
+        "SELECT id FROM evaluation_suite_versions WHERE workflow_id=$1 AND version_number>$2",
+        [wid, suite.version_number],
+      )).rows.length) throw new DomainError(409, "SUITE_CHANGED", "Lock and select the latest suite revision before automatic repair.");
       const version = (
         await tx.query(
           "SELECT * FROM implementation_versions WHERE workflow_id=$1 AND id=$2",
