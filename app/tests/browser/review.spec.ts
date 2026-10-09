@@ -559,15 +559,15 @@ test("edits and decides each proposed block independently while preserving unsav
   expect(Math.abs(editorPane!.y - diffPane!.y)).toBeLessThan(1);
   expect(diffPane!.x).toBeGreaterThan(editorPane!.x + editorPane!.width);
   // Fixed-height comparison panes must remain readable without a pointer.
-  const acceptedWording = await first.getByRole("textbox").inputValue();
-  await first.getByRole("textbox").fill("Review this requirement carefully. ".repeat(100));
-  await first.getByRole("textbox").focus();
+  const acceptedWording = await first.getByRole("textbox", { name: /Proposed instructions for/ }).inputValue();
+  await first.getByRole("textbox", { name: /Proposed instructions for/ }).fill("Review this requirement carefully. ".repeat(100));
+  await first.getByRole("textbox", { name: /Proposed instructions for/ }).focus();
   await page.keyboard.press("Tab");
   const diffRegion = first.getByRole("region", { name: "Instruction changes", exact: true });
   await expect(diffRegion).toBeFocused();
   await page.keyboard.press("PageDown");
   await expect.poll(() => diffRegion.evaluate(element => element.scrollTop)).toBeGreaterThan(0);
-  await first.getByRole("textbox").fill(acceptedWording);
+  await first.getByRole("textbox", { name: /Proposed instructions for/ }).fill(acceptedWording);
   await page.setViewportSize({ width: 390, height: 844 });
   const narrowEditor = (await first.locator(".proposal-text-editor").boundingBox())!;
   const narrowDiff = (await first.locator(".proposal-diff-preview").boundingBox())!;
