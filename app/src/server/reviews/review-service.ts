@@ -25,7 +25,7 @@ import {
 } from "./discussion-store";
 
 const activeStatuses = ["queued", "running", "awaiting_customer"];
-export const reviewerVersion = "process-review-v2";
+export const reviewerVersion = "process-review-v3";
 export const reviewModel = () =>
   process.env.MERIDIAN_REVIEW_PROVIDER === "fixture" &&
   process.env.MERIDIAN_DATABASE === "local" &&
