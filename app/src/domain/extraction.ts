@@ -177,13 +177,17 @@ export function validateExtraction(
     invalid([{ path: [], reason: "Extraction envelope exceeds 512 KB." }]);
   const parsed = extractionEnvelope.safeParse(raw);
   if (!parsed.success)
-    invalid([
-      {
-        path: [],
-        reason:
-          "Expected data plus typed field evidence; a bare null is not proof of absence.",
-      },
-    ]);
+    invalid(
+      raw === null
+        ? [{
+            path: [],
+            reason: "Expected data plus typed field evidence; a bare null is not proof of absence.",
+          }]
+        : parsed.error.issues.slice(0, 100).map((issue) => ({
+            path: issue.path.map(String),
+            reason: `Invalid extraction envelope: ${issue.message}`,
+          })),
+    );
   const value = parsed.data;
   const check = validateExtractionSchema(request.output_schema);
   if (!check(value.data))
@@ -261,4 +265,4 @@ export function validateExtraction(
   return value;
 }
 
-export const extractionInstructions = `Return an object with data and fields. data must match output_schema. For every scalar field selected by critical_paths ("*" means each array item), fields must contain {path: string[], raw_value: string|number|boolean|null, normalized_value: string|number|boolean|null, status: "found"|"absent"|"unresolved"|"unreadable", evidence: [{artifact_id, page: 1-based integer, text?: exact supporting quote, bounding_box?: {x,y,width,height} in 0..1 page coordinates}], explanation: string|null}. normalized_value must equal the value at that path in data. Preserve raw printed identifiers even when normalizing names. Check document headers and shared context when establishing which records a value applies to. Do not guess missing facts. Found requires raw and normalized values plus a source quote or box. Absent requires null values, searched source pages, and an explanation of where you checked. Unresolved/unreadable requires a null normalized value and explanation; distinguish uncertainty from demonstrated absence. Include every relevant record, not just records with complete fields. Never change the supplied output schema or critical paths. Evidence is a source claim, not proof merely because it is structurally valid.`;
+export const extractionInstructions = `Return an object with data and fields. data must match output_schema. For every scalar field selected by critical_paths ("*" means each array item), fields must contain {path: string[], raw_value: string|number|boolean|null, normalized_value: string|number|boolean|null, status: "found"|"absent"|"unresolved"|"unreadable", evidence: [{artifact_id, page: 1-based integer, text?: exact supporting quote, bounding_box?: {x,y,width,height} in 0..1 page coordinates}], explanation: string|null}. Evidence artifact_id must be an exact UUID of a supplied document; email/message identifiers, filenames and invented IDs are not document citations. Treat email text as context, not a substitute for document-page evidence. If a required fact is supported only by that context, mark it unresolved and explain the limitation instead of fabricating a citation. normalized_value must equal the value at that path in data. Preserve raw printed identifiers even when normalizing names. Check document headers and shared context when establishing which records a value applies to. Do not guess missing facts. Found requires raw and normalized values plus a source quote or box. Absent requires null values, searched source pages, and an explanation of where you checked. Unresolved/unreadable requires a null normalized value and explanation; distinguish uncertainty from demonstrated absence. Include every relevant record, not just records with complete fields. Never change the supplied output schema or critical paths. Evidence is a source claim, not proof merely because it is structurally valid.`;
