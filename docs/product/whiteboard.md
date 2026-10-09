@@ -16,6 +16,8 @@ The owner maps how existing shipment emails and attachments are grouped using th
 
 The process ends with shipment totals and a report preview. The demo explicitly selects an existing email or shipment number; it does not monitor Gmail or send the report. Supplied ground truth defines the verified counts. Mismatched-invoice scoring is excluded, without removing batch/CoA matching. Do not infer that every certificate discrepancy also fails an invoice unless the verified requirements establish that relationship.
 
+The approved [guided scaffolding specification](guided-workflow-scaffolding-spec.md) extends these requirements with initial graph generation on empty boards. That scoped, explicit approval flow is an exception to the manual graph-authoring rule below; it still requires normal review before freeze and is not yet implemented.
+
 ## Requirements/Acceptance Criteria
 
 Customers can create, name, save, and reopen multiple independent workflows. Each has a plain-language desired outcome and a canvas containing Trigger, Information, Task, Check, Human Handoff, Human Approval, and Outcome blocks. Instructions describe inputs, checks, and expected behavior without requiring a technical form. Implementation-relevant answers must end up in the workflow definition; the coding agent should not reconstruct requirements from comments.
