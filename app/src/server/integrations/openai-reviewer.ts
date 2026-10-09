@@ -1,4 +1,5 @@
 import { generateText, Output } from "ai";
+import { modelOutput } from "./model-output";
 import { openai } from "./openai-client";
 import { z } from "zod";
 import { reviewerOutput } from "../../domain/review";
@@ -110,17 +111,20 @@ export async function reviewWithOpenAI(input: Input, signal: AbortSignal) {
       })),
   };
   const prompt = serializeReviewContext(context);
-  const result = await generateText({
-    model: openai(run.model),
-    system: board.raw_process_data
-      ? `${rawProcessGuidance}\n${system}`
-      : system,
-    prompt,
-    output: Output.object({ schema }),
-    maxOutputTokens: 7000,
-    maxRetries: 1,
-    abortSignal: signal,
-    providerOptions: { openai: { reasoningEffort: "low", store: false } },
-  });
-  return result.output;
+  return modelOutput(
+    () =>
+      generateText({
+        model: openai(run.model),
+        system: board.raw_process_data
+          ? `${rawProcessGuidance}\n${system}`
+          : system,
+        prompt,
+        output: Output.object({ schema }),
+        maxOutputTokens: 7000,
+        maxRetries: 1,
+        abortSignal: signal,
+        providerOptions: { openai: { reasoningEffort: "low", store: false } },
+      }),
+    "Workflow review",
+  );
 }

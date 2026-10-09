@@ -51,3 +51,20 @@ it("keeps unexpected failures retryable without exposing provider or customer de
   });
   expect(mocks.finish).not.toHaveBeenCalled();
 });
+
+it("persists a safe spending-cap explanation without retrying review", async () => {
+  const message =
+    "Workflow review cannot continue because the OpenAI project's spending limit was reached.";
+  mocks.review.mockRejectedValue(
+    new DomainError(503, "MODEL_PROJECT_SPEND_LIMIT", message),
+  );
+  await expect(performReview("review-id")).rejects.toMatchObject({
+    nonRetryable: true,
+  });
+  expect(mocks.finish).toHaveBeenCalledExactlyOnceWith(
+    "review-id",
+    "failed",
+    message,
+  );
+  expect(mocks.publish).not.toHaveBeenCalled();
+});

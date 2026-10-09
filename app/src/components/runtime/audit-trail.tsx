@@ -9,19 +9,19 @@ const labels = {
   final_output: "Generated postprocessing output",
   failure: "Invocation failure",
 };
-export function AuditTrail({
-  workflowId,
-  stepId,
-  caseResultId,
-}: {
-  workflowId: string;
-  stepId?: string;
-  caseResultId?: string;
-}) {
-  const [opened, setOpened] = useState(false), [reload, setReload] = useState(0);
+type Props = { workflowId: string; stepId?: string; caseResultId?: string };
+export function AuditTrail(props: Props) {
+  return (
+    <InvocationAudit
+      key={`${props.workflowId}:${props.stepId || props.caseResultId}`}
+      {...props}
+    />
+  );
+}
+function InvocationAudit({ workflowId, stepId, caseResultId }: Props) {
+  const [opened, setOpened] = useState(false),
+    [reload, setReload] = useState(0);
   const [events, setEvents] = useState<AuditEvent[] | null>(null),
-    [selected, setSelected] = useState(""),
-    [payloads, setPayloads] = useState<Record<string, unknown>>({}),
     [error, setError] = useState("");
   useEffect(() => {
     if (!opened) return;
@@ -35,7 +35,10 @@ export function AuditTrail({
       `/api/workflows/${workflowId}/audit-events?${query}`,
     )
       .then((r) => {
-        if (active) setEvents(r.events);
+        if (active) {
+          setEvents(r.events);
+          setError("");
+        }
       })
       .catch((e) => {
         if (active) setError(errorMessage(e));
@@ -43,23 +46,7 @@ export function AuditTrail({
     return () => {
       active = false;
     };
-  }, [workflowId, stepId, caseResultId, opened]);
-  useEffect(() => {
-    if (!selected) return;
-    let active = true;
-    api<{ payload: unknown }>(
-      `/api/workflows/${workflowId}/audit-events/${selected}`,
-    )
-      .then((r) => {
-        if (active) setPayloads((old) => ({ ...old, [selected]: r.payload }));
-      })
-      .catch((e) => {
-        if (active) setError(errorMessage(e));
-      });
-    return () => {
-      active = false;
-    };
-  }, [workflowId, selected, reload]);
+  }, [workflowId, stepId, caseResultId, opened, reload]);
   return (
     <details
       onToggle={(event) => {
@@ -72,35 +59,92 @@ export function AuditTrail({
         runs may not have this audit. A request without a response is incomplete
         evidence. Times are elapsed from invocation start.
       </p>
-      {error && <p role="alert">{error}</p>}
+      {error && (
+        <div role="alert">
+          <p>{error}</p>
+          <button
+            onClick={() => {
+              setError("");
+              setReload((n) => n + 1);
+            }}
+          >
+            Retry loading audit
+          </button>
+        </div>
+      )}
       {!events ? (
-        <p role="status">Loading audit…</p>
+        !error && <p role="status">Loading audit…</p>
       ) : events.length === 0 ? (
         <p>No audit events recorded for this invocation.</p>
       ) : (
-        events.map((e) => (
-          <details
-            key={e.id}
-            onToggle={(event) => {
-              if (event.currentTarget.open) setSelected(e.id);
+        events.map((event) => (
+          <EventDetails key={event.id} workflowId={workflowId} event={event} />
+        ))
+      )}
+    </details>
+  );
+}
+// Each disclosure owns its request. Opening another event must not cancel an
+// earlier event's pending read or leave it permanently blank.
+function EventDetails({
+  workflowId,
+  event,
+}: {
+  workflowId: string;
+  event: AuditEvent;
+}) {
+  const [opened, setOpened] = useState(false),
+    [reload, setReload] = useState(0),
+    [result, setResult] = useState<{ payload: unknown } | null>(null),
+    [error, setError] = useState("");
+  useEffect(() => {
+    if (!opened) return;
+    let active = true;
+    api<{ payload: unknown }>(
+      `/api/workflows/${workflowId}/audit-events/${event.id}`,
+    )
+      .then((r) => {
+        if (active) {
+          setResult(r);
+          setError("");
+        }
+      })
+      .catch((e) => {
+        if (active) setError(errorMessage(e));
+      });
+    return () => {
+      active = false;
+    };
+  }, [workflowId, event.id, opened, reload]);
+  return (
+    <details
+      onToggle={(e) => {
+        if (e.currentTarget.open) setOpened(true);
+      }}
+    >
+      <summary>
+        {labels[event.kind]} · {event.summary.elapsed_ms} ms
+        {event.summary.model ? ` · ${event.summary.model}` : ""}
+      </summary>
+      <p className="field-help">
+        Attempt {event.attempt_token.slice(0, 8)} · event {event.sequence}
+      </p>
+      {error ? (
+        <div role="alert">
+          <p>{error}</p>
+          <button
+            onClick={() => {
+              setError("");
+              setReload((n) => n + 1);
             }}
           >
-            <summary>
-              {labels[e.kind]} · {e.summary.elapsed_ms} ms
-              {e.summary.model ? ` · ${e.summary.model}` : ""}
-            </summary>
-            <p className="field-help">
-              Attempt {e.attempt_token.slice(0, 8)} · event {e.sequence}
-            </p>
-            {Object.hasOwn(payloads, e.id) ? (
-              <pre tabIndex={0}>{JSON.stringify(payloads[e.id], null, 2)}</pre>
-            ) : (
-              <button onClick={() => { setSelected(e.id); setReload(n => n + 1); }}>
-                Load event details
-              </button>
-            )}
-          </details>
-        ))
+            Retry loading event details
+          </button>
+        </div>
+      ) : result ? (
+        <pre tabIndex={0}>{JSON.stringify(result.payload, null, 2)}</pre>
+      ) : (
+        <p role="status">Loading event details…</p>
       )}
     </details>
   );

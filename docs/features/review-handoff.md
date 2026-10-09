@@ -37,3 +37,5 @@ Known demo limits: review history displays the latest 20 runs; conversation pagi
 If a reply response is lost, an unchanged retry retains the original request key, thread revision and parent message even if another refresh has advanced the visible discussion. A definitive stale-context rejection allows the next attempt to use the refreshed context.
 
 The comparison diff is a named keyboard-focusable region, so long instructions can be scrolled with the keyboard inside the equal-height panes. At narrow widths the panes stack vertically.
+
+Provider spending limits, exhausted quota, incomplete model output, and local inference-budget failures end a review with a specific safe explanation. The board unlocks and remains unchanged. Spending-limit failures require correcting the configured limit before starting another review; repeating the same request cannot fix them. Unexpected provider failures retain bounded retries without exposing prompts or provider payloads.

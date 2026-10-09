@@ -103,3 +103,5 @@ Known worker failures carry their category through Temporal wrappers. A complete
 ## Automatic implementation recovery
 
 Classified implementation failures hand off atomically to [bounded run recovery](bounded-repair.md#recovery-from-a-failed-manual-run). Existing failures can be diagnosed explicitly. A recovery rerun keeps the original captured input, uses its candidate code, and requests new human responses. Completed negative business results remain ordinary report outcomes. An accepted recovery becomes the visibly unverified manual-run default; Retry same inputs still uses that selected historical run's original code and bundle.
+
+A failed trace or audit read offers an explicit retry in the same inspector; loading indicators stop on failure and the error clears after recovery. Audit-event disclosures load independently, so opening a second event does not cancel the first event's pending read. Switching the inspected run or invocation discards the prior inspector state. These controls recover reads after network interruption; they do not restart execution or change saved results.

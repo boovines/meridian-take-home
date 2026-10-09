@@ -30,6 +30,21 @@ export async function performReview(id: string) {
       ["REVIEW_INACTIVE", "REVIEW_EXPIRED"].includes(error.code)
     )
       return;
+    if (
+      error instanceof DomainError &&
+      [
+        "MODEL_PROJECT_SPEND_LIMIT",
+        "MODEL_QUOTA_EXCEEDED",
+        "MODEL_OUTPUT_LIMIT",
+        "MODEL_OUTPUT_INVALID",
+        "INFERENCE_BUDGET_LIMIT",
+        "BUDGET_UNAVAILABLE",
+      ].includes(error.code)
+    ) {
+      // These messages are constructed by our adapters, never provider payloads.
+      // Persist before failing so workflow cleanup cannot replace them with retry advice.
+      await reviews.finish(id, "failed", error.message);
+    }
     // Do not put provider requests, prompts, or customer data in Temporal failure messages.
     throw ApplicationFailure.create({
       message: "Review could not complete.",

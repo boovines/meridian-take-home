@@ -97,6 +97,42 @@ test("approves a plan, downloads generated source, and keeps previous versions o
   await expect(
     page.getByText("Not yet evaluated", { exact: true }),
   ).toBeVisible();
+  let sourceReads = 0;
+  await page.route(`**/api/workflows/${w.id}/versions/*`, async (route) => {
+    sourceReads++;
+    if (sourceReads === 1)
+      return route.fulfill({
+        status: 503,
+        json: {
+          error: {
+            code: "ARTIFACT_UNAVAILABLE",
+            message: "Saved source temporarily unavailable.",
+          },
+        },
+      });
+    return route.continue();
+  });
+  await page.reload();
+  await page.getByRole("button", { name: "Agent", exact: true }).click();
+  await expect(
+    page.getByRole("region", { name: "Generated agent" }).getByRole("alert"),
+  ).toContainText("Saved source temporarily unavailable.");
+  await expect(page.getByText("Loading source…", { exact: true })).toHaveCount(
+    0,
+  );
+  await expect(
+    page.getByText("Not yet evaluated", { exact: true }),
+  ).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "Retry loading source", exact: true })
+    .click();
+  await expect(page.getByLabel("Source code", { exact: true })).toContainText(
+    "nodeId",
+  );
+  await expect(
+    page.getByRole("region", { name: "Generated agent" }).getByRole("alert"),
+  ).toHaveCount(0);
+  await page.unroute(`**/api/workflows/${w.id}/versions/*`);
   const downloaded = page.waitForEvent("download");
   await page.getByRole("link", { name: "Download project" }).click();
   expect((await downloaded).suggestedFilename()).toBe("meridian-agent-v1.zip");
@@ -117,15 +153,22 @@ test("approves a plan, downloads generated source, and keeps previous versions o
     path: testInfo.outputPath("generated-agent.png"),
     fullPage: true,
   });
-  await expect(page.getByText("Fixture build result.", { exact: false })).toBeVisible();
+  await expect(
+    page.getByText("Fixture build result.", { exact: false }),
+  ).toBeVisible();
   // A definitive evaluation failure must outrank the fixture-generation label.
-  await page.route(`**/api/workflows/${w.id}/versions/*`, async route => {
+  await page.route(`**/api/workflows/${w.id}/versions/*`, async (route) => {
     const response = await route.fetch();
-    await route.fulfill({ response, json: { ...await response.json(), build_check_status: "failed" } });
+    await route.fulfill({
+      response,
+      json: { ...(await response.json()), build_check_status: "failed" },
+    });
   });
   await page.reload();
   await page.getByRole("button", { name: "Agent", exact: true }).click();
-  await expect(page.getByText("Syntax check failed.", { exact: false })).toBeVisible();
+  await expect(
+    page.getByText("Syntax check failed.", { exact: false }),
+  ).toBeVisible();
 
   const explanation =
     "Read batch certificates was approved as Code, but its instructions require interpreting document contents. Only an Agent step can request document interpretation. Review the approved method before generating again.";

@@ -5,11 +5,16 @@ import { temporalConfig } from "../server/integrations/temporal-config";
 import { startOutbox } from "./dispatch-outbox";
 import * as activities from "./activities";
 import { getDatabase } from "../server/database";
-import { RUNTIME_HEARTBEAT_POLICY, WORKER_ACTIVITY_CONCURRENCY } from "../domain/runtime-policy";
+import {
+  RUNTIME_HEARTBEAT_POLICY,
+  WORKER_ACTIVITY_CONCURRENCY,
+} from "../domain/runtime-policy";
 nextEnv.loadEnvConfig(process.cwd());
+const db = await getDatabase();
 const config = temporalConfig();
-const connection = await NativeConnection.connect(config.connection);
+let connection: NativeConnection | undefined;
 try {
+  connection = await NativeConnection.connect(config.connection);
   const worker = await Worker.create({
     connection,
     namespace: config.namespace,
@@ -20,13 +25,13 @@ try {
     maxHeartbeatThrottleInterval: RUNTIME_HEARTBEAT_POLICY.max_throttle_ms,
   });
   console.log("Meridian worker ready.");
-  const stopOutbox = startOutbox(await getDatabase());
+  const stopOutbox = startOutbox(db);
   try {
     await worker.run();
   } finally {
     stopOutbox();
   }
 } finally {
-  await connection.close();
-  await (await getDatabase()).close();
+  await connection?.close();
+  await db.close();
 }

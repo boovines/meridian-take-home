@@ -77,3 +77,5 @@ The **Frozen process** selector scopes plans, code, suites, evaluations and manu
 The demo records engineer/customer actions but does not authenticate separate roles. There is one mutable draft, no simultaneous branches, automatic notifications or automatic graph rewrites. Grouped email execution is a separate [implemented feature](grouped-execution.md), with its own acceptance evidence.
 
 Verification: the process-revision browser journey exercises request, reply, per-block approval, fresh review, v2 handoff/generation and v1 history. Persistence tests cover idempotent requests/revision starts, rejected and stale edits, immutable specifications, required human gates and historical generation/recovery pinning. Fixture success does not establish live model quality.
+
+Source inspection distinguishes loading from failure. A failed read offers **Retry loading source**, keeps the selected version, and shows **Evaluation unavailable** until evidence loads; it never treats unavailable evidence as “Not yet evaluated.” Method recommendations use the same specific spending-limit and incomplete-output explanations as generation.
