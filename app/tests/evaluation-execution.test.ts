@@ -599,6 +599,74 @@ it("records parallel scheduling for new evaluations and preserves legacy schedul
   expect(() => evaluationCaseConcurrency({...legacy,scheduling:{version:1,case_concurrency:100}})).toThrow("Execution settings changed");
 });
 
+it("preserves a failed workflow attempt and retries just that case with identical inputs", async () => {
+  const {evaluation,results}=await prepared();
+  const c=(await db.query("SELECT id FROM evaluation_cases WHERE suite_version_id=$1 AND kind='workflow' ORDER BY id",[evaluation.suite_version_id])).rows[0];
+  const result=results.find(r=>r.case_id===c.id)!;
+  const first=await evals.beginCase(result.id);
+  if(first.skip || first.kind!=="workflow") throw Error("workflow required");
+  await db.query("UPDATE workflow_runs SET status='failed',failure_code='TOKEN_PREFLIGHT_TRANSIENT',failure_category='infrastructure',failure_message='Synthetic timeout',finished_at=now() WHERE id=$1",[first.run_id]);
+  await execution.workflow(result.id);
+  // Retrying the completion activity must not consume another recovery.
+  await execution.workflow(result.id).catch(e=>{expect(e.code).toBe("NOT_FOUND");});
+  expect(await evals.needsRecovery(result.id)).toBe(true);
+  const second=await evals.beginCase(result.id);
+  if(second.skip || second.kind!=="workflow") throw Error("workflow required");
+  expect(second.run_id).not.toBe(first.run_id);
+  const runs=(await db.query("SELECT implementation_version_id,input_bundle_id,evaluation_attempt,status FROM workflow_runs WHERE evaluation_case_result_id=$1 ORDER BY evaluation_attempt",[result.id])).rows;
+  expect(runs).toHaveLength(2);
+  expect(runs[0].implementation_version_id).toBe(runs[1].implementation_version_id);
+  expect(runs[0].input_bundle_id).toBe(runs[1].input_bundle_id);
+  expect(runs.map(r=>r.status)).toEqual(["failed","queued"]);
+  expect(await evals.needsRecovery(result.id)).toBe(false);
+  const histories=(await db.query("SELECT * FROM evaluation_case_recoveries WHERE case_result_id=$1",[result.id])).rows;
+  expect(histories).toHaveLength(1);
+  await expect(db.query("DELETE FROM evaluation_case_recoveries WHERE case_result_id=$1",[result.id])).rejects.toBeDefined();
+  // Exhaustion is final; no endless automatic reruns.
+  await db.query("UPDATE workflow_runs SET status='failed',failure_code='TOKEN_PREFLIGHT_TRANSIENT',failure_category='infrastructure',failure_message='Synthetic timeout',finished_at=now() WHERE id=$1",[second.run_id]);
+  await execution.workflow(result.id);
+  expect(await evals.needsRecovery(result.id)).toBe(false);
+  const rows=(await import("../src/server/evaluations/evaluation-service")).resultsByEvaluation;
+  const visible=await rows(db,evaluation.id);
+  expect(visible).toHaveLength(results.length);
+  expect(visible.find(r=>r.id===result.id)).toMatchObject({status:"finished",outcome:"error",workflow_run_id:second.run_id,recovery_count:1,recoveries:[{workflow_run_id:first.run_id}]});
+  expect(visible.filter(r=>r.id!==result.id).every(r=>r.status==="queued")).toBe(true);
+});
+
+it.each(["MODEL_QUOTA_EXCEEDED","INFERENCE_BUDGET_LIMIT","BUDGET_UNAVAILABLE","EVALUATION_CONFIGURATION_CHANGED","EXTRACTION_EVIDENCE_INVALID"])("never automatically recovers %s",async code=>{
+  const {results}=await prepared();
+  await evals.beginCase(results[0].id);
+  await evals.recordCase(results[0].id,{error:{category:"infrastructure",code,message:"Synthetic failure"}});
+  expect(await evals.needsRecovery(results[0].id)).toBe(false);
+  expect((await db.query("SELECT status FROM evaluation_case_results WHERE id=$1",[results[0].id])).rows[0].status).toBe("finished");
+});
+
+it("recovers an isolated case and preserves its assertion failure without retrying for a pass",async()=>{
+  const {evaluation,results}=await prepared();
+  const c=(await db.query("SELECT id FROM evaluation_cases WHERE suite_version_id=$1 AND kind='step'",[evaluation.suite_version_id])).rows[0];
+  const result=results.find(r=>r.case_id===c.id)!;
+  await evals.beginCase(result.id);
+  await evals.recordCase(result.id,{error:{category:"infrastructure",code:"TOKEN_PREFLIGHT_TRANSIENT",message:"Synthetic timeout"}});
+  expect(await evals.needsRecovery(result.id)).toBe(true);
+  await evals.beginCase(result.id);
+  await evals.recordCase(result.id,{actual:{shipment:"WRONG"}});
+  expect(await evals.needsRecovery(result.id)).toBe(false);
+  expect((await db.query("SELECT outcome FROM evaluation_case_results WHERE id=$1",[result.id])).rows[0].outcome).toBe("failed");
+});
+
+it("cancellation during recovery finalizes the case without starting another execution",async()=>{
+  const {job,results}=await prepared();
+  const r=results[0];
+  // Use an isolated result so no execution must be artificially completed.
+  const step=(await db.query("SELECT r.id FROM evaluation_case_results r JOIN evaluation_cases c ON c.id=r.case_id WHERE r.evaluation_run_id=$1 AND c.kind='step'",[r.evaluation_run_id])).rows[0];
+  await evals.beginCase(String(step.id));
+  await evals.recordCase(String(step.id),{error:{category:"infrastructure",code:"TOKEN_PREFLIGHT_TRANSIENT",message:"timeout"}});
+  await evals.finish(job.id,undefined,true);
+  expect(await evals.needsRecovery(String(step.id))).toBe(false);
+  expect(await evals.beginCase(String(step.id))).toEqual({skip:true});
+  expect(Number((await db.query("SELECT count(*) FROM evaluation_case_recoveries WHERE case_result_id=$1",[step.id])).rows[0].count)).toBe(1);
+});
+
 it("persists aggregate context for an isolated Outcome evaluation and rejects other block types", async () => {
   const f = await runtimeFixture(db, artifacts);
   await f.runs.finish(f.job.id, { status: "cancelled" });

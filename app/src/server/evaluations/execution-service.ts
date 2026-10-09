@@ -75,7 +75,7 @@ export class EvaluationExecutionService {
     ).rows[0] as unknown as CaseResult;
     if (!result)
       throw new DomainError(404, "NOT_FOUND", "Case result not found.");
-    if (result.status === "finished") return;
+    if (result.status === "finished" || result.recovery_pending) return;
     const evaluation = await evaluationById(this.db, result.evaluation_run_id),
       job = await jobById(this.db, evaluation.job_id);
     if (job.status !== "running" || result.status !== "running")
@@ -102,14 +102,14 @@ export class EvaluationExecutionService {
         ])
       ).rows[0];
       const active = await jobById(tx, evaluation.job_id);
-      if (current.status === "finished") return null;
+      if (current.status === "finished" || current.recovery_pending) return null;
       if (current.status !== "running" || active.status !== "running")
         throw new DomainError(
           409,
           "EVALUATION_INACTIVE",
           "Case no longer accepts invocations.",
         );
-      if (Number(current.invocation_count) >= 2)
+      if (Number(current.invocation_count) >= 2 * (Number(current.recovery_count ?? 0) + 1))
         throw new DomainError(
           422,
           "CASE_RETRY_LIMIT",
@@ -182,11 +182,12 @@ export class EvaluationExecutionService {
       await service.recordCase(id, { error: invocationFailure(error) }, token);
     }
   }
-  async workflow(id: string) {
+  async workflow(id: string, sourceRunId?: string) {
+    if (await new EvaluationService(this.db).needsRecovery(id)) return;
     const run = (
       await this.db.query(
-        "SELECT * FROM workflow_runs WHERE evaluation_case_result_id=$1",
-        [id],
+        "SELECT wr.* FROM workflow_runs wr JOIN evaluation_case_results cr ON cr.id=wr.evaluation_case_result_id WHERE cr.id=$1 AND wr.evaluation_attempt=cr.recovery_count AND ($2::uuid IS NULL OR wr.id=$2)",
+        [id, sourceRunId ?? null],
       )
     ).rows[0];
     if (!run)
@@ -209,7 +210,7 @@ export class EvaluationExecutionService {
           "MISSING_OUTPUT",
           "The completed run has no result.",
         );
-      await service.recordCase(id, { actual: output.output_data as Json });
+      await service.recordCase(id, { actual: output.output_data as Json }, undefined, String(run.id));
     } else
       await service.recordCase(id, {
         error: {
@@ -220,6 +221,6 @@ export class EvaluationExecutionService {
           category: (run.failure_category ||
             "unknown") as RuntimeError["category"],
         },
-      });
+      }, undefined, String(run.id));
   }
 }

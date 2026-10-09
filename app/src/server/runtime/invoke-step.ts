@@ -220,6 +220,7 @@ export function invocationFailure(error: unknown): RuntimeError {
               "MODEL_PROJECT_SPEND_LIMIT",
               "MODEL_QUOTA_EXCEEDED",
               "BUDGET_UNAVAILABLE",
+              "TOKEN_PREFLIGHT_TRANSIENT",
               "INFERENCE_BUDGET_LIMIT",
               "AUDIT_UNAVAILABLE",
               "EXTRACTION_UNAVAILABLE",

@@ -15,6 +15,7 @@ export {
 
 export {
   prepareEvaluation,
+  needsEvaluationCaseRecovery,
   beginEvaluationCase,
   scoreWorkflowCase,
   endEvaluation,

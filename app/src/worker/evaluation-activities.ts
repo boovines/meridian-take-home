@@ -1,3 +1,4 @@
+import { hasCaseRecovery } from "../domain/evaluation-recovery";
 import { finishEvaluationWithRepair } from "../server/evaluations/automatic-repair";
 import { evaluationCaseConcurrency } from "../server/evaluations/configuration";
 import { startRepairWorkflow } from "../server/integrations/temporal";
@@ -24,6 +25,7 @@ export async function prepareEvaluation(id: string, evaluationId?: string) {
   return context
     ? {
         evaluation_id: context.evaluation.id,
+        case_recovery: hasCaseRecovery(context.evaluation.execution_configuration),
         deadline_at: context.deadline_at,
         result_ids: context.results.map((r) => r.id),
         case_concurrency: evaluationCaseConcurrency(context.evaluation.execution_configuration),
@@ -33,8 +35,8 @@ export async function prepareEvaluation(id: string, evaluationId?: string) {
 export async function beginEvaluationCase(id: string) {
   return new EvaluationService(await getDatabase()).beginCase(id);
 }
-export async function scoreWorkflowCase(id: string) {
-  return new EvaluationExecutionService(await getDatabase()).workflow(id);
+export async function scoreWorkflowCase(id: string, runId?: string) {
+  return new EvaluationExecutionService(await getDatabase()).workflow(id, runId);
 }
 export async function endEvaluation(
   id: string,
@@ -146,4 +148,8 @@ export async function failEvaluationCase(id: string) {
       category: "infrastructure",
     },
   });
+}
+
+export async function needsEvaluationCaseRecovery(id: string) {
+  return new EvaluationService(await getDatabase()).needsRecovery(id);
 }

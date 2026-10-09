@@ -168,6 +168,9 @@ export interface EvaluationRun {
   created_at: string;
 }
 export interface CaseResult {
+  recovery_count?: number;
+  recovery_pending?: boolean;
+  recoveries?: Json[];
   workflow_run_id?: string | null;
   id: string;
   workflow_id: string;
