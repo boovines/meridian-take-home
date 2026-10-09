@@ -10,6 +10,12 @@ const segment = z
   .max(200)
   .refine((s) => !["__proto__", "constructor", "prototype"].includes(s));
 const fieldPath = z.array(segment).min(1).max(16);
+// Providers may serialize an array index as 0 rather than "0". Canonicalize
+// this representation only; facts, citations and required coverage stay fixed.
+const evidencePath = z.array(z.union([
+  segment,
+  z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).transform(String),
+])).min(1).max(16);
 export const extractionRequest = z
   .object({
     kind: z.literal("extract"),
@@ -40,7 +46,7 @@ export const extractionEnvelope = z
       .array(
         z
           .object({
-            path: fieldPath,
+            path: evidencePath,
             raw_value: scalar,
             normalized_value: scalar,
             status: z.enum(["found", "absent", "unresolved", "unreadable"]),

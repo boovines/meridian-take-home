@@ -310,6 +310,14 @@ Local verification:
 
 Deployment requires applying the new migration and restarting the existing Temporal worker before exposing scoping. Fixture mode requires all three local-demo/provider switches; it is not live generation.
 
+### October 9 — current eleven-case workflow diagnosis
+
+The current workflow's first repaired candidate completed three cases with failed comparisons and eight with execution errors; it has no complete case passes. All six scored assertion failures were batch-success/failure counts. Saved CoAs were present, but the generated validator required exact equality of product, strength and manufacturer descriptions, rejecting differently worded invoice/CoA contexts. This requires evidence-supported generated workflow repair, not a platform batch-prefix exception or changed expectations.
+
+An additional failed extraction contained 80 field evidence records with numeric array indexes. Replaying the original saved response after representation-only index canonicalization passes the existing extraction contract with identical data and unchanged raw audit evidence. No fresh inference, case-grade rewrite or candidate promotion was performed for that replay. A separate extraction exhausted the 16,000-token output allowance; the candidate's current document batches remain too broad for that output contract. Provider quota and worker failures remain separate operational blockers.
+
+The latest session used 53 ledger-recorded requests: initial evaluation $3.720644 settled / $0.3818325 reserved; repair generation $0.5409185 settled; candidate evaluation $2.2367185 settled / $2.41868 reserved. These intervals total $6.498281 settled and $2.8005125 unresolved reservations. The shared guard remains at the authorized $90, with $35.523177 settled and $53.5345875 reserved. Reservations are not confirmed billing and are preserved. No new paid run was started during this diagnosis.
+
 ### October 9 — review follow-up schema correction
 
 A live review with existing open findings failed before inference because its structured-output schema contained unsupported `oneOf`. The reviewer now emits `anyOf` while retaining separate new/follow-up reference constraints. The failing regression was reproduced, then 17 focused review tests, typecheck, lint and worker bundling passed. Replaying the original input-token preflight returned HTTP 200 after the fix; no paid inference or frozen-board mutation was used for that probe.

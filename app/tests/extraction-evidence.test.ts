@@ -43,6 +43,28 @@ function response(status = "found", value: string | null = "Example Ltd") {
   };
 }
 describe("evidence contract at extraction boundary", () => {
+  it("canonicalizes numeric evidence indexes without changing facts or the raw response", () => {
+    const req = { ...request, output_schema: { type: "object" }, critical_paths: [["items", "*", "seller"]] };
+    const raw = {
+      data: { items: [{ seller: "Example Ltd" }] },
+      fields: [{ ...response().fields[0], path: ["items", 0, "seller"] }],
+    };
+    const checked = validateExtraction(req, raw, docs);
+    expect(checked.fields[0].path).toEqual(["items", "0", "seller"]);
+    expect(checked.data).toEqual(raw.data);
+    expect(raw.fields[0].path).toEqual(["items", 0, "seller"]);
+    expect(() => validateExtraction(req, {
+      ...raw, fields: [...raw.fields, { ...raw.fields[0], path: ["items", "0", "seller"] }],
+    }, docs)).toThrow(expect.objectContaining({ code: "EXTRACTION_EVIDENCE_INVALID" }));
+    for (const index of [-1, 0.5, Number.MAX_SAFE_INTEGER + 1, true, null]) {
+      expect(() => validateExtraction(req, {
+        ...raw, fields: [{ ...raw.fields[0], path: ["items", index, "seller"] }],
+      }, docs)).toThrow(expect.objectContaining({ code: "EXTRACTION_EVIDENCE_INVALID" }));
+    }
+    expect(() => validateExtraction(req, {
+      ...raw, fields: [{ ...raw.fields[0], normalized_value: "Different seller" }],
+    }, docs)).toThrow(expect.objectContaining({ code: "EXTRACTION_EVIDENCE_INVALID" }));
+  });
   it("rejects asynchronous schemas instead of treating validation promises as success", () => {
     expect(() => validateExtractionSchema({ ...request.output_schema, $async: true }))
       .toThrow(expect.objectContaining({ code: "EXTRACTION_SCHEMA_INVALID" }));
