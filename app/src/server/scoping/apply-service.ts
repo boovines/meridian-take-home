@@ -3,7 +3,7 @@ import type { z } from "zod";
 import {
   scopingApply,
   scaffoldBoard,
-  scopeReady,
+  scopeForDraft,
   previewOutput,
   interviewOutput,
 } from "../../domain/scoping";
@@ -68,13 +68,7 @@ export class ScaffoldApplyService {
           "This preview is no longer current.",
         );
       const sv = await version(tx, id, v.scope_id);
-      const scope = interviewOutput.parse(sv?.data).scope;
-      if (!scopeReady(scope))
-        throw new DomainError(
-          409,
-          "SCOPE_NOT_READY",
-          "Resolve structural questions before applying.",
-        );
+      const scope = scopeForDraft(interviewOutput.parse(sv?.data).scope);
       const graph = previewOutput.parse(v.data).graph;
       const ids = Object.fromEntries([
         ...graph.nodes.map((n) => [n.key, randomUUID()]),

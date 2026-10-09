@@ -6,7 +6,7 @@ export function ScopeSummary({ scope }: { scope: Scope }) {
       <summary>
         Current scope{" "}
         <span>
-          {scopeReady(scope) ? "Ready to confirm" : "Needs clarification"}
+          {scopeReady(scope) ? "Ready to confirm" : "Draft with open questions"}
         </span>
       </summary>
       <p>{scope.summary}</p>
@@ -29,7 +29,7 @@ export function ScopeSummary({ scope }: { scope: Scope }) {
       </dl>
       {!!scope.blockers.length && (
         <>
-          <strong>Before we can build</strong>
+          <strong>Resolve during workflow review</strong>
           <ul>
             {scope.blockers.map((b) => (
               <li key={b}>{b}</li>

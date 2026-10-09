@@ -28,6 +28,27 @@ export type Scope = z.infer<typeof scopeSchema>;
 export function scopeReady(scope: Scope) {
   return Object.values(scope.coverage).every(Boolean) && !scope.blockers.length;
 }
+export const MAX_SCOPING_QUESTION_ROUNDS = 2;
+// Drafting preserves uncertainty as review obligations, never as invented rules.
+export function scopeForDraft(scope: Scope): Scope {
+  const unresolved = [...scope.unresolved];
+  const add = (base: string, question: string) => {
+    if (unresolved.some((u) => u.question === question)) return;
+    let key = base;
+    for (let i = 1; unresolved.some((u) => u.key === key); i++)
+      key = `${base}_${i}`;
+    unresolved.push({ key, question });
+  };
+  scope.blockers.forEach((question, i) => add(`draft_blocker_${i}`, question));
+  for (const [area, value] of Object.entries(scope.coverage)) {
+    if (!value)
+      add(
+        `draft_${area}`,
+        `Confirm the workflow's ${area} before implementation.`,
+      );
+  }
+  return { ...scope, unresolved };
+}
 export const interviewOutput = z
   .object({ message: text, scope: scopeSchema })
   .strict();
@@ -73,7 +94,7 @@ export const scaffoldSchema = z
           })
           .strict(),
       )
-      .max(15),
+      .max(40),
   })
   .strict();
 export const previewOutput = z
@@ -129,6 +150,7 @@ export interface ScopingMessage {
   created_at: string;
 }
 export interface ScopingInput {
+  question_rounds_remaining?: number;
   raw_process_data?: import("./process-context").RawProcessContext;
   note: string;
   note_revision: number;

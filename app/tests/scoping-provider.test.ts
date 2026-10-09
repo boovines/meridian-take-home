@@ -11,6 +11,7 @@ import {
   previewOutput,
   type ScopingOperation,
 } from "../src/domain/scoping";
+import { readyScaffold, readyScope } from "./fixtures/scoping";
 vi.mock("ai", () => ({
   generateText: vi.fn(async () => ({ finishReason: "stop", output: {} })),
   Output: { object: vi.fn(() => ({})) },
@@ -24,6 +25,11 @@ it.each(["interview", "preview"] as const)(
       model: "test-model",
       input: { note: "Untrusted requirements", note_revision: 2 },
     } as ScopingOperation;
+    vi.mocked(generateText).mockResolvedValueOnce({
+      finishReason: "stop",
+      output:
+        kind === "preview" ? { message: "Draft", graph: readyScaffold } : {},
+    } as never);
     const signal = AbortSignal.timeout(1000);
     await scopeWithOpenAI(op, signal);
     const options = vi.mocked(generateText).mock.calls[0][0];
@@ -61,6 +67,10 @@ it("uses raw evidence only as non-authoritative scoping context", async () => {
 
 it("cannot emit an Otherwise path with a condition in its provider schema", async () => {
   vi.clearAllMocks();
+  vi.mocked(generateText).mockResolvedValueOnce({
+    finishReason: "stop",
+    output: { message: "Draft", graph: readyScaffold },
+  } as never);
   await scopeWithOpenAI(
     { kind: "preview", model: "fixture", input: {} } as ScopingOperation,
     AbortSignal.timeout(1000),
@@ -101,4 +111,23 @@ it("cannot emit an Otherwise path with a condition in its provider schema", asyn
       },
     ]).success,
   ).toBe(true);
+});
+
+it("preserves an unlocalized question as a workflow-wide review obligation", async () => {
+  vi.mocked(generateText).mockResolvedValueOnce({
+    finishReason: "stop",
+    output: {
+      message: "Draft",
+      graph: { ...readyScaffold, unresolved_anchors: [] },
+    },
+  } as never);
+  const op = {
+    kind: "preview",
+    model: "test",
+    input: { scope: readyScope },
+  } as ScopingOperation;
+  const result = await scopeWithOpenAI(op, AbortSignal.timeout(1000));
+  expect("graph" in result && result.graph.unresolved_anchors).toEqual([
+    { key: "retention", node_keys: [], connection_keys: [] },
+  ]);
 });

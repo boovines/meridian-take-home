@@ -368,29 +368,79 @@ test("a lost apply response reconciles the saved graph without duplicating block
   ).toHaveLength(4);
 });
 
-
-test("a lost interview reply retries the original turn after session refresh", async ({ page, request }) => {
+test("a lost interview reply retries the original turn after session refresh", async ({
+  page,
+  request,
+}) => {
   const id = await newBoard(request);
   await begin(page, id);
-  const answer = "The owner approves and rejected responses return for revision.";
-  await page.getByRole("textbox", { name: "Your reply", exact: true }).fill(answer);
+  const answer =
+    "The owner approves and rejected responses return for revision.";
+  await page
+    .getByRole("textbox", { name: "Your reply", exact: true })
+    .fill(answer);
   const requests: unknown[] = [];
-  await page.route(`**/api/workflows/${id}/scoping/requests`, async route => {
+  await page.route(`**/api/workflows/${id}/scoping/requests`, async (route) => {
     requests.push(route.request().postDataJSON());
     const response = await route.fetch();
     expect(response.ok()).toBe(true);
     if (requests.length === 1)
-      await route.fulfill({ status: 503, json: { error: { code: "LOST_RESPONSE", message: "Reply saved but response lost. Retry this reply." } } });
+      await route.fulfill({
+        status: 503,
+        json: {
+          error: {
+            code: "LOST_RESPONSE",
+            message: "Reply saved but response lost. Retry this reply.",
+          },
+        },
+      });
     else await route.fulfill({ response });
   });
   await page.getByRole("button", { name: "Send reply", exact: true }).click();
-  await expect(page.locator(".scoping-error")).toContainText("Reply saved but response lost");
-  await expect(page.getByRole("button", { name: "Send reply", exact: true })).toBeEnabled();
+  await expect(page.locator(".scoping-error")).toContainText(
+    "Reply saved but response lost",
+  );
+  await expect(
+    page.getByRole("button", { name: "Send reply", exact: true }),
+  ).toBeEnabled();
   await page.getByRole("button", { name: "Send reply", exact: true }).click();
-  await expect(page.getByRole("textbox", { name: "Your reply", exact: true })).toHaveValue("");
+  await expect(
+    page.getByRole("textbox", { name: "Your reply", exact: true }),
+  ).toHaveValue("");
   expect(requests).toHaveLength(2);
   expect(requests[1]).toEqual(requests[0]);
-  const state = await (await request.get(`/api/workflows/${id}/scoping`)).json();
-  expect(state.messages.filter((m: { author: string; body: string }) => m.author === "expert" && m.body === answer)).toHaveLength(1);
+  const state = await (
+    await request.get(`/api/workflows/${id}/scoping`)
+  ).json();
+  expect(
+    state.messages.filter(
+      (m: { author: string; body: string }) =>
+        m.author === "expert" && m.body === answer,
+    ),
+  ).toHaveLength(1);
   expect(state.versions).toHaveLength(2);
+});
+
+test("preview is available after the first response while gaps remain for review", async ({
+  page,
+  request,
+}) => {
+  const id = await newBoard(request);
+  await begin(page, id);
+  await expect(page.getByText("At most 2 question rounds")).toBeVisible();
+  await page
+    .getByRole("button", { name: "Generate preview", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Apply workflow", exact: true }),
+  ).toBeEnabled();
+  await page
+    .getByRole("button", { name: "Apply workflow", exact: true })
+    .click();
+  const state = await (
+    await request.get(`/api/workflows/${id}/scoping`)
+  ).json();
+  expect(state.needs_review).toBe(true);
+  const board = await (await request.get(`/api/workflows/${id}`)).json();
+  expect(board.nodes.length).toBeGreaterThan(0);
 });

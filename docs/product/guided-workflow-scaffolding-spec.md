@@ -30,20 +30,11 @@ During implementation use jhouui to generate and inspect three live variants of 
 
 ## Interview and stopping rule
 
-The interview skill says to continue until complete but supplies no measurable stopping criterion. For this feature, readiness means enough confirmed information exists to construct a valid initial state machine without inventing consequential behavior:
+The initial scaffold is a draft, not an executable specification. Ask at most two rounds of additional scoping questions, grouping up to three consequential questions per round. Incorporate answers without repeating answered questions. Failed or cancelled responses do not consume the allowance; reloads and updated notes do not reset it. Further user input is optional refinement, not another mandatory interview.
 
-- The trigger and scope of one workflow run are clear.
-- The desired outcome and observable completion condition are clear.
-- Major steps, needed information and ordering are clear.
-- Decisions, branches, loops and parallel waits are clear where applicable.
-- Required human approvals or handoffs and their continuation paths are clear.
-- Known exceptions are either represented or explicitly identified as unresolved detail.
+Offer “Generate preview” after the first scope response. The expert may skip remaining questions and draft from the known requirements. Summarize trigger, outcome, steps, routing, human decisions and exceptions, but keep unknown areas explicitly unknown. Do not invent recipients, schemas, thresholds, approval routes or other consequential behavior to satisfy completeness.
 
-Ask about consequential ambiguity and contradictions before proposing a graph. Prefer one consequential question per turn; group closely related questions when they share context. Offer a recommendation with reasoning where useful, allow free-form answers, and accept “I don't know” without repeatedly asking the same question.
-
-Distinguish structural blockers from detail gaps. An unknown approval route prevents readiness. A missing threshold can remain an explicit unresolved detail only when the confirmed graph can faithfully represent the uncertainty without pretending to have executable decision semantics. Do not fill gaps with plausible values or silently treat a guess as a confirmed requirement.
-
-Maintain a versioned summary of confirmed requirements, minor assumptions requiring confirmation, and unresolved detail questions. Once the readiness criteria are met, show that summary and offer “Generate preview.” This is an explicit expert action confirming the displayed scope and assumptions; the agent does not continue interviewing indefinitely or apply blocks automatically. If structural blockers remain, explain what prevents preview generation.
+Preserve structural blockers and missing coverage as review obligations alongside existing unresolved questions. Use labeled placeholders in the graph when behavior is unknown. The expert explicitly generates and applies the draft; normal review must resolve the carried questions before freeze. Preview generation no longer requires every scope area to be complete.
 
 Edits to the note do not silently alter an in-flight request's input. An explicit “Use updated notes” action incorporates the latest saved note, re-evaluates readiness and invalidates obsolete unapplied previews. Keep prior conversation and preview versions as history. New interview answers or requested preview revisions likewise fence older operations from publishing as the current result.
 
@@ -122,3 +113,5 @@ Run lint, typecheck, relevant business-rule/database/browser tests, production b
 Implement persistence/contracts and fixture-backed service flow first, then the note/interview/preview UI, then ordinary-review transfer and freeze safeguards, and finally the complete browser journey. Do not ship Apply without the review safeguards. Base implementation PRs on the most logical dependency branch, preferably current main when dependencies are merged; do not automatically stack on the latest unrelated open PR.
 
 All product choices from the interview are settled. UI variants, precise debounce timing and final internal record names are implementation decisions within this contract, not reasons for another approval round.
+
+Initial generation favors 3–6 meaningful blocks, combining routine extraction and validation in task instructions. Extra blocks are justified by explicit business stages, distinct outcomes or human waits. Required approvals and exception paths remain intact; the size target is guidance, not a limit that removes required behavior.

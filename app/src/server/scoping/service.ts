@@ -2,7 +2,8 @@ import type { z } from "zod";
 import {
   interviewOutput,
   previewOutput,
-  scopeReady,
+  scopeForDraft,
+  MAX_SCOPING_QUESTION_ROUNDS,
   scaffoldBoard,
   type saveScopingNote,
   type scopingRequest,
@@ -157,14 +158,12 @@ export class ScopingService {
         );
       if (
         data.action === "preview" &&
-        (!scope ||
-          !scopeReady(scope) ||
-          s.incorporated_note_revision !== s.note_revision)
+        (!scope || s.incorporated_note_revision !== s.note_revision)
       )
         throw new DomainError(
           409,
           "SCOPE_NOT_READY",
-          "Confirm a scope with no structural blockers using the current saved note first.",
+          "Use the current saved note to create a scope before generating a preview.",
         );
       if (
         ["answer", "revise"].includes(data.action) &&
@@ -178,7 +177,7 @@ export class ScopingService {
       const body =
         data.body ||
         (data.action === "preview"
-          ? "I confirm the displayed scope and assumptions. Generate a workflow preview."
+          ? "Generate a draft from the known requirements. Keep missing details explicit for review."
           : data.action === "notes"
             ? "Use my updated notes to reassess the scope."
             : "Help me scope an initial workflow from my notes.");
@@ -188,7 +187,19 @@ export class ScopingService {
           [id],
         )
       ).rows as unknown as ScopingMessage[];
+      const completed = Number(
+        (
+          await tx.query(
+            "SELECT count(*) AS count FROM scoping_operations WHERE workflow_id=$1 AND kind='interview' AND status='completed'",
+            [id],
+          )
+        ).rows[0].count,
+      );
       const input: ScopingInput = {
+        question_rounds_remaining: Math.max(
+          0,
+          MAX_SCOPING_QUESTION_ROUNDS - completed,
+        ),
         ...(board.raw_process_data
           ? { raw_process_data: board.raw_process_data }
           : {}),
@@ -196,7 +207,8 @@ export class ScopingService {
         note_revision: s.note_revision,
         action: data.action,
         messages: [...messages, { author: "expert", body }],
-        scope,
+        scope:
+          data.action === "preview" && scope ? scopeForDraft(scope) : scope,
         scope_id: s.current_scope_id,
         preview,
         workflow: w,
@@ -285,6 +297,10 @@ export class ScopingService {
         op.kind === "interview"
           ? interviewOutput.parse(untrusted)
           : previewOutput.parse(untrusted);
+      if ("scope" in data && op.input.question_rounds_remaining === 0) {
+        data.message =
+          "Your draft can be generated now. Remaining gaps are listed in the scope and will carry into workflow review. You can generate the preview or add optional details.";
+      }
       if (
         "scope" in data &&
         new Set(data.scope.unresolved.map((u) => u.key)).size !==
@@ -296,7 +312,7 @@ export class ScopingService {
           "Unresolved questions must have unique keys.",
         );
       if ("graph" in data) {
-        if (!op.input.scope || !scopeReady(op.input.scope))
+        if (!op.input.scope)
           throw new DomainError(
             422,
             "SCOPE_NOT_READY",
