@@ -1,3 +1,5 @@
+import { EvaluationStatistics } from "./evaluation-statistics";
+import { EvaluationHistoryChart } from "./evaluation-history-chart";
 import type { EvaluationRun } from "@/domain/evaluation";
 import type { EvaluationState } from "./types";
 
@@ -81,9 +83,14 @@ export function EvaluationResultsHeader({
               <p className="field-help">
                 Code v{currentRun.code_version_number || "—"} · suite v
                 {currentRun.suite_version_number || "—"} ·{" "}
-                {readyRun?.results.filter((r) => r.outcome === "passed")
-                  .length || 0}{" "}
-                / {readyRun?.results.length || 0} cases passed
+                {readyRun
+                  ? (readyRun.statistics[currentRun.id]?.cases.passed ?? "—")
+                  : "—"}{" "}
+                /{" "}
+                {readyRun
+                  ? (readyRun.statistics[currentRun.id]?.cases.total ?? "—")
+                  : "—"}{" "}
+                cases passed
               </p>
             </div>
           </>
@@ -94,6 +101,18 @@ export function EvaluationResultsHeader({
           {repairReason ||
             "Repair runs up to three attempts. The frozen process, approved methods, and verified suite stay fixed."}
         </p>
+      )}
+      {readyRun && selectedRunId && readyRun.statistics[selectedRunId] ? (
+        <EvaluationStatistics statistics={readyRun.statistics[selectedRunId]} />
+      ) : (
+        <p role="status">Loading evaluation statistics…</p>
+      )}
+      {history && history.runs.length > 0 && (
+        <EvaluationHistoryChart
+          history={history}
+          selectedRunId={selectedRunId}
+          onSelect={onSelect}
+        />
       )}
       {currentRun?.failure_message && (
         <p role="status" className="error-banner">

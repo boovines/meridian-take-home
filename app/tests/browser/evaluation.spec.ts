@@ -140,6 +140,14 @@ test("verifies a suite, runs comparisons, and preserves results when expectation
   await expect(
     page.getByText("1 / 1 cases passed", { exact: false }),
   ).not.toBeVisible();
+  const statistics = page.getByRole("region", {
+    name: "Selected evaluation statistics",
+  });
+  await expect(statistics).toContainText("Assertions passed2 / 3");
+  await expect(statistics).toContainText("1 failed · 0 unscored");
+  await expect(
+    page.getByRole("region", { name: "Recent evaluation outcomes" }),
+  ).toContainText("1 failed");
   await expect(
     page.getByText("Required record", { exact: true }),
   ).toBeVisible();
@@ -254,6 +262,66 @@ test("verifies a suite, runs comparisons, and preserves results when expectation
   await expect(
     page.getByText("Code v1 · suite v2 · 1 / 1 cases passed", { exact: false }),
   ).toBeVisible();
+  await expect(statistics).toContainText("Assertions passed3 / 3");
+  const historyChart = page.getByRole("region", {
+    name: "Recent evaluation outcomes",
+  });
+  const firstRun = historyChart.getByRole("button", {
+    name: /Inspect code v1, suite v1,/,
+  });
+  await firstRun.focus();
+  await page.keyboard.press("Enter");
+  await expect(firstRun).toHaveAttribute("aria-pressed", "true");
+  await expect(statistics).toContainText("Assertions passed2 / 3");
+  // A delayed historical fetch must never show the previous run's counts as the new run.
+  await page.route("**/evaluations/*", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    await route.continue();
+  });
+  await historyChart
+    .getByRole("button", { name: /Inspect code v1, suite v2,/ })
+    .click();
+  await expect(
+    page.getByText("Loading evaluation statistics…", { exact: true }),
+  ).toBeVisible();
+  await expect(statistics).toHaveCount(0);
+  await expect(statistics).toContainText("Assertions passed3 / 3");
+  await page.unroute("**/evaluations/*");
+  // Deliver the old selection after the new one is already displayed.
+  let releaseOld!: () => void;
+  let capturedOld!: () => void;
+  const heldOld = new Promise<void>(resolve => { releaseOld = resolve; });
+  const oldReady = new Promise<void>(resolve => { capturedOld = resolve; });
+  let holdNext = true;
+  await page.route("**/evaluations/*", async route => {
+    if (!holdNext) return route.continue();
+    holdNext = false;
+    const response = await route.fetch();
+    const snapshot = await response.json();
+    capturedOld();
+    await heldOld;
+    await route.fulfill({ response, json: snapshot });
+  });
+  await firstRun.click();
+  await oldReady;
+  const newest = historyChart.getByRole("button", { name: /Inspect code v1, suite v2,/ });
+  await newest.click();
+  await expect(newest).toHaveAttribute("aria-pressed", "true");
+  await expect(statistics).toContainText("Assertions passed3 / 3");
+  const oldDelivered = page.waitForResponse(response => /\/evaluations\/[^/]+$/.test(response.url()));
+  releaseOld();
+  await oldDelivered;
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await expect(newest).toHaveAttribute("aria-pressed", "true");
+  await expect(statistics).toContainText("Assertions passed3 / 3");
+  await page.unroute("**/evaluations/*");
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await firstRun.click();
+  await historyChart
+    .getByRole("button", { name: /Inspect code v1, suite v2,/ })
+    .click();
+  await firstRun.click();
+  await expect(statistics).toContainText("Assertions passed2 / 3");
   const old = await page
     .getByLabel("Evaluation history")
     .locator("option")
@@ -275,10 +343,27 @@ test("verifies a suite, runs comparisons, and preserves results when expectation
       .locator(".evaluation-split")
       .evaluate((el) => el.getBoundingClientRect().width),
   ).toBeLessThanOrEqual(390);
+  await expect(statistics).toBeVisible();
+  expect(
+    await page
+      .locator(".eval-statistics")
+      .evaluate((el) => el.scrollWidth <= el.clientWidth),
+  ).toBe(true);
+  expect(
+    await page
+      .locator(".eval-history-chart")
+      .evaluate((el) => el.scrollWidth <= el.clientWidth),
+  ).toBe(true);
   await page.screenshot({
     path: testInfo.outputPath("evaluation-narrow.png"),
     fullPage: true,
   });
+  await page.getByRole("button", {name: "Run these versions again", exact:true}).click();
+  await expect(historyChart.locator(".eval-history-row")).toHaveCount(5);
+  await page.getByRole("button", {name:"Show all 6 loaded runs",exact:true}).click();
+  await expect(historyChart.locator(".eval-history-row")).toHaveCount(6);
+  await page.getByRole("button", {name:"Show latest 5",exact:true}).click();
+  await expect(historyChart.locator(".eval-history-row")).toHaveCount(5);
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.getByRole("button", { name: /Test cases/ }).click();
   await page.getByRole("button", { name: "Create suite revision", exact: true }).click();
