@@ -6,7 +6,7 @@ The product UI, API, parent coordinator, grouping/aggregation phases, and fixtur
 
 ## Product experience
 
-Open **Agent → Run workflow → Selected emails**. Choose the approved code version, search Gmail and select up to ten emails. No shipment reference is required. **Run selected emails** captures and starts the parent operation automatically. **Saved input** retains the existing single-run path.
+Open **Agent → Run workflow → Selected emails**. Choose the approved code version, search Gmail and select the relevant emails. **Select all results** loads every remaining results page and selects each matching email once; individual checkboxes and **Clear selection** allow adjustments. There is no email-count selection cap. No shipment reference is required. **Run selected emails** captures and starts the parent operation automatically. **Saved input** retains the existing single-run path.
 
 The summary shows completed groups, groups needing attention and unresolved sources. Each group opens a neighboring inspector with its actual code version, output, step/audit history, human responses and recovery history. An accepted group repair is labeled as local to that group; it does not change the manual-run default. **Inspect code** opens that exact implementation. Questions about source assignment appear above the group list; their answers and prior coverage remain inspectable after reload.
 
@@ -16,7 +16,7 @@ The results-first layout was selected after live comparison with sidebar and thr
 
 ## Input and execution
 
-An engineer selects up to ten distinct email IDs and a generated implementation from an approved plan. The parent operation captures only those emails and their attachments. Capture publishes an immutable bundle only after all requested evidence is saved. The existing Gmail reader remains read-only.
+An engineer selects distinct email IDs and a generated implementation from an approved plan. The parent operation captures only those emails and their attachments. Capture publishes an immutable bundle only after all requested evidence is saved. The existing Gmail reader remains read-only. Removing the selection cap does not remove execution bounds: captures still enforce attachment/text/byte limits, and grouping still enforces its source/group, time and spend limits. A failed results-page fetch retains the loaded selection and reports that selecting all did not finish.
 
 The approved Trigger implementation runs in explicit `grouping` mode through the normal step runner. It returns groups and one disposition for every captured source: scoped assignments, a clarification question for an unresolved portion, or an exclusion reason. Multiple emails can support one group, and one source can contribute to several groups. Host validation checks identities, ownership, bounds and coverage; it does not certify the semantic correctness of assignments.
 

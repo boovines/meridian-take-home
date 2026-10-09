@@ -16,6 +16,11 @@ for (const ending of ["complete", "cancel"] as const)
       question = crypto.randomUUID(),
       human = crypto.randomUUID();
     const date = "2026-01-01T12:00:00Z";
+    const emailIds = Array.from(
+      { length: 12 },
+      (_, i) => `abcdef0123${i.toString(16).padStart(2, "0")}`,
+    );
+    let pageFailed = false;
     let started = false,
       answered = false,
       approved = false,
@@ -34,7 +39,7 @@ for (const ending of ["complete", "cancel"] as const)
           ? "partial results"
           : "waiting for clarification",
       created_at: date,
-      source_request: { message_ids: ["abcdef01", "abcdef02"] },
+      source_request: { message_ids: emailIds },
       error_message: approved
         ? "One group needs attention. Completed results are retained."
         : null,
@@ -238,18 +243,29 @@ for (const ending of ["complete", "cancel"] as const)
             jobs: started ? [parent()] : [],
           },
         });
-      if (p.endsWith("/gmail/messages"))
+      if (p.endsWith("/gmail/messages")) {
+        const more = url.searchParams.get("page_token") === "second";
+        if (more && ending === "cancel" && !pageFailed) {
+          pageFailed = true;
+          return route.fulfill({
+            status: 503,
+            json: { error: { message: "Gmail temporarily unavailable" } },
+          });
+        }
         return route.fulfill({
           json: {
-            messages: ["abcdef01", "abcdef02"].map((id, i) => ({
-              id,
-              subject: `Purchase request ${i + 1}`,
-              sender: "supplier@example.test",
-              received_at: date,
-            })),
-            next_page_token: null,
+            messages: emailIds
+              .slice(more ? 9 : 0, more ? 12 : 10)
+              .map((id) => ({
+                id,
+                subject: `Purchase request ${emailIds.indexOf(id) + 1}`,
+                sender: "supplier@example.test",
+                received_at: date,
+              })),
+            next_page_token: more ? null : "second",
           },
         });
+      }
       if (p.endsWith("/grouped-executions")) {
         if (req.method() === "GET") {
           expect(url.searchParams.get("spec")).toBe(spec);
@@ -257,7 +273,7 @@ for (const ending of ["complete", "cancel"] as const)
         }
         expect(req.postDataJSON()).toMatchObject({
           implementation_version_id: v1,
-          message_ids: ["abcdef01", "abcdef02"],
+          message_ids: emailIds,
         });
         expect(req.postDataJSON()).not.toHaveProperty("shipment_reference");
         expect(req.postDataJSON().request_key).toBeTruthy();
@@ -358,13 +374,35 @@ for (const ending of ["complete", "cancel"] as const)
     await page
       .getByRole("button", { name: "Search emails", exact: true })
       .click();
-    for (const name of ["Purchase request 1", "Purchase request 2"])
-      await page.getByRole("checkbox", { name: new RegExp(name) }).check();
+    await page
+      .getByRole("button", { name: "Select all results", exact: true })
+      .click();
+    if (ending === "cancel") {
+      await expect(
+        page
+          .getByRole("alert")
+          .filter({ hasText: "Could not select every matching email" }),
+      ).toContainText(
+        "Could not select every matching email. 10 loaded emails remain selected.",
+      );
+      await page
+        .getByRole("button", { name: "Select all results", exact: true })
+        .click();
+    }
+    await expect(page.getByText("12 selected", { exact: true })).toBeVisible();
+    await expect(page.getByRole("checkbox")).toHaveCount(12);
+    await page
+      .getByRole("button", { name: "Clear selection", exact: true })
+      .click();
+    await expect(page.getByText("0 selected", { exact: true })).toBeVisible();
+    for (const checkbox of await page.getByRole("checkbox").all())
+      await checkbox.check();
+    await expect(page.getByText("12 selected", { exact: true })).toBeVisible();
     await page
       .getByRole("button", { name: "Run selected emails", exact: true })
       .click();
     await expect(
-      page.getByRole("heading", { name: "2 emails · 2 groups" }),
+      page.getByRole("heading", { name: "12 emails · 2 groups" }),
     ).toBeVisible();
     await page.getByRole("button", { name: /Purchase A Code v2/ }).click();
     await expect(
@@ -394,7 +432,7 @@ for (const ending of ["complete", "cancel"] as const)
     await page.reload();
     await open();
     await expect(
-      page.getByRole("heading", { name: "2 emails · 2 groups" }),
+      page.getByRole("heading", { name: "12 emails · 2 groups" }),
     ).toBeVisible();
     await expect(page.getByLabel("Your answer", { exact: true })).toHaveCount(
       0,

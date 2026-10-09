@@ -168,7 +168,7 @@ it("rejects duplicate group identities and unknown or repeated targets", () => {
     ),
   ).toThrow(/distinct groups/);
 });
-it("requires an explicit bounded unique email selection before execution", () => {
+it("requires an explicit unique email selection without a count cap before execution", () => {
   const base = {
     request_key: randomUUID(),
     implementation_version_id: randomUUID(),
@@ -185,9 +185,9 @@ it("requires an explicit bounded unique email selection before execution", () =>
   expect(
     selectedEmailExecution.safeParse({
       ...base,
-      message_ids: Array.from({ length: 11 }, (_, i) => `abcdef1234${i}`),
+      message_ids: Array.from({ length: 150 }, (_, i) => `abcdef1234${i}`),
     }).success,
-  ).toBe(false);
+  ).toBe(true);
   expect(
     selectedEmailExecution.safeParse({ ...base, message_ids: ["abcdef12345"] })
       .success,

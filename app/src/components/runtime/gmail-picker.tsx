@@ -52,6 +52,43 @@ export function GmailPicker({
       setBusy("");
     }
   }
+  async function selectAll() {
+    setBusy("Selecting all matching emails…");
+    setError("");
+    let loaded = messages;
+    let cursor = next;
+    const visited = new Set<string>();
+    setSelected(loaded.map((m) => m.id));
+    try {
+      while (cursor) {
+        if (visited.has(cursor))
+          throw new Error(
+            "Gmail repeated a results page. Loaded emails remain selected; retry your search to load the rest.",
+          );
+        visited.add(cursor);
+        const data = await api<{
+          messages: GmailSummary[];
+          next_page_token: string | null;
+        }>(
+          `/api/workflows/${workflowId}/gmail/messages?${new URLSearchParams({ query: searchedQuery, page_token: cursor })}`,
+        );
+        const byId = new Map(loaded.map((m) => [m.id, m]));
+        for (const message of data.messages) byId.set(message.id, message);
+        loaded = [...byId.values()];
+        cursor = data.next_page_token;
+        setMessages(loaded);
+        setSelected(loaded.map((m) => m.id));
+        setNext(cursor);
+        setBusy(`Selecting all matching emails… ${loaded.length} loaded`);
+      }
+    } catch (e) {
+      setError(
+        `Could not select every matching email. ${loaded.length} loaded emails remain selected. ${errorMessage(e)}`,
+      );
+    } finally {
+      setBusy("");
+    }
+  }
   async function capture() {
     setBusy(
       onSelected
@@ -83,7 +120,7 @@ export function GmailPicker({
       <summary>{onSelected ? "Select emails" : "Capture from Gmail"}</summary>
       <p className="field-help">
         {onSelected
-          ? "Select up to 10 emails. The workflow groups related work automatically and asks about ambiguous sources."
+          ? "Select all relevant emails. The workflow groups related work automatically and asks about ambiguous sources."
           : "Select all related emails, including certificates sent separately. Gmail is read-only."}
       </p>
       <form
@@ -115,17 +152,30 @@ export function GmailPicker({
       )}
       {!!messages.length && (
         <>
+          <div className="button-row">
+            <button
+              disabled={!!busy || disabled}
+              onClick={() => void selectAll()}
+            >
+              Select all results
+            </button>
+            <button
+              disabled={!!busy || disabled || !selected.length}
+              onClick={() => setSelected([])}
+            >
+              Clear selection
+            </button>
+          </div>
+          <p className="field-help" aria-live="polite">
+            {selected.length} selected
+          </p>
           <div className="gmail-message-list" aria-label="Matching emails">
             {messages.map((m) => (
               <label key={m.id} className="gmail-message">
                 <input
                   type="checkbox"
                   checked={selected.includes(m.id)}
-                  disabled={
-                    !!busy ||
-                    disabled ||
-                    (selected.length >= 10 && !selected.includes(m.id))
-                  }
+                  disabled={!!busy || disabled}
                   onChange={(e) =>
                     setSelected(
                       e.target.checked
@@ -182,8 +232,8 @@ export function GmailPicker({
           </button>
           <p className="field-help">
             {onSelected
-              ? `${selected.length} of 10 selected. Captures the selected emails and attachments, then starts processing. Reports are previewed only.`
-              : "Creates a fixed copy of the selected emails and every attachment. Up to 10 emails per packet."}
+              ? `Captures the selected emails and attachments, then starts processing. Reports are previewed only.`
+              : "Creates a fixed copy of the selected emails and every attachment."}
           </p>
         </>
       )}

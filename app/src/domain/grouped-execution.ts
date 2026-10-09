@@ -1,9 +1,9 @@
 import { z } from "zod";
 import { DomainError } from "./errors";
 import { uuid } from "./validation";
+import { gmailMessageSelection } from "./gmail";
 
 export const GROUP_LIMITS = {
-  messages: 10,
   groups: 20,
   sources: 100,
   concurrent_children: 2,
@@ -19,14 +19,7 @@ export const selectedEmailExecution = z
     request_key: uuid,
     implementation_version_id: uuid,
     aggregation_node_id: uuid.optional(),
-    message_ids: z
-      .array(z.string().regex(/^[a-f0-9]{10,40}$/))
-      .min(1)
-      .max(GROUP_LIMITS.messages)
-      .refine(
-        (ids) => new Set(ids).size === ids.length,
-        "Select each message once.",
-      ),
+    message_ids: gmailMessageSelection,
   })
   .strict();
 
