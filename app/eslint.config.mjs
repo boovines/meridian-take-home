@@ -1,6 +1,17 @@
+import { builtinModules } from "node:module";
 import { defineConfig, globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
+
+// Anchor bare names so Node's "domain" module doesn't match ../domain/rules.
+// Node accepts both bare and node:-prefixed imports, including subpaths.
+const nodeImports = [
+  "node:*",
+  ...builtinModules
+    .filter((name) => !name.startsWith("node:"))
+    .flatMap((name) => [`/${name}`, `/${name}/*`]),
+];
+
 export default defineConfig([
   ...nextVitals,
   ...nextTs,
@@ -23,7 +34,7 @@ export default defineConfig([
             },
             {
               group: [
-                "node:*",
+                ...nodeImports,
                 "react",
                 "react/*",
                 "next",
@@ -68,7 +79,7 @@ export default defineConfig([
               group: [
                 "**/server/**",
                 "**/*activities",
-                "node:*",
+                ...nodeImports,
                 "pg",
                 "@temporalio/client",
                 "@temporalio/worker",
