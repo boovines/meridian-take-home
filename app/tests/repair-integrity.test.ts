@@ -101,3 +101,17 @@ it("distinguishes an incomplete host scan from a detected implementation copy", 
   expect(invocationFailure(new DomainError(422, "REPAIR_INTEGRITY_LIMIT", "bounded scan"))).toMatchObject({ category: "infrastructure" });
   expect(invocationFailure(new DomainError(422, "REPAIR_EVIDENCE_LEAK", "copied value"))).toMatchObject({ category: "implementation" });
 });
+
+it("spends the bounded scan on changed runtime text before looking for unnecessary baseline exemptions", () => {
+  const largeEvidence = { values: [...Array(85_000).fill(null), "LOT928374"] };
+  const baseline = source("void 0;\n".repeat(6000));
+  const patch = source("void 0;\n".repeat(3000));
+  // The candidate introduces no observed identifier. Parsing a large baseline
+  // cannot change that result and previously exhausted the shared value budget.
+  expect(() => assertRepairEvidenceIntegrity(patch, baseline, {}, largeEvidence)).not.toThrow();
+  // If an exemption is needed, exhausting that same scan must still fail closed.
+  expect(() => assertRepairEvidenceIntegrity(
+    source('const value = "LOT928374";\n' + "void 0;\n".repeat(3000)),
+    baseline, {}, largeEvidence,
+  )).toThrow(expect.objectContaining({ code: "REPAIR_INTEGRITY_LIMIT" }));
+});

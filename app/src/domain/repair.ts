@@ -3,7 +3,7 @@ import { uuid } from "./validation";
 import type { EvaluationRun, CaseResult } from "./evaluation";
 import { generatedSources } from "./project";
 export const startRepairInput = z
-  .object({ request_key: uuid, baseline_evaluation_id: uuid })
+  .object({ request_key: uuid, baseline_evaluation_id: uuid, retained_attempt_id: uuid.optional() })
   .strict();
 export const repairSources = z
   .object({

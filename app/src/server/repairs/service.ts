@@ -89,6 +89,22 @@ async function evaluationAudits(
     )
   ).rows;
 }
+// Recovery starts a new session; terminal attempts and their errors stay intact.
+// Only a host scan-limit failure with an unpublished artifact is eligible.
+export async function retainedRepairArtifact(tx: Queryable, wid: string, attemptId: string, baselineEvaluationId: string) {
+  const row = (await tx.query(
+    `SELECT ar.id,ar.metadata FROM repair_attempts a
+     JOIN repair_sessions s ON s.id=a.session_id
+     JOIN artifacts ar ON ar.workflow_id=a.workflow_id AND ar.metadata->>'repair_attempt_id'=a.id::text
+     WHERE a.workflow_id=$1 AND a.id=$2 AND a.baseline_evaluation_id=$3
+       AND a.status='failed' AND a.error_code='REPAIR_INTEGRITY_LIMIT' AND a.candidate_version_id IS NULL
+       AND s.status IN ('failed','needs_attention','cancelled')
+       AND ar.kind='generated_project' AND ar.state='ready'
+     ORDER BY ar.created_at DESC LIMIT 1`, [wid, attemptId, baselineEvaluationId],
+  )).rows[0];
+  if (!row) throw new DomainError(422, "REPAIR_RECOVERY_UNAVAILABLE", "Recovery requires a retained, unpublished patch from a terminal scan-limit failure on the same workflow and baseline. Other failures require a new diagnosis.");
+  return { id: String(row.id), metadata: row.metadata as Record<string, unknown> };
+}
 export class RepairService {
   constructor(private db: Database) {}
   async start(wid: string, raw: z.infer<typeof startRepairInput>) {
@@ -100,7 +116,7 @@ export class RepairService {
   }
   // Caller holds the workflow lock; automatic handoff commits with evaluation completion.
   async startInTransaction(tx: Queryable, wid: string, data: z.infer<typeof startRepairInput>) {
-    const source = { baseline_evaluation_id: data.baseline_evaluation_id };
+    const source = { baseline_evaluation_id: data.baseline_evaluation_id, ...(data.retained_attempt_id ? { retained_attempt_id: data.retained_attempt_id } : {}) };
     const prior = (
       await tx.query(
         "SELECT * FROM workflow_jobs WHERE workflow_id=$1 AND request_key=$2",
@@ -178,6 +194,8 @@ export class RepairService {
         "OPERATION_ACTIVE",
         "Wait for or cancel the active operation first.",
       );
+    if (data.retained_attempt_id)
+      await retainedRepairArtifact(tx, wid, data.retained_attempt_id, evaluation.id);
     const id = randomUUID();
     const job = (
       await tx.query(
