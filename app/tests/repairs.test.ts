@@ -11,8 +11,11 @@ import {
   EvaluationService,
   resultsByEvaluation,
 } from "../src/server/evaluations/evaluation-service";
+import { ExecutionAuditService } from "../src/server/runtime/audit-service";
+import { repairAuditBudget, RepairAuditReader } from "../src/server/repairs/audit";
 import { RepairService } from "../src/server/repairs/service";
-import { RepairGenerationService } from "../src/server/repairs/generation-service";
+import { repairDocumentBudget, RepairDocumentReader } from "../src/server/repairs/documents";
+import { RepairGenerationService, type RepairGenerator } from "../src/server/repairs/generation-service";
 import { JobService } from "../src/server/engineering/job-service";
 import { VersionService } from "../src/server/engineering/version-service";
 import { EvaluationExecutionService } from "../src/server/evaluations/execution-service";
@@ -72,19 +75,24 @@ const generator = {
     })(),
   }),
 };
-async function record(jobId: string, evaluationId: string, actual: Json) {
+async function record(jobId: string, evaluationId: string, actual: Json, withAudit = false) {
   const ready = (await evals.prepare(jobId, evaluationId))!;
   for (const result of ready.results) {
     await evals.beginCase(result.id);
+    if (withAudit) {
+      const token = randomUUID();
+      await db.query("UPDATE evaluation_case_results SET attempt_token=$2 WHERE id=$1", [result.id, token]);
+      await new ExecutionAuditService(db, artifacts).recorder(result.workflow_id, { case_result_id: result.id }, token)("model_response", actual);
+    }
     await evals.recordCase(result.id, { actual });
   }
   await evals.finish(jobId, undefined, false, evaluationId);
 }
-async function prepared(withWorkflowCase = false, withDocument = false) {
+async function prepared(withWorkflowCase = false, withDocument: boolean | Buffer = false, withAudit = false) {
   const f = await runtimeFixture(db, artifacts, ["trigger", "outcome"]);
   await f.runs.finish(f.job.id, { status: "cancelled" });
   if (withDocument) {
-    const document = await artifacts.create(f.w.id, "source_document", "source.txt", "text/plain", Buffer.from("Independent source evidence"));
+    const document = await artifacts.create(f.w.id, "source_document", Buffer.isBuffer(withDocument) ? "source.pdf" : "source.txt", Buffer.isBuffer(withDocument) ? "application/pdf" : "text/plain", Buffer.isBuffer(withDocument) ? withDocument : Buffer.from("Independent source evidence"));
     f.bundle = await new BundleService(db).create(f.w.id, {
       source_kind: "fixture", shipment_reference: "SYNTHETIC-001",
       manifest: {
@@ -169,7 +177,7 @@ async function prepared(withWorkflowCase = false, withDocument = false) {
   await record(initial.job.id, initial.evaluation.id, {
     shipment: "SYNTHETIC-001",
     failed_goods: 2,
-  });
+  }, withAudit);
   const request = {
     request_key: randomUUID(),
     baseline_evaluation_id: initial.evaluation.id,
@@ -486,6 +494,13 @@ it("retains one rejected candidate across an explicit restart only for the same 
   expect(context.previous_attempts[0].candidate_results[0].check_results).toContainEqual(
     expect.objectContaining({ key: "shipment", passed: false, actual: "WRONG" }),
   );
+  // Historical candidates inform diagnosis without imposing another session's
+  // duplicate-candidate ban on an explicit engineer restart.
+  const published = await generation.run(attempt.id, generator, AbortSignal.timeout(10000));
+  expect(published.candidate_version_id).toBeTruthy();
+  const original = (await new VersionService(db, artifacts).load(f.w.id, first.attempt.candidate_version_id!)).project;
+  const repeated = (await new VersionService(db, artifacts).load(f.w.id, published.candidate_version_id!)).project;
+  expect(repeated.files).toEqual(original.files);
   await repairs.finish(restarted.job.id, "cancelled", "Restart context verified.");
   const fresh = await evals.start(f.w.id, { request_key: randomUUID(),
     implementation_version_id: f.version.id, suite_version_id: suite.id });
@@ -612,6 +627,25 @@ it.each(["regressing", "still-failing"])(
             ]),
           );
           expect(context.traces).toEqual([]);
+          // Replay an earlier candidate occurrence with its exact recorded
+          // predecessor output, while patching the retained baseline only.
+          const { RepairStepReplay } = await import("../src/server/repairs/replay");
+          const token = (await db.query("SELECT attempt_token FROM repair_attempts WHERE id=$1", [second.id])).rows[0].attempt_token;
+          const occurrence = prior.candidate_traces.find(t => t.node_id === changedNode)!;
+          const invoke = vi.fn(async (project: typeof baseline, nodeId: string, input: Record<string, Json>) => {
+            expect(nodeId).toBe(changedNode);
+            expect(input).toEqual({ input: { shipment: "SYNTHETIC-001" }, steps: { [f.nodes[0].id]: actual } });
+            const patchPath = baseline.node_file_map[changedNode];
+            expect(project.files[patchPath]).toBe("export async function run() {}");
+            for (const [path, source] of Object.entries(baseline.files)) {
+              if (path !== patchPath) expect(project.files[path]).toBe(source);
+            }
+            return { kind: "complete", output: actual, matching_connection_ids: [] };
+          });
+          const replay = new RepairStepReplay(db, context, baseline, String(token), AbortSignal.timeout(10000), invoke, artifacts);
+          const diagnostic = await replay.run({ recorded_input_id: String(occurrence.occurrence_id), candidate_patch: { node_id: changedNode, source_lines: ["export async function run() {}"] } });
+          expect(diagnostic).toMatchObject({ status: "completed", changed_from_recording: false, checks: [], assertions_scope: "none; workflow totals do not grade an intermediate step", diagnostic_only: true });
+          expect(invoke).toHaveBeenCalledTimes(1);
           const enlarged = {
             ...context,
             previous_attempts: context.previous_attempts.map((attempt) => ({
@@ -916,10 +950,333 @@ it("rejects changed execution settings during a confirmation sequence", async ()
   await record(job.id, one.id, { shipment: "SYNTHETIC-001", failed_goods: 1 });
   await repairs.decide(attempt.id);
   const two = await repairs.createEvaluation(attempt.id, 2);
-  vi.stubEnv("EXTRACTION_REINSPECTION", "1");
+  vi.stubEnv("OPENAI_RUNTIME_MODEL", "changed-model");
   try {
     await expect(evals.prepare(job.id, two.id)).rejects.toMatchObject({code:"EVALUATION_CONFIGURATION_CHANGED"});
     await expect(db.query("UPDATE evaluation_runs SET execution_configuration='{}' WHERE id=$1", [one.id])).rejects.toMatchObject({code:"23514"});
   } finally { vi.unstubAllEnvs(); }
   await repairs.finish(job.id, "needs_attention", "Settings changed.");
+});
+
+it.each([1, 3])("shares the three-read allowance across generation retries after %i reads", async (initialReads) => {
+  const { job } = await prepared(true, true);
+  const attempt = await repairs.beginAttempt(job.id, 1);
+  let invocation = 0;
+  const adapter: RepairGenerator = {
+    ...generator,
+    generate: async (context, _baseline, _signal, _previous, readDocument) => {
+      const id = String(context.input_inventory[0].documents[0].artifact_id);
+      if (++invocation === 1) {
+        for (let i = 0; i < initialReads; i++) await readDocument(id);
+        throw new Error("Transient failure after inspection");
+      }
+      const results = await Promise.allSettled(Array.from({ length: 3 }, () => readDocument(id)));
+      expect(results.filter(r => r.status === "fulfilled")).toHaveLength(3 - initialReads);
+      for (const result of results) {
+        if (result.status === "rejected") expect(result.reason).toMatchObject({ code: "REPAIR_DOCUMENT_LIMIT" });
+      }
+      return generator.generate(context);
+    },
+  };
+  await expect(generation.run(attempt.id, adapter, AbortSignal.timeout(10000))).rejects.toThrow("Transient failure");
+  // A new service simulates a retry on another worker, without shared memory.
+  const recovered = await new RepairGenerationService(db, artifacts).run(attempt.id, adapter, AbortSignal.timeout(10000));
+  expect(recovered.candidate_version_id).toBeTruthy();
+  const row = (await db.query("SELECT invocation_count,document_read_count,document_byte_count FROM repair_attempts WHERE id=$1", [attempt.id])).rows[0];
+  expect(row).toMatchObject({ invocation_count: 2, document_read_count: 3, document_byte_count: 3 * Buffer.byteLength("Independent source evidence") });
+});
+
+it("preserves the byte allowance after a transient generation failure", async () => {
+  const bytes = Buffer.alloc(11 * 1024 * 1024);
+  bytes.write("%PDF-1.7");
+  const { job } = await prepared(true, bytes);
+  const attempt = await repairs.beginAttempt(job.id, 1);
+  let invocation = 0;
+  const adapter: RepairGenerator = {
+    ...generator,
+    generate: async (context, _baseline, _signal, _previous, readDocument) => {
+      const id = String(context.input_inventory[0].documents[0].artifact_id);
+      if (++invocation === 1) {
+        await readDocument(id);
+        throw new Error("Transient failure after inspection");
+      }
+      await expect(readDocument(id)).rejects.toMatchObject({ code: "DOCUMENT_CONTEXT_TOO_LARGE" });
+      return generator.generate(context);
+    },
+  };
+  await expect(generation.run(attempt.id, adapter, AbortSignal.timeout(10000))).rejects.toThrow("Transient failure");
+  await new RepairGenerationService(db, artifacts).run(attempt.id, adapter, AbortSignal.timeout(10000));
+  const row = (await db.query("SELECT document_read_count,document_byte_count FROM repair_attempts WHERE id=$1", [attempt.id])).rows[0];
+  expect(row).toMatchObject({ document_read_count: 2, document_byte_count: bytes.length });
+});
+
+it("fences document reads from a superseded generation invocation", async () => {
+  const { f, job } = await prepared(true, true);
+  const attempt = await repairs.beginAttempt(job.id, 1);
+  const first = await repairs.claimGeneration(attempt.id);
+  const context = await repairs.generationContext(attempt.id);
+  const id = String(context.input_inventory[0].documents[0].artifact_id);
+  let release!: () => void;
+  let started!: () => void;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  const reading = new Promise<void>(resolve => { started = resolve; });
+  const read = vi.fn(async () => {
+    started();
+    await pending;
+    return artifacts.read(f.w.id, id);
+  });
+  const documents = new RepairDocumentReader(f.w.id, new Set([id]), { read }, AbortSignal.timeout(10000), repairDocumentBudget(db, attempt.id, first.token!));
+  const inFlight = documents.read(id);
+  await reading;
+  await repairs.claimGeneration(attempt.id);
+  const rejected = expect(inFlight).rejects.toMatchObject({ code: "STALE_REPAIR_RESULT" });
+  release();
+  await rejected;
+  await expect(documents.read(id)).rejects.toMatchObject({ code: "STALE_REPAIR_RESULT" });
+  expect(read).toHaveBeenCalledTimes(1);
+  expect(documents.inspected).toEqual([]);
+  await repairs.finish(job.id, "cancelled", "Fencing verification completed");
+});
+
+
+it.each([1, 3])("shares audit allowance across generation retries after %i inspections", async (initialReads) => {
+  const { job } = await prepared(false, false, true);
+  const attempt = await repairs.beginAttempt(job.id, 1);
+  let invocation = 0;
+  const adapter: RepairGenerator = {
+    ...generator,
+    generate: async (context, _baseline, _signal, _previous, _documents, readAudit) => {
+      const id = String(context.audit_events[0].id);
+      if (++invocation === 1) {
+        for (let i = 0; i < initialReads; i++) await readAudit(id, []);
+        throw new Error("Transient failure after audit inspection");
+      }
+      const results = await Promise.allSettled(Array.from({ length: 3 }, () => readAudit(id, [])));
+      expect(results.filter(r => r.status === "fulfilled")).toHaveLength(3 - initialReads);
+      for (const result of results) {
+        if (result.status === "rejected") expect(result.reason).toMatchObject({ code: "AUDIT_READ_LIMIT" });
+      }
+      return generator.generate(context);
+    },
+  };
+  await expect(generation.run(attempt.id, adapter, AbortSignal.timeout(10000))).rejects.toThrow("Transient failure");
+  const recovered = await new RepairGenerationService(db, artifacts).run(attempt.id, adapter, AbortSignal.timeout(10000));
+  expect(recovered.candidate_version_id).toBeTruthy();
+  const row = (await db.query("SELECT invocation_count,audit_read_count FROM repair_attempts WHERE id=$1", [attempt.id])).rows[0];
+  expect(row).toMatchObject({ invocation_count: 2, audit_read_count: 3 });
+});
+
+it("blocks audit evidence returned after an invocation is superseded", async () => {
+  const { f, job } = await prepared(false, false, true);
+  const attempt = await repairs.beginAttempt(job.id, 1);
+  const first = await repairs.claimGeneration(attempt.id);
+  const context = await repairs.generationContext(attempt.id);
+  const id = String(context.audit_events[0].id);
+  let release!: () => void;
+  let started!: () => void;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  const reading = new Promise<void>(resolve => { started = resolve; });
+  const read = vi.fn(async () => {
+    started();
+    await pending;
+    return new ExecutionAuditService(db, artifacts).read(f.w.id, id);
+  });
+  const reader = new RepairAuditReader(f.w.id, new Set([id]), { read }, AbortSignal.timeout(10000), repairAuditBudget(db, attempt.id, first.token!));
+  const inFlight = reader.read(id, []);
+  await reading;
+  await repairs.claimGeneration(attempt.id);
+  const rejected = expect(inFlight).rejects.toMatchObject({ code: "STALE_REPAIR_RESULT" });
+  release();
+  await rejected;
+  await expect(reader.read(id, [])).rejects.toMatchObject({ code: "STALE_REPAIR_RESULT" });
+  expect(read).toHaveBeenCalledTimes(1);
+  expect(reader.inspected).toEqual([]);
+  await repairs.finish(job.id, "cancelled", "Audit fencing verified");
+});
+
+it("rejects replay routing before grading otherwise matching output", async () => {
+  const { RepairStepReplay } = await import("../src/server/repairs/replay");
+  const { f, job } = await prepared();
+  const attempt = await repairs.beginAttempt(job.id, 1);
+  const claim = await repairs.claimGeneration(attempt.id);
+  const context = await repairs.generationContext(attempt.id);
+  const baseline = (await new VersionService(db, artifacts).load(f.w.id, f.version.id)).project;
+  const replay = new RepairStepReplay(db, context, baseline, claim.token!, AbortSignal.timeout(10000), async () => ({
+    kind: "complete", output: { shipment: "SYNTHETIC-001", failed_goods: 1 },
+    matching_connection_ids: [randomUUID()],
+  }), artifacts);
+  const report = await replay.run({
+    recorded_input_id: context.results[0].id,
+    candidate_patch: { node_id: f.nodes[1].id, source_lines: ["export async function run() {}"] },
+  });
+  expect(report).toMatchObject({ status: "error", diagnostic_only: true, error: { code: "INVALID_ROUTES", category: "implementation" } });
+  expect(report).not.toHaveProperty("checks");
+  const state = await repairs.state(f.w.id);
+  expect(state.replays[0].summary).toMatchObject({ status: "error" });
+  expect(state.attempts[0].candidate_version_id).toBeNull();
+  await repairs.finish(job.id, "cancelled", "Routing regression verified");
+});
+
+it("shares replay reservations across concurrent calls and superseded generation tokens", async () => {
+  const { RepairStepReplay } = await import("../src/server/repairs/replay");
+  const { f, job } = await prepared();
+  const attempt = await repairs.beginAttempt(job.id, 1);
+  const first = await repairs.claimGeneration(attempt.id);
+  const context = await repairs.generationContext(attempt.id);
+  const baseline = (await new VersionService(db, artifacts).load(f.w.id, f.version.id)).project;
+  const input = { recorded_input_id: context.results[0].id, candidate_patch: { node_id: f.nodes[1].id, source_lines: ["export async function run() {}"] } };
+  let release!: () => void;
+  let started!: () => void;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  const running = new Promise<void>(resolve => { started = resolve; });
+  const invoke = vi.fn(async () => {
+    started();
+    await pending;
+    return { kind: "complete", output: {}, matching_connection_ids: [] };
+  });
+  const reader = (token: string) => new RepairStepReplay(db, context, baseline, token, AbortSignal.timeout(10000), invoke, artifacts);
+  const old = reader(first.token!);
+  const inFlight = old.run(input);
+  await running;
+  const next = await repairs.claimGeneration(attempt.id);
+  const rejected = expect(inFlight).rejects.toMatchObject({ code: "STALE_REPLAY" });
+  release();
+  await rejected;
+  await expect(old.run(input)).rejects.toMatchObject({ code: "STALE_REPLAY" });
+  const replies = await Promise.allSettled(Array.from({ length: 3 }, () => reader(next.token!).run(input)));
+  expect(replies.filter(r => r.status === "fulfilled")).toHaveLength(2);
+  expect(replies.find(r => r.status === "rejected")).toMatchObject({ reason: { code: "REPLAY_LIMIT" } });
+  expect(invoke).toHaveBeenCalledTimes(3);
+  const state = await repairs.state(f.w.id);
+  expect(state.replays).toHaveLength(3);
+  expect(state.replays[0]).toMatchObject({ status: "running", result_artifact_id: null });
+  expect(state.attempts[0].candidate_version_id).toBeNull();
+  await repairs.finish(job.id, "cancelled", "Concurrent replay fencing verified");
+});
+
+it.each(["step", "workflow"])("blocks configuration drift in the %s execution worker as inconclusive", async (kind) => {
+  const { f, job } = await prepared(true);
+  const attempt = await repairs.beginAttempt(job.id, 1);
+  await generation.run(attempt.id, generator, AbortSignal.timeout(10000));
+  const evaluation = await repairs.createEvaluation(attempt.id);
+  const ready = (await evals.prepare(job.id, evaluation.id))!;
+  const cases = await suites.state(f.w.id, evaluation.suite_version_id);
+  const target = ready.results.find(r => cases.cases.some(c => c.id === r.case_id && c.kind === kind))!;
+  const task = await evals.beginCase(target.id);
+  if (task.skip) throw new Error("Expected fresh case");
+  const invoke = vi.fn(async () => ({ kind: "complete", output: {}, matching_connection_ids: [] }));
+  const adapters = { invoke, reason: async () => ({}) };
+  vi.stubEnv("OPENAI_RUNTIME_MODEL", "different-worker-model");
+  try {
+    const versions = new VersionService(db, artifacts);
+    const execution = new EvaluationExecutionService(db, versions, artifacts);
+    if (task.kind === "step") await execution.step(target.id, adapters, AbortSignal.timeout(10000));
+    else {
+      const runs = new RunService(db), steps = new StepService(db, versions, artifacts);
+      const context = (await runs.prepareCase(task.run_id))!;
+      const engine = new RuntimeEngine(task.run_id, context.definition, {
+        now: () => Date.now(), scriptedHuman: true, changed() {},
+        project: progress => runs.project(task.run_id, progress),
+        step: (data, resume) => steps.execute(data, adapters, AbortSignal.timeout(10000), resume),
+        human: async () => { throw new Error("No human gate"); },
+      });
+      await runs.finishCase(task.run_id, await engine.run());
+      await execution.workflow(target.id);
+    }
+  } finally { vi.unstubAllEnvs(); }
+  expect(invoke).not.toHaveBeenCalled();
+  const result = (await resultsByEvaluation(db, evaluation.id)).find(r => r.id === target.id)!;
+  expect(result).toMatchObject({ outcome: "error", failure_category: "infrastructure", failure_code: "EVALUATION_CONFIGURATION_CHANGED" });
+  await repairs.finish(job.id, "needs_attention", "Configuration drift is inconclusive");
+});
+
+it("fences PDF page evidence after processing and charges original bytes across readers", async () => {
+  const { PDFDocument } = await import("pdf-lib");
+  const pdf = await PDFDocument.create();
+  pdf.addPage([100, 200]); pdf.addPage([300, 400]);
+  const bytes = Buffer.from(await pdf.save());
+  const { f, job } = await prepared(true, bytes);
+  const attempt = await repairs.beginAttempt(job.id, 1);
+  const first = await repairs.claimGeneration(attempt.id);
+  const context = await repairs.generationContext(attempt.id);
+  const id = String(context.input_inventory[0].documents[0].artifact_id);
+  const reader = (token: string) => new RepairDocumentReader(f.w.id, new Set([id]), artifacts, AbortSignal.timeout(10000), repairDocumentBudget(db, attempt.id, token));
+  const old = reader(first.token!);
+  let nextToken = "";
+  const save = PDFDocument.prototype.save;
+  const saving = vi.spyOn(PDFDocument.prototype, "save").mockImplementationOnce(async function (this: Awaited<ReturnType<typeof PDFDocument.create>>, options) {
+    const selected = await save.call(this, options);
+    nextToken = (await repairs.claimGeneration(attempt.id)).token!;
+    return selected;
+  });
+  try {
+    await expect(old.read(id, [2])).rejects.toMatchObject({ code: "STALE_REPAIR_RESULT" });
+  } finally { saving.mockRestore(); }
+  expect(old.inspected).toEqual([]);
+  const selected = await reader(nextToken).read(id, [2]);
+  expect(selected.source_page_numbers).toEqual([2]);
+  expect((await PDFDocument.load(selected.bytes)).getPageCount()).toBe(1);
+  await reader(nextToken).read(id, [1]);
+  await expect(reader(nextToken).read(id, [1])).rejects.toMatchObject({ code: "REPAIR_DOCUMENT_LIMIT" });
+  const budget = (await db.query("SELECT document_read_count,document_byte_count FROM repair_attempts WHERE id=$1", [attempt.id])).rows[0];
+  expect(budget).toMatchObject({ document_read_count: 3, document_byte_count: 3 * bytes.length });
+  await repairs.finish(job.id, "cancelled", "Page evidence ownership and budget verified");
+});
+
+it("compares only the latest two completed runs with matching recorded configuration", async () => {
+  const { f, job, suite } = await prepared(false, false, true);
+  await repairs.finish(job.id, "cancelled", "Prepare repeat-history fixture");
+  const evaluate = async (passing: boolean) => {
+    const run = await evals.start(f.w.id, { request_key: randomUUID(), implementation_version_id: f.version.id, suite_version_id: suite.id });
+    await record(run.job.id, run.evaluation.id, { shipment: "SYNTHETIC-001", failed_goods: passing ? 1 : 2 }, true);
+    return run.evaluation.id;
+  };
+  const first = await evaluate(true), second = await evaluate(true);
+  vi.stubEnv("OPENAI_RUNTIME_MODEL", "other-recorded-model");
+  try { await evaluate(true); } finally { vi.unstubAllEnvs(); }
+  const baseline = await evaluate(false);
+  const started = await repairs.start(f.w.id, { request_key: randomUUID(), baseline_evaluation_id: baseline });
+  await repairs.prepare(started.job.id);
+  const attempt = await repairs.beginAttempt(started.job.id, 1);
+  const context = await repairs.generationContext(attempt.id);
+  expect(context.baseline_repetitions.map(run => run.id)).toEqual([second, first]);
+  const event = context.baseline_repetitions[0].audit_events[0];
+  expect(event).toBeDefined();
+  await generation.run(attempt.id, {
+    ...generator,
+    generate: async (c, _baseline, _signal, _previous, _documents, readAudit) => {
+      expect(await readAudit(String(event.id), [])).toMatchObject({ value: { shipment: "SYNTHETIC-001", failed_goods: 1 } });
+      return generator.generate(c);
+    },
+  }, AbortSignal.timeout(10000));
+  await repairs.finish(started.job.id, "cancelled", "Historical comparison scope verified");
+});
+
+it("does not claim matching configuration for legacy evaluations with unknown settings", async () => {
+  const { f, job, initial } = await prepared();
+  await repairs.finish(job.id, "cancelled", "Prepare legacy history fixture");
+  const legacy = async (key: string) => {
+    // Model pre-migration completed rows: the added configuration column defaults
+    // to {}, while their original immutable grades remain intact.
+    const row = (await db.query(
+      `INSERT INTO evaluation_runs(workflow_id,job_id,implementation_version_id,suite_version_id,run_key,status,verdict,finished_at)
+       SELECT workflow_id,job_id,implementation_version_id,suite_version_id,$2,status,verdict,finished_at FROM evaluation_runs WHERE id=$1 RETURNING id`,
+      [initial.evaluation.id, key],
+    )).rows[0];
+    await db.query(
+      `INSERT INTO evaluation_case_results(workflow_id,evaluation_run_id,suite_version_id,case_id,status,outcome,actual_output,check_results,finished_at)
+       SELECT workflow_id,$2,suite_version_id,case_id,status,outcome,actual_output,check_results,finished_at FROM evaluation_case_results WHERE evaluation_run_id=$1`,
+      [initial.evaluation.id, row.id],
+    );
+    return String(row.id);
+  };
+  await legacy("legacy-earlier");
+  const baseline = await legacy("legacy-baseline");
+  const started = await repairs.start(f.w.id, { request_key: randomUUID(), baseline_evaluation_id: baseline });
+  await repairs.prepare(started.job.id);
+  const attempt = await repairs.beginAttempt(started.job.id, 1);
+  const context = await repairs.generationContext(attempt.id);
+  expect(context.evaluation.execution_configuration).toEqual({});
+  expect(context.baseline_repetitions).toEqual([]);
+  await repairs.finish(started.job.id, "cancelled", "Unknown settings are not matching evidence");
 });

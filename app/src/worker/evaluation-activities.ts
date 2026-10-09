@@ -6,9 +6,9 @@ import { EvaluationService } from "../server/evaluations/evaluation-service";
 import { EvaluationExecutionService } from "../server/evaluations/execution-service";
 import { validateInSandbox } from "../server/integrations/sandbox-project";
 import { invokeInSandbox } from "../server/integrations/sandbox-step";
-import { extractForStep } from "../server/integrations/extraction";
 import {
   reasonForStep,
+  extractForStep,
   runtimeModelConfiguration,
 } from "../server/integrations/openai-step";
 export async function prepareEvaluation(id: string, evaluationId?: string) {
