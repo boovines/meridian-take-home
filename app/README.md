@@ -75,6 +75,7 @@ The first command bundles workflows without credentials and runs in CI. The last
 | `src/components/evaluations/use-evaluation-data.ts` | Workspace loading, polling and historical suite/result projections; the panel owns selection and mutation actions |
 | `src/components/evaluations/evaluation-results-header.tsx` | Evaluation history controls and result summary |
 | `src/app/globals.css`, `src/styles` | Ordered global style imports, shared foundations and reduced-motion policy; canvas/review styles live with their features |
+| `src/components/process-context`, `src/domain/process-context.ts`, `src/server/process-context` | Optional DeepShelves JSON import, selected evidence preview, bounded contracts and revision-checked persistence; review consumes observations, freeze retains them outside the executable graph |
 | `src/server/canvas` | Targeted, revision-checked canvas mutations |
 | `src/server/workflows/store.ts` | Shared workflow locking and graph reads |
 | `src/server/scoping`, `src/domain/scoping.ts` | Persistent process notes, scoping operations, validated previews, atomic initial graph application and review obligations |

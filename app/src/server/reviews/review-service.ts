@@ -41,6 +41,9 @@ export const reviewSettings = {
 function semantic(board: Board) {
   return {
     goal: board.workflow.desired_outcome,
+    ...(board.raw_process_data
+      ? { raw_process_data: board.raw_process_data }
+      : {}),
     nodes: board.nodes.map(
       ({
         id,
