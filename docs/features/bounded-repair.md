@@ -96,7 +96,7 @@ If generated code cannot compile, the evaluation retains the compiler's file, li
 - Needs attention: the three-attempt/time limit, a scope/method decision, or newly discovered non-implementation blocker stops autonomous work.
 - Failed/cancelled: the service retains attempted source and finished results, closes unfinished projections and fences late writes. The engineer can inspect and explicitly start another session when eligible.
 
-A suite correction creates a new version, requests active repair cancellation, preserves old expectations/results, and requires a fresh baseline evaluation before another session. No automatic method changes, test rewriting, post-freeze process revisions, IDE edit import, outbound delivery or unlimited retry is implemented.
+A suite correction creates a new version, requests active repair cancellation, preserves old expectations/results, and requires a fresh baseline evaluation before another session. Autonomous repair cannot change approved methods, trusted tests or the frozen process. Customer-controlled [process revisions](review-handoff.md) are a separate review and handoff flow. IDE edit import, outbound delivery and unlimited retry remain outside scope.
 
 Verification evidence and the live command are recorded above. The current demo has no production load test or unbounded history pagination.
 
@@ -156,7 +156,7 @@ Clarification durability is also exercised against a local Temporal server: an o
 
 ### Live run-recovery acceptance — October 8, 2026
 
-The combined open PR stack (#58 → #59) was exercised through the in-app Agent → Run workflow screen against Supabase, Temporal Cloud, OpenAI and Vercel Sandbox. Manual run `e440355b-aaca-48f4-be83-c5e86b4509d2` for MMAU1407799 failed its extraction evidence contract and automatically created recovery session `6de8d277-8384-49e5-8512-f63ed7961051`.
+The combined PR stack (#58 → #59, subsequently merged October 9) was exercised through the in-app Agent → Run workflow screen against Supabase, Temporal Cloud, OpenAI and Vercel Sandbox. Manual run `e440355b-aaca-48f4-be83-c5e86b4509d2` for MMAU1407799 failed its extraction evidence contract and automatically created recovery session `6de8d277-8384-49e5-8512-f63ed7961051`.
 
 Attempt 1 repaired object-valued critical paths in both readers. Its rerun cleared extraction but crashed because a negative business result used `validation_status: "fail"` instead of the consumer's expected execution-status values. The candidate was retained as rejected. Attempt 2 reused those fixes, clarified the validation output contract, and normalized compatible output fields without turning failed batches into successful ones. Both candidates passed their isolated syntax checks. The original failure, approved plan, captured input, host evidence validation and earlier versions remained intact; no application code contains a shipment-specific matching fix.
 

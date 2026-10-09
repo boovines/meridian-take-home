@@ -4,23 +4,66 @@ Next.js/React application for the Meridian take-home: process whiteboards, AI re
 
 ## Run locally
 
-Use Node 24 and npm. From this directory:
+Use Node 24 (the version used by CI and generated Sandbox projects) and npm. Run commands below from `app/`. Install dependencies once with `npm ci`. Choose a fixture preview or live services; do not combine their database modes.
+
+### Local fixture preview (no service credentials)
 
 ```sh
 npm ci
-cp .env.example .env.local # only if you do not already have this file
-npm run db:check
-npm run db:migrate
+MERIDIAN_DATABASE=local \
+MERIDIAN_LOCAL_DEMO=true \
+MERIDIAN_REVIEW_PROVIDER=fixture \
+MERIDIAN_SCOPING_PROVIDER=fixture \
+MERIDIAN_ENGINEERING_PROVIDER=fixture \
 npm run dev
 ```
 
-The app opens at `http://127.0.0.1:3000`. Set the Supabase database fields in `.env.local`, including the password. For verified TLS, download the project CA from Supabase's Database Settings and set `SUPABASE_DB_SSL_ROOT_CERT` to its absolute file path. Alternatively set `DATABASE_URL` with `sslmode=verify-full` and `sslrootcert`. Never commit credentials. Migrations run explicitly for remote databases.
+Open `http://127.0.0.1:3000`. This mode automatically migrates an ignored PGlite database in `../.runtime/database`, stores artifacts in `../.runtime/artifacts`, and uses deterministic fixtures for scoping, review, generation, evaluation and repair. Do not start the Temporal worker or run `db:check`/`db:migrate` for this mode; those database commands require a configured PostgreSQL connection. Gmail capture and selected-email orchestration still require live services. Fixture results are labeled and are not AI-quality, Sandbox or Temporal evidence.
 
-Each web or worker process opens at most four PostgreSQL connections. Transactions apply server-side limits of ten seconds per statement and thirty seconds idle, so a disconnected process cannot indefinitely hold a workflow lock. Broken connections are discarded, and a failed rollback preserves the original operation error. Supabase's transaction pooler can be selected with `SUPABASE_DB_PORT=6543`; `DATABASE_URL`, when supplied, takes precedence. Pool sizing still needs to account for the number of deployed processes.
+`MERIDIAN_DATABASE=local` alone only selects local storage; it does not substitute model providers. The full flag combination above is required. `LOCAL_DATABASE_PATH` and `LOCAL_ARTIFACT_PATH` can isolate another local preview. Use only one app process per PGlite directory.
 
-To develop without a remote database, use `MERIDIAN_DATABASE=local npm run dev`. This stores a PGlite database in the ignored `../.runtime/database` directory and applies migrations automatically. This is a development fallback; it is not the production datastore. The service tests run against PostgreSQL in GitHub Actions.
+Evidence: [database selection/migration](src/server/database.ts), [review dispatch](src/server/reviews/dispatch.ts), [scoping dispatch](src/server/scoping/dispatch.ts), [engineering dispatch](src/server/engineering/dispatch.ts), and [browser fixture configuration](playwright.config.ts).
 
-The current server binds to localhost. Do not expose a hosted deployment without access protection; organization permissions are outside demo scope, but the demo must not expose shipment data or unrestricted writes publicly. Supabase REST access to the app tables is denied by RLS; all app queries use the server connection.
+### Live services
+
+Create `.env.local` from the example only if it does not already exist, then fill in the required settings **before** running checks:
+
+```sh
+test -f .env.local || cp .env.example .env.local
+```
+
+| Service | Configuration and purpose |
+| --- | --- |
+| Supabase Postgres | `DATABASE_URL`, or `SUPABASE_DB_HOST`, `SUPABASE_DB_USER`, `SUPABASE_DB_PASSWORD`, optional port/name and `SUPABASE_DB_SSL_ROOT_CERT`. Used by both web and worker. |
+| OpenAI | `OPENAI_API_KEY`; model overrides are `OPENAI_REVIEW_MODEL`, `OPENAI_SCOPING_MODEL`, `OPENAI_ENGINEERING_MODEL`, `OPENAI_RUNTIME_MODEL`. The example defaults to `gpt-5.4-mini`; recorded results do not transfer between models. |
+| Temporal Cloud | `TEMPORAL_ADDRESS`, `TEMPORAL_NAMESPACE`, `TEMPORAL_API_KEY`, `TEMPORAL_TLS=true`, and a matching `TEMPORAL_TASK_QUEUE` in both processes. The worker executes durable work. |
+| Composio Gmail | `COMPOSIO_API_KEY` and `COMPOSIO_GMAIL_CONNECTED_ACCOUNT_ID` for an existing read-only Gmail connection. Needed for real email capture, not canvas editing. |
+| Vercel Sandbox | Link the dedicated Vercel project and configure valid Sandbox credentials through the SDK's OIDC flow. See [Sandbox setup](#sandbox-access). Needed to validate and run generated code. |
+| Artifacts | `SUPABASE_URL`, `SUPABASE_SECRET_KEY` (or legacy `SUPABASE_SERVICE_ROLE_KEY`) and `SUPABASE_ARTIFACT_BUCKET` for private storage. Local development can instead share an absolute `LOCAL_ARTIFACT_PATH` between web and worker. Production requires private Supabase storage. |
+| Optional inference guard | Configure both `INFERENCE_BUDGET_USD` and an absolute `INFERENCE_BUDGET_LEDGER`; see [spending guard](#inference-spending-guard) before enabling it with the default models. |
+
+Clear the `MERIDIAN_*` fixture/local flags for live use. `DATABASE_URL` takes precedence over separate Supabase fields. Download the project CA from Supabase Database Settings and set `SUPABASE_DB_SSL_ROOT_CERT` to its absolute path. For a URL, specify `sslmode=verify-full` and `sslrootcert`; do not disable TLS verification. The transaction pooler can use `SUPABASE_DB_PORT=6543` with its pooler host/user. These settings are parsed by [database.ts](src/server/database.ts); Temporal settings are parsed by [temporal-config.ts](src/server/integrations/temporal-config.ts).
+
+```sh
+npm run db:check
+npm run db:migrate
+# When using Supabase artifact storage:
+npm run storage:setup
+# Terminal 1:
+npm run dev
+```
+
+In a second terminal, from the **same `app/` directory** with the same database, artifact location and provider configuration:
+
+```sh
+npm run worker
+```
+
+Open `http://127.0.0.1:3000`. For another port, use `npm run dev -- --port 3100`. Apply **all** migrations through `db:migrate` rather than selecting a historical migration number. Let active operations finish or cancel them through the app before replacing a worker. Different checkouts must not accidentally consume the same task queue with different code or point historical local artifacts at a new directory.
+
+`db:check` only checks connectivity; `db:migrate` changes the selected database and `storage:setup` creates/verifies the private bucket. For a local production build, use `npm run build` then `npm run start` with the same live configuration. Vercel can host the web/API, but the Temporal worker needs a separate persistent Node process. Hosting requires shared private artifacts and access protection; role/team permissions are not implemented. The [storage adapter](src/server/artifacts/storage.ts) enforces private storage in production; RLS denies direct anonymous table access.
+
+Each web or worker process opens at most four PostgreSQL connections. Transactions apply ten-second statement and thirty-second idle limits. Account for all deployed processes when sizing the pool. These limits protect database locks; they do not bound model execution time.
 
 ## Verify changes
 
@@ -29,6 +72,7 @@ npm run docs:check
 npm run lint
 npm run typecheck
 npm test
+npm run worker:check
 npm run build
 npx playwright install chromium
 npm run test:browser
@@ -48,7 +92,7 @@ The live design exploration selected Compact workbench: all seven block types ar
 
 ## Review and freeze
 
-Apply migrations, then run `npm run worker` in a second terminal. The web app dispatches review IDs to the configured Temporal task queue; the worker reads the sealed draft from Supabase, calls OpenAI, and publishes validated findings. Keep both processes running for local demos. Vercel may host the web/API, but the long-running Temporal worker needs a separate persistent process.
+For live review, apply all migrations, then run `npm run worker` in a second terminal. The web app dispatches review IDs to the configured Temporal task queue; the worker reads the sealed draft from Supabase, calls OpenAI, and publishes validated findings. Keep both processes running for live demos; the fixture preview does not use a worker. Vercel may host the web/API, but the long-running Temporal worker needs a separate persistent process.
 
 `Review & comments` opens anchored findings, replies, ordinary notes and review history. A missing desired outcome is clarified first. Review locks editing until it completes or is cancelled. Detail suggestions can be applied explicitly; graph changes remain manual. Freeze checks graph structure and requires one completed review and a decision on every finding. The resulting specification stays immutable. An engineer change request can lead to an explicitly opened new draft, with per-block customer approval and a fresh review before the next handoff.
 
@@ -62,7 +106,7 @@ npm run services:check -- --openai --temporal
 npm run review:smoke -- --live
 ```
 
-The first command bundles workflows without credentials and runs in CI. The last two consume live service resources; the smoke command creates a clearly named synthetic workflow in Supabase and performs one bounded OpenAI review through Temporal. Start the worker first. No email is retrieved or sent by these checks.
+The first command bundles workflows without credentials and runs in CI. The OpenAI service check makes a paid probe outside the local inference ledger; the Temporal check only describes the namespace. The smoke command consumes live resources; the smoke command creates a clearly named synthetic workflow in Supabase and performs one bounded OpenAI review through Temporal. Start the worker first. No email is retrieved or sent by these checks.
 
 ## File map
 
@@ -112,9 +156,11 @@ The worker reconciles queued jobs every five seconds using stable Temporal workf
 
 The fixture generator uses `MERIDIAN_ENGINEERING_PROVIDER=fixture` together with the same local-database/local-demo guards as review. Browser tests exercise approval, generation, source download and revision without spending live credits. Fixture validation never claims Sandbox verification.
 
- Set `SUPABASE_SECRET_KEY` (or the legacy `SUPABASE_SERVICE_ROLE_KEY`) for private object storage, then run `npm run storage:setup`. The setup command creates or verifies a private bucket and refuses a public one. Without that key, development uses `../.runtime/artifacts`; production requires Supabase storage. Artifact rows record their storage backend and content hash so changing configuration never redirects an existing artifact to different bytes. When running another checkout against the same database, set `LOCAL_ARTIFACT_PATH` to the original absolute artifact directory for both the web app and worker. Otherwise existing local artifact records still exist but their files cannot be read. A missing file is an operational storage error, not a reason to repair generated business logic.
+Set `SUPABASE_SECRET_KEY` (or the legacy `SUPABASE_SERVICE_ROLE_KEY`) for private object storage, then run `npm run storage:setup`. The setup command creates or verifies a private bucket and refuses a public one. Without that key, development uses `../.runtime/artifacts`; production requires Supabase storage. Artifact rows record their storage backend and content hash so changing configuration never redirects an existing artifact to different bytes. When running another checkout against the same database, set `LOCAL_ARTIFACT_PATH` to the original absolute artifact directory for both the web app and worker. Otherwise existing local artifact records still exist but their files cannot be read. A missing file is an operational storage error, not a reason to repair generated business logic.
 
-For Vercel Sandbox development, link the dedicated project with Vercel CLI and obtain its OIDC token through `vercel env pull`. Preserve other local secrets when refreshing that token. `npm run sandbox:smoke -- --live` creates a 30-second, nonpersistent sandbox with network egress denied, runs a small Node command, and always stops the sandbox. The selected Node image needs an explicit working directory; the adapter uses `/tmp/meridian`. Vercel project metadata stays in ignored `app/.vercel`. No application credentials are passed into the VM.
+### Sandbox access
+
+For Vercel Sandbox development, link the dedicated project with Vercel CLI and obtain its OIDC token through `vercel env pull` into a separate ignored file, then copy the needed token into `.env.local`. Do not overwrite the existing file or its other service settings. The current adapters rely on SDK OIDC discovery and do not pass an explicit access-token/team/project object. Merely setting `VERCEL_TOKEN`, `VERCEL_TEAM_ID` and `VERCEL_PROJECT_ID` does not wire that alternative into this app. See [the adapter](src/server/integrations/sandbox-project.ts); never pass credentials to generated code. `npm run sandbox:smoke -- --live` creates a 30-second, nonpersistent sandbox with network egress denied, runs a small Node command, and always stops the sandbox. The selected Node image needs an explicit working directory; the adapter uses `/tmp/meridian`. Vercel project metadata stays in ignored `app/.vercel`. No application credentials are passed into the VM.
 
 ## Runtime verification
 
@@ -122,7 +168,7 @@ The [runtime guide](../docs/features/workflow-runtime.md) explains routing, huma
 
 ## Evaluation verification
 
-The [evaluation guide](../docs/features/trusted-evaluations.md) describes authoring, verification, suite revisions and the results inspector. Apply migration 008 and restart the worker before evaluating. `npm run evaluation:smoke -- --live` creates a synthetic three-case suite and uses real Temporal child workflows and Vercel Sandbox. It expects one pass, one deliberate assertion failure, and one missing-human-fixture error: a completed, inconclusive evaluation. It does not verify Gmail or shipment accuracy.
+The [evaluation guide](../docs/features/trusted-evaluations.md) describes authoring, verification, suite revisions and the results inspector. Apply all migrations and start a worker running the same application revision before evaluating. `npm run evaluation:smoke -- --live` creates a synthetic three-case suite and uses real Temporal child workflows and Vercel Sandbox. It expects one pass, one deliberate assertion failure, and one missing-human-fixture error: a completed, inconclusive evaluation. It does not verify Gmail or shipment accuracy.
 
 Required CI includes suite locking/revision checks, full result coverage, late-attempt fencing, cancellation, fixed input ownership, and a browser journey that corrects expectations in a new suite while preserving earlier results. The guarded local fixture executor uses the engineering fixture flags; it never executes source and is labeled in the results view. Full live suites have a four-hour deadline in addition to per-case runtime limits. Expected values remain outside generated code's sandbox.
 
@@ -144,9 +190,11 @@ npm run gmail:smoke -- --live --message <message-id> --shipment <reference> --pd
 
 This optional live check creates a workflow, captures one supplied message, and asks OpenAI to read the chosen PDF. It uses real mailbox data and credits; keep its output and captured artifacts private. Required CI uses sanitized fixtures for capture completeness, immutable inputs, run ownership, safe attachment downloads, and approved document interpretation. No live credentials are needed by CI.
 
-Evidence-aware document extraction uses the pure `domain/extraction` contract, `server/runtime/extraction` for PDF page bounds, and provider code in `server/integrations`. Isolated evaluation cases can use the same immutable document bundles as workflow runs (migration 011). Run the extraction/evaluation/Gmail fixture tests when changing this boundary.
+Evidence-aware document extraction uses the pure `domain/extraction` contract, `server/runtime/extraction` for PDF page bounds, and provider code in `server/integrations`. Isolated evaluation cases can use the same immutable document bundles as workflow runs. Run the extraction/evaluation/Gmail fixture tests when changing this boundary.
 
-For bounded paid verification, set `INFERENCE_BUDGET_USD` and an absolute `INFERENCE_BUDGET_LEDGER` path in ignored local storage. All OpenAI adapters share this ledger across local app/worker processes. The guard currently supports `gpt-5.4` or its `gpt-5.4-2026-03-05` snapshot; configure review, engineering and runtime models consistently. This guard supports processes on one machine sharing a local filesystem; it is not a distributed or provider-enforced billing limit. Budgeted calls explicitly request standard service tier; response model, tier and usage must match the supported pricing before a reservation is settled. Reservations are flushed before dispatch and uncertain charges stay reserved. A stale `.lock` after a crashed writer requires operator inspection; the guard fails closed rather than discarding unknown spend. Keep the ledger when restarting an experiment. An invalid ledger or mismatched ceiling blocks new calls. Token preflight failures stop before inference; unknown request outcomes retain their reservations. Rates are recorded in `openai-client.ts` and must be checked before adding models. Pricing references: [GPT-5.4](https://developers.openai.com/api/docs/models/gpt-5.4) and [service tiers](https://developers.openai.com/api/reference/typescript/resources/responses).
+## Inference spending guard
+
+For bounded paid verification, set `INFERENCE_BUDGET_USD` and an absolute `INFERENCE_BUDGET_LEDGER` path in ignored local storage. Application OpenAI adapters share this ledger across local app/worker processes. The standalone `services:check -- --openai` probe uses the provider SDK directly and is not covered by this ledger. The guard supports `gpt-5.4`, `gpt-5.4-mini`, and their explicitly priced snapshots in `openai-client.ts`; configure review, scoping, engineering and runtime models to a supported name in both processes. The `.env.example` mini-model defaults are supported; unknown models or service tiers fail closed. This guard supports processes on one machine sharing a local filesystem; it is not a distributed or provider-enforced billing limit. Budgeted calls explicitly request standard service tier; response model, tier and usage must match the supported pricing before a reservation is settled. Reservations are flushed before dispatch and uncertain charges stay reserved. A stale `.lock` after a crashed writer requires operator inspection; the guard fails closed rather than discarding unknown spend. Keep the ledger when restarting an experiment. An invalid ledger or mismatched ceiling blocks new calls. Token preflight failures stop before inference; unknown request outcomes retain their reservations. Rates are recorded in `openai-client.ts` and must be checked before adding models. Pricing references: [GPT-5.4](https://developers.openai.com/api/docs/models/gpt-5.4) and [service tiers](https://developers.openai.com/api/reference/typescript/resources/responses).
 
 `server/integrations/openai-preflight.ts` owns bounded read-only token-count recovery: at most three attempts for transient failures, with a 35-second per-attempt timeout inside the shared 120-second deadline. It never retries inference or skips a budget reservation. The policy is recorded in evaluation settings; restart idle workers after changing it, and start a new measurement sequence rather than combining results across policies.
 

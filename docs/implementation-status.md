@@ -8,9 +8,17 @@ Updated as features land. An unchecked item is not complete, even if supporting 
 
 Historical provider experiments are retained below; alternate-provider integration is outside the supported implementation. At that earlier checkpoint, the partial document-only comparison completed four Llama calls (46/46 selected checks) and eight OpenAI calls (92/92). It is incomplete and establishes neither a winner nor full workflow accuracy. The live returns journey completed three consecutive six-case passes with recorded configuration; that narrower text-input result does not establish PDF reliability.
 
+## Documentation and setup verification — October 9
+
+Reconciled README/setup and current contracts against merged main `0b0b72e` and the original Notion assignment. The root README covers run instructions, primitive rationale, comment/spec storage, graph-versus-code tradeoffs and future priorities. Corrected superseded post-freeze restrictions, pending-feature labels, schema counts and the frozen-spec relationship diagram. Historical measurements retain their original scope; this check establishes no new live accuracy result.
+
+In a separate clean worktree, `npm ci --no-audit --no-fund` completed, and the documented fixture flags started a fresh PGlite-backed app on port 3112. Home and workflow listing returned HTTP 200; creating a synthetic workflow returned 201 and the subsequent list contained it. All migrations applied through the local adapter. No live credentials, provider calls or Temporal worker were used. The temporary server was stopped afterward.
+
+`npm run docs:check` checked all 33 Markdown documents; changed-document heading links were also checked. The graph, process-revision and scoping test files passed all 22 tests. `git diff --check` passed. Live-service setup was traced to adapters and scripts, not re-executed against external accounts. The environment example now omits unused credential fields and warns that its mini-model defaults are incompatible with the optional GPT-5.4-only local spending guard.
+
 ## Run recovery and engineer clarification — October 8
 
-The open stack [#58](https://github.com/boovines/meridian-take-home/pull/58) → [#59](https://github.com/boovines/meridian-take-home/pull/59) adds automatic recovery of failed manual runs and durable engineer questions. MMAU1407799 completed on repair attempt 2 after fixing extraction evidence paths and a validation output-contract mismatch. Its accepted v3 is the visibly unverified manual default; a failed batch remains in the report. The session cost $0.9220 and used the original captured input and approved plan. No locked suite exists on this workflow, so this does not establish business correctness or change the earlier repeatability evidence. Clarification persistence, reload, scope, source reinspection, cancellation and worker restart are fixture-tested. See [the full acceptance record](features/bounded-repair.md#live-run-recovery-acceptance--october-8-2026).
+The stack [#58](https://github.com/boovines/meridian-take-home/pull/58) → [#59](https://github.com/boovines/meridian-take-home/pull/59), merged October 9, adds automatic recovery of failed manual runs and durable engineer questions. MMAU1407799 completed on repair attempt 2 after fixing extraction evidence paths and a validation output-contract mismatch. Its accepted v3 is the visibly unverified manual default; a failed batch remains in the report. The session cost $0.9220 and used the original captured input and approved plan. No locked suite exists on this workflow, so this does not establish business correctness or change the earlier repeatability evidence. Clarification persistence, reload, scope, source reinspection, cancellation and worker restart are fixture-tested. See [the full acceptance record](features/bounded-repair.md#live-run-recovery-acceptance--october-8-2026).
 
 ## Process revisions and grouped execution — October 9
 
@@ -39,13 +47,13 @@ The user authorized raising the operator experiment ceiling from $5 to $10; all 
 
 The original assignment and updated agent notes were reread in Chrome on October 7. They require React, Temporal, Composio, Supabase; anchored AI comments; at least two review rounds in the demo; immutable spec; a reusable code-first agent scaffold; real generated code; fixed-output evaluations; and repair using the supplied inbox as the primary dataset.
 
-The [archived interview decisions](archive/interviews/README.md) and revised PRDs refine that scope. Explicit user cuts take precedence: manually select existing Gmail input; preview reports without sending; no post-freeze edits; no IDE-import round trip; no role/team permissions. Preserve open/answered/rejected/resolved comment labels in the UI while using the documented storage dispositions. Batch/CoA failures and invoice required-field failures are separate totals. Deduplicate invoices by invoice number and batches by batch number within each shipment.
+The [archived interview decisions](archive/interviews/README.md) and revised PRDs refine that scope. Explicit user cuts take precedence: manually select existing Gmail input; preview reports without sending; explicit customer-controlled revisions after freeze (superseding the initial no-edit cut); no IDE-import round trip; no role/team permissions. Preserve open/answered/rejected/resolved comment labels in the UI while using the documented storage dispositions. Batch/CoA failures and invoice required-field failures are separate totals. Deduplicate invoices by invoice number and batches by batch number within each shipment.
 
 ## Selected services and execution ownership
 
 - React/Next.js web app; Supabase Postgres and object storage.
 - Temporal Cloud owns durable orchestration, retries, timers, human waits, and fork/join coordination.
-- Vercel Sandbox isolates generated code. Supabase runtime rows are history/progress projections, not a competing scheduler; omit custom database worker leases.
+- Vercel Sandbox isolates generated code. Supabase runtime rows are history/progress projections, not a competing scheduler; grouped capacity leases bound concurrency without replacing Temporal scheduling.
 - OpenAI supplies AI review and generation/repair; Composio supplies Gmail retrieval.
 - Local/CI fixtures substitute external services explicitly. Passing fixture tests never counts as verification of live integration.
 - A durable local PGlite database may support development before direct Supabase credentials are ready; production requires a configured Postgres connection. The same migrations and service tests must also pass against PostgreSQL in CI.

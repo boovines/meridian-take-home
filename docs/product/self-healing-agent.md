@@ -62,7 +62,7 @@ A durable background executor handles generation, evaluation, repair, and runs. 
 
 Ownership constraints, indexed parent lookups, idempotent scheduling, and short atomic mutations protect history and prevent duplicate work. Large bytes stay outside rows. Separate records are justified by independent lifecycles; immutable manifests and bounded per-step attempt details can remain JSON. Project hashes come from immutable artifacts. The demo uses the host’s fixed JSON-path grader with equality and record-membership checks rather than custom evaluator artifacts. Case edits use revision checks, clear that case’s verification, and advance the suite revision. Per-node visit numbers address human-response fixtures independently of parallel scheduling order. Executable fields, constraints and indexes live in `app/migrations/005_engineering.sql` and migrations 007–013. The earlier engineering/runtime schema specifications preserve planning context.
 
-The [data-model decision audit](../architecture/data-model.md) justifies each table and the alternatives. Temporal owns parallel coordination and recovery. The implemented schema omits separate SQL branch-coordination tables and worker leases.
+The [data-model decision audit](../architecture/data-model.md) justifies each table and the alternatives. Temporal owns parallel coordination and recovery. The implemented schema omits separate SQL branch-coordination tables. Grouped activity leases bound capacity while Temporal remains the scheduler.
 
 ## API Endpoints
 
@@ -87,7 +87,7 @@ The [architecture](../architecture/overview.md) and [verification plan](../verif
 
 ## Current implementation checkpoint
 
-The run-recovery extension below is implemented in the open PR stack and has completed live execution-recovery acceptance. It changes manual-run recovery only; evaluation-driven repair still requires an explicit action.
+The run-recovery extension below is implemented in the repository and has completed live execution-recovery acceptance. It changes manual-run recovery only; evaluation-driven repair still requires an explicit action.
 
 The [generation](../features/engineer-generation.md), [runtime](../features/workflow-runtime.md), and [evaluation](../features/trusted-evaluations.md) guides describe implemented behavior and routes. The evaluation screen supports full-workflow and JSON-output step checks, explicit verification, sealed suite revisions, full-suite execution, comparison details and visit traces. Arbitrary unit-test code and broad OCR benchmarks remain deferred. Evaluation starts explicitly. Bounded repair is implemented; automatic first evaluation, arbitrary test-code execution and broad OCR benchmarking remain deferred.
 
@@ -97,7 +97,7 @@ Repair is now implemented with a three-attempt limit and a recorded two-hour ses
 
 ## Proposed extension: recovery from a failed manual run
 
-Status: implemented in the open recovery/clarification stack; fixture and live recovery verification are recorded in the feature contract. This section supersedes “repair always requires an explicit action” for future manual-run failures once shipped. Evaluation repair and repeated confirmation remain explicit actions.
+Status: implemented; fixture and live recovery verification are recorded in the [repair contract](../features/bounded-repair.md). This section supersedes “repair always requires an explicit action” for eligible manual-run failures. Evaluation repair and repeated confirmation remain explicit actions.
 
 ### User experience and completion
 
@@ -145,7 +145,7 @@ Fixture-based verification must cover a repairable extraction-contract defect; a
 
 ## Proposed extension: selected emails to multiple shipments
 
-Status: platform UI, API and worker implemented in the grouped-execution branch with fixture coverage; expert approval and live v2 verification remain pending. This extends the single-shipment demo through an explicitly approved [process revision](whiteboard.md#proposed-extension-engineer-requested-process-revisions). It does not authorize the repair agent to change the frozen process itself.
+Status: platform UI, API and worker are implemented with fixture coverage. The [grouped-execution contract](../features/grouped-execution.md#verification-and-remaining-work) records completed expert approval and v2 handoff, while live grouping and combined-report acceptance remain outstanding. This extends the single-shipment demo through an explicitly approved [process revision](whiteboard.md#engineer-requested-process-revisions). It does not authorize the repair agent to change the frozen process itself.
 
 The engineer selects the existing emails to process from Gmail, then starts the operation. Selection is the only routine manual preparation: identify relevant invoice/pre-alert messages, group related emails and attachments by shipment, execute each shipment and assemble the combined summary automatically. Do not silently scan the entire mailbox or fetch unselected related messages. Provide a bounded, explicit selection and show its size before execution; apply concurrency and cost limits rather than unbounded fan-out.
 

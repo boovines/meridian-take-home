@@ -52,7 +52,7 @@ React and TypeScript with Next.js provide the canvas and API. Supabase/Postgres 
 
 `review_runs` records status, model/settings, and the exact content analyzed. `discussion_threads` distinguishes findings, notes, and clarification threads, with disposition and proposed detail edits. `discussion_messages` preserves replies and decision events using same-thread parent IDs. `thread_anchors` supports multiple targets; workflow-level findings need no artificial node. `frozen_specs` stores the complete immutable graph and review evidence consumed by engineering.
 
-Separate rows allow targeted edits and indexed board/edge lookup. Immutable frozen JSON is appropriate because handoff consumes the whole definition. Short transactions coordinate review, edits, and freeze; per-record revisions reject stale edits, while semantic revisions exclude layout-only movement. No LLM call holds a database transaction open. Executable fields, constraints and indexes are in migrations 001–004; the canvas/review schema specifications preserve planning context.
+Separate rows allow targeted edits and indexed board/edge lookup. Immutable frozen JSON is appropriate because handoff consumes the whole definition. Short transactions coordinate review, edits, and freeze; per-record revisions reject stale edits, while semantic revisions exclude layout-only movement. No LLM call holds a database transaction open. Executable fields, constraints and indexes are in the complete [migration directory](../../app/migrations), including revision boundaries in migration 016. Archived schema specifications preserve planning context.
 
 ## API Endpoints
 
@@ -68,13 +68,13 @@ Implemented API contracts: Mutations validate workflow state and expected revisi
 | `GET /api/workflows/:id/reviews`; `POST /api/workflows/:id/reviews/:reviewId/goal` or `/cancel` | Inspect reviews, answer outcome clarification or cancel. |
 | `POST /api/workflows/:id/threads`; `POST /api/workflows/:id/threads/:threadId/messages` | Create a customer note or append a reply. |
 | `POST /api/workflows/:id/threads/:threadId/actions` | Resolve, reject, reopen or apply an approved detail edit with revision checks. |
-| `GET/POST /api/workflows/:id/freeze` | Inspect freeze readiness or validate and freeze once. The engineer workspace reads the saved immutable handoff. |
+| `GET/POST /api/workflows/:id/freeze` | Inspect freeze readiness or validate and freeze the current process revision. The engineer workspace reads the saved immutable handoff. |
 
 Stale saves return a conflict with the current revision. Review results and freeze state survive refresh. The [architecture](../architecture/overview.md), [data-model decision audit](../architecture/data-model.md), [verification plan](../verification.md), and [future scope](../../README.md#future-work-outside-demo-scope) cover shared design and deferred work. The implemented behavior and failure states are detailed in the [feature contracts](../README.md#implemented-features).
 
-## Proposed extension: engineer-requested process revisions
+## Engineer-requested process revisions
 
-Status: implemented in the process-revisions branch; live deployment and expert approval remain pending. This extension replaces the earlier exclusion of post-handoff revisions. It does not make frozen specifications mutable or permit autonomous repair to change business rules.
+Status: implemented; see the [review/handoff contract](../features/review-handoff.md), [migration 016](../../app/migrations/016_process_revisions.sql) and [persistence tests](../../app/tests/process-revisions.test.ts). Deployment and live acceptance evidence are recorded separately in the [evidence log](../implementation-status.md). This extension replaces the earlier exclusion of post-handoff revisions. It does not make frozen specifications mutable or permit autonomous repair to change business rules.
 
 ### Request and approve changes
 
