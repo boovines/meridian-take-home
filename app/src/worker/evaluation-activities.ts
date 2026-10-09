@@ -1,4 +1,5 @@
 import { finishEvaluationWithRepair } from "../server/evaluations/automatic-repair";
+import { evaluationCaseConcurrency } from "../server/evaluations/configuration";
 import { startRepairWorkflow } from "../server/integrations/temporal";
 import { heartbeat, cancellationSignal } from "@temporalio/activity";
 import { getDatabase } from "../server/database";
@@ -24,6 +25,7 @@ export async function prepareEvaluation(id: string, evaluationId?: string) {
         evaluation_id: context.evaluation.id,
         deadline_at: context.deadline_at,
         result_ids: context.results.map((r) => r.id),
+        case_concurrency: evaluationCaseConcurrency(context.evaluation.execution_configuration),
       }
     : null;
 }

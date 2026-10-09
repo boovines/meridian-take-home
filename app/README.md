@@ -156,3 +156,6 @@ On an empty draft, open the circular note button above the canvas zoom controls.
 Apply migrations through `npm run db:migrate` and run the existing Temporal worker for durable live scoping. `OPENAI_SCOPING_MODEL` overrides the model (falls back to `OPENAI_REVIEW_MODEL`, then `gpt-5.4-mini`). For isolated fixture demos only, set `MERIDIAN_SCOPING_PROVIDER=fixture`, `MERIDIAN_DATABASE=local`, and `MERIDIAN_LOCAL_DEMO=true` together. This fixed scenario is not live process synthesis.
 
 `npm run scoping:smoke` explicitly calls the live model with a sanitized request and an ephemeral database. It validates the interview, generated graph, human approval and review gate; it never reads a mailbox or applies to a saved workflow. Configure `OPENAI_API_KEY` and estimate inference spend before running it. The live check is separate from required fixture-based CI.
+
+
+Evaluation scheduling uses `domain/runtime-policy.ts`: two concurrent cases per new suite evaluation and four activity slots per standard worker. Existing runs keep their recorded policy; see [trusted evaluations](../docs/features/trusted-evaluations.md#bounded-case-concurrency). Deploy web and workers consistently for new operations, and let existing workers drain their running operations before retiring them.

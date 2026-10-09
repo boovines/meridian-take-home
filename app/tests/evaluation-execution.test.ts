@@ -581,3 +581,20 @@ it("records compiler failure independently of evaluation completion and later ve
   expect((await versions.inspect(f.w.id, f.version.id)).build_check_status).toBe("passed");
   await evals.finish(next.job.id, undefined, true);
 });
+
+it("records parallel scheduling for new evaluations and preserves legacy scheduling on resume", async () => {
+  const { evaluationCaseConcurrency, evaluationConfiguration } = await import("../src/server/evaluations/configuration");
+  const first = await prepared();
+  expect(evaluationCaseConcurrency(first.evaluation.execution_configuration)).toBe(2);
+  await evals.finish(first.job.id, undefined, true);
+  const next = await evals.start(first.f.w.id, {request_key:randomUUID(),implementation_version_id:first.f.version.id,suite_version_id:first.suite.id});
+  const legacy = evaluationConfiguration() as Record<string, import("../src/domain/runtime").Json>;
+  delete legacy.scheduling;
+  await db.query("UPDATE evaluation_runs SET execution_configuration=$2 WHERE id=$1",[next.evaluation.id,legacy]);
+  const resumed = (await evals.prepare(next.job.id))!;
+  expect(resumed.evaluation.execution_configuration).toEqual(legacy);
+  expect(evaluationCaseConcurrency(resumed.evaluation.execution_configuration)).toBe(1);
+  await evals.beginCase(resumed.results[0].id);
+  await evals.finish(next.job.id, undefined, true);
+  expect(() => evaluationCaseConcurrency({...legacy,scheduling:{version:1,case_concurrency:100}})).toThrow("Execution settings changed");
+});
