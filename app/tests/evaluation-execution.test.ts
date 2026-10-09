@@ -723,3 +723,14 @@ it("carries a real extraction failure and provider stages through saved audit in
   expect(prompt.locked_cases[0].assertions[0].expected).toBe("Example Ltd");
   expect(context.results[0]).toMatchObject({failure_category:"implementation",failure_code:"EXTRACTION_EVIDENCE_INVALID"});
 });
+
+it("rejects continuation when shared extraction instructions differ or were not recorded", async () => {
+  const { evaluationConfiguration, assertEvaluationConfiguration } = await import("../src/server/evaluations/configuration");
+  const current = evaluationConfiguration();
+  expect(() => assertEvaluationConfiguration(current)).not.toThrow();
+  const recorded = JSON.parse(JSON.stringify(current));
+  recorded.extraction.instructions = "Earlier extraction contract";
+  expect(() => assertEvaluationConfiguration(recorded)).toThrow("Execution settings changed");
+  delete recorded.extraction.instructions;
+  expect(() => assertEvaluationConfiguration(recorded)).toThrow("Execution settings changed");
+});

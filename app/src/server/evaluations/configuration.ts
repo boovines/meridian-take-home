@@ -1,4 +1,4 @@
-import { EXTRACTION_BATCH_POLICY } from "../../domain/extraction";
+import { EXTRACTION_BATCH_POLICY, extractionInstructions } from "../../domain/extraction";
 import { EVALUATION_RECOVERY_POLICY } from "../../domain/evaluation-recovery";
 import { isDeepStrictEqual } from "node:util";
 import { runtimeModelConfiguration } from "../integrations/openai-step";
@@ -16,7 +16,7 @@ export function evaluationConfiguration(): Json {
     deadlines: { ...RUNTIME_DEADLINE_POLICY },
     case_recovery: JSON.parse(JSON.stringify(EVALUATION_RECOVERY_POLICY)),
     runtime: runtimeModelConfiguration(),
-    extraction: { provider: "openai", batching: { ...EXTRACTION_BATCH_POLICY } },
+    extraction: { provider: "openai", instructions: extractionInstructions, batching: { ...EXTRACTION_BATCH_POLICY } },
     limits: { ...DEMO_LIMITS },
     activity_heartbeat: { ...RUNTIME_HEARTBEAT_POLICY },
     scheduling: { ...EVALUATION_SCHEDULING_POLICY },
