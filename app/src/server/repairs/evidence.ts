@@ -69,7 +69,7 @@ function preview(value: unknown, limit: number) {
 }
 
 // Group repeated ownership/visit metadata once; retain every allowed event ID.
-// Payloads and timing summaries remain in the immutable audit store and UI.
+// Bounded extraction diagnostics accompany the catalogue; full payloads and timing stay in the immutable audit store.
 function auditCatalogue(rows: Record<string, unknown>[]) {
   const groups = new Map<
     string,
@@ -79,7 +79,7 @@ function auditCatalogue(rows: Record<string, unknown>[]) {
       step_execution_id: unknown;
       case_result_id: unknown;
       attempt_token: unknown;
-      events: { id: unknown; kind: unknown; sequence: unknown }[];
+      events: { id: unknown; kind: unknown; sequence: unknown; diagnostic?: unknown }[];
     }
   >();
   for (const row of rows) {
@@ -102,7 +102,10 @@ function auditCatalogue(rows: Record<string, unknown>[]) {
       };
       groups.set(key, group);
     }
-    group.events.push({ id: row.id, kind: row.kind, sequence: row.sequence });
+    const summary = row.summary as {batch_index?: number; evidence_issues?: unknown[]; evidence_issues_omitted?: number} | undefined;
+    const diagnostic = summary && (summary.batch_index !== undefined || summary.evidence_issues?.length)
+      ? {batch_index: summary.batch_index, evidence_issues: summary.evidence_issues, evidence_issues_omitted: summary.evidence_issues_omitted} : undefined;
+    group.events.push({ id: row.id, kind: row.kind, sequence: row.sequence, ...(diagnostic ? { diagnostic } : {}) });
   }
   return {
     included: rows.length,

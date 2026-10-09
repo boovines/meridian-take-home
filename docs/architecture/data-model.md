@@ -302,3 +302,7 @@ Migration 013 adds `evaluation_runs.execution_configuration`, captured once befo
 ### Evaluation infrastructure recovery (migration 016)
 
 `evaluation_case_recoveries` stores one immutable failure record per case result, including its failed workflow run or isolated invocation token. `recovery_count` and `recovery_pending` persist the bounded handoff so delivery retries cannot reset it. Workflow runs are unique by case result and `evaluation_attempt`, replacing the former one-run-per-result constraint. A case retains one authoritative graded result; execution attempts retain distinct trace histories. This avoids rewriting a failed run or duplicating unaffected test cases just to recover a transient provider failure.
+
+### Batched extraction audit capacity (migration 017)
+
+The audit sequence bound increases from 6 to 13: one initial module result, up to five ordered request/response pairs, one postprocessed result, and a possible failure. Events retain the same immutable artifact ownership and invocation fencing; batch indexes live in bounded summary metadata. No business-specific table or duplicated extraction ownership is introduced.

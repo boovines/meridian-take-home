@@ -83,3 +83,9 @@ The host checks schema conformance, field coverage, normalized-value consistency
 The first provider uses the existing OpenAI document interpreter. Existing implementations keep their earlier reasoning contract until regenerated or repaired to request extraction; this addition does not retroactively improve historical versions. Automatic reinspection and alternate-provider comparison are not part of this checkpoint.
 
 Extraction output schemas must use synchronous validation. Asynchronous schemas are rejected before a provider call, alongside references and regular expressions, so a validation Promise cannot bypass the output contract.
+
+## Bounded document batches
+
+An approved Agent module can return `extract_batch` with one to five ordinary `extract` requests. Each request retains the existing 20-document/20-MB bounds and evidence validation. Requests execute sequentially under the original step deadline and inference spending guard. The host records each request and response with a zero-based `batch_index` (migration 017 allows up to 13 audit events per invocation). No model can choose additional requests or alter the frozen graph.
+
+After every batch validates, the module receives `tool_result.batches` and `extraction_evidence.batches` in request order. Generated code owns any business-specific merge, deduplication and evidence-path remapping. Combined data/evidence are limited to 400 KB and final step output remains limited to 128 KB. A failed batch stops the interaction with retained audit evidence; no partial report is published. No field validation is relaxed, no documents are silently truncated, and a larger document set may still exceed the original time/byte/output limits. Existing single-request modules behave as before. The capability is recorded in new evaluation configurations, so prior-policy runs cannot contribute to new repeatability confirmation.

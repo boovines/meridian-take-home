@@ -666,3 +666,20 @@ it("cancellation during recovery finalizes the case without starting another exe
   expect(await evals.beginCase(String(step.id))).toEqual({skip:true});
   expect((await db.query("SELECT count(*) FROM evaluation_case_recoveries WHERE case_result_id=$1",[step.id])).rows[0].count).toBe(1);
 });
+
+it("persists the full five-batch audit and fences its invocation after completion",async()=>{
+  const {evaluation,results}=await prepared();
+  const c=(await db.query("SELECT id FROM evaluation_cases WHERE suite_version_id=$1 AND kind='step'",[evaluation.suite_version_id])).rows[0];
+  const r=results.find(r=>r.case_id===c.id)!;
+  await evals.beginCase(r.id);
+  const token=randomUUID();
+  await db.query("UPDATE evaluation_case_results SET attempt_token=$2 WHERE id=$1",[r.id,token]);
+  const {ExecutionAuditService}=await import("../src/server/runtime/audit-service");
+  const audits=new ExecutionAuditService(db,artifacts),record=audits.recorder(r.workflow_id,{case_result_id:r.id},token);
+  await record("initial_output",{});
+  for(let i=0;i<5;i++){await record("model_request",{}, {batch_index:i});await record("model_response",{}, {batch_index:i});}
+  await record("final_output",{});
+  expect(await audits.list(r.workflow_id,{case_result_id:r.id})).toHaveLength(12);
+  await evals.recordCase(r.id,{actual:{}},token);
+  await expect(record("failure",{})).rejects.toMatchObject({code:"AUDIT_UNAVAILABLE"});
+});

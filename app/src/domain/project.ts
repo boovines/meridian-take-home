@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { uuid } from "./validation";
-import { extractionRequest } from "./extraction";
+import { extractionRequest, extractionBatchRequest } from "./extraction";
 
 export const generatedSources = z
   .object({
@@ -42,6 +42,7 @@ export const projectSchema = z
 export type Project = z.infer<typeof projectSchema>;
 export const stepResult = z.discriminatedUnion("kind", [
   extractionRequest,
+  extractionBatchRequest,
   z
     .object({
       kind: z.literal("complete"),
