@@ -7,7 +7,7 @@ import { api, errorMessage } from "@/lib/api";
 import type { EngineeringState } from "./types";
 import { ImplementationPanel } from "./implementation-panel";
 import { EvaluationPanel } from "../evaluations/evaluation-panel";
-import { RunPanel } from "../runtime/run-panel";
+import { WorkflowRunPanel } from "../grouped-execution/workflow-run-panel";
 import { AgentPanel } from "./agent-panel";
 import "./engineer.css";
 export function EngineerClient({ id }: { id: string }) {
@@ -250,7 +250,7 @@ export function EngineerClient({ id }: { id: string }) {
               ))}
             </nav>
             {agentView === "Run workflow" ? (
-              <RunPanel
+              <WorkflowRunPanel
                 key={state.spec.id}
                 state={state}
                 operationActive={!!activeJob}

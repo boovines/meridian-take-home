@@ -213,6 +213,7 @@ test("captures a packet, records a human decision, previews a report, and retrie
   await page.goto(`/workflows/${workflowId}/engineer`);
   await page.getByRole("button", { name: "Agent", exact: true }).click();
   await page.getByRole("button", { name: "Run workflow", exact: true }).click();
+  await page.getByRole("button", { name: "Saved input", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Start run", exact: true }),
   ).toBeDisabled();

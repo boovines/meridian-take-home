@@ -60,3 +60,5 @@ export {
 export { evaluateSuite } from "./evaluation-workflow";
 
 export { repairImplementation } from "./repair-workflow";
+
+export { executeGroupedEmails } from "./grouped-workflow";

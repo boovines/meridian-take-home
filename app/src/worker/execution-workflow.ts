@@ -76,50 +76,55 @@ async function executeCaptured(
       }
     }
     const scope = new CancellationScope();
-    engine = new RuntimeEngine(context.run.id, context.definition, {
-      now: () => Date.now(),
-      scriptedHuman: !!runId && !recovery,
-      changed: () => {
-        changed++;
+    engine = new RuntimeEngine(
+      context.run.id,
+      context.definition,
+      {
+        now: () => Date.now(),
+        scriptedHuman: context.run.kind === "evaluation",
+        changed: () => {
+          changed++;
+        },
+        rethrow: (error) => {
+          if (isCancellation(error)) throw error;
+        },
+        describeFailure: (error) => {
+          let cause: unknown = error;
+          while (cause instanceof Error && "cause" in cause && cause.cause)
+            cause = cause.cause;
+          const type = cause instanceof ApplicationFailure ? cause.type : null;
+          return {
+            code: type || "RUNTIME_FAILED",
+            message:
+              cause instanceof Error
+                ? cause.message.slice(0, 2000)
+                : "The runtime worker failed.",
+            category:
+              type === "RUN_LIMIT" || type === "STEP_RETRY_LIMIT"
+                ? "implementation"
+                : type === "MISSING_HUMAN_FIXTURE"
+                  ? "input"
+                  : "infrastructure",
+          };
+        },
+        project: (p) => io.projectExecution(context.run.id, p),
+        step: (data, resume) => steps.executeOccurrence(data, resume),
+        human: async (id, stopped) => {
+          if (context.run.kind === "evaluation") {
+            const response = await io.answerScriptedHuman(context.run.id, id);
+            if (!response.ok)
+              throw ApplicationFailure.nonRetryable(
+                response.message,
+                "MISSING_HUMAN_FIXTURE",
+              );
+            return;
+          }
+          if ((await io.readHumanResponse(id)).status === "answered") return;
+          await condition(() => answered.has(id) || stopped());
+        },
       },
-      rethrow: (error) => {
-        if (isCancellation(error)) throw error;
-      },
-      describeFailure: (error) => {
-        let cause: unknown = error;
-        while (cause instanceof Error && "cause" in cause && cause.cause)
-          cause = cause.cause;
-        const type = cause instanceof ApplicationFailure ? cause.type : null;
-        return {
-          code: type || "RUNTIME_FAILED",
-          message:
-            cause instanceof Error
-              ? cause.message.slice(0, 2000)
-              : "The runtime worker failed.",
-          category:
-            type === "RUN_LIMIT" || type === "STEP_RETRY_LIMIT"
-              ? "implementation"
-              : type === "MISSING_HUMAN_FIXTURE"
-                ? "input"
-                : "infrastructure",
-        };
-      },
-      project: (p) => io.projectExecution(context.run.id, p),
-      step: (data, resume) => steps.executeOccurrence(data, resume),
-      human: async (id, stopped) => {
-        if (runId && !recovery) {
-          const response = await io.answerScriptedHuman(runId, id);
-          if (!response.ok)
-            throw ApplicationFailure.nonRetryable(
-              response.message,
-              "MISSING_HUMAN_FIXTURE",
-            );
-          return;
-        }
-        if ((await io.readHumanResponse(id)).status === "answered") return;
-        await condition(() => answered.has(id) || stopped());
-      },
-    });
+      context.run.phase_node_id,
+    );
     let finished = false;
     await scope.run(async () => {
       const monitor = (async () => {

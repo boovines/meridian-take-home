@@ -1,3 +1,7 @@
+import {
+  activeGroupParent,
+  assertJobParentActive,
+} from "../grouped-execution/ownership";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import type { Database, Queryable } from "../database";
@@ -114,10 +118,20 @@ export class RunRecoveryService {
       );
     if (existing)
       return { session: existing, job: await jobById(tx, existing.job_id) };
+    const sourceJob = await jobById(tx, run.job_id);
+    const parent = sourceJob.parent_job_id
+      ? await activeGroupParent(
+          tx,
+          sourceJob.parent_job_id,
+          wid,
+          sourceJob.plan_version_id,
+        )
+      : null;
     const eligibility = recoveryEligibility(run);
     if (!eligibility.eligible)
       throw new DomainError(422, "RUN_NOT_REPAIRABLE", eligibility.reason);
     if (
+      !parent &&
       (
         await tx.query(
           "SELECT id FROM workflow_jobs WHERE workflow_id=$1 AND status IN ('queued','running','waiting_for_human','cancel_requested')",
@@ -154,8 +168,8 @@ export class RunRecoveryService {
     const jobId = randomUUID();
     const job = (
       await tx.query(
-        `INSERT INTO workflow_jobs(id,workflow_id,kind,request_key,source_request,plan_version_id,input_version_id,suite_version_id,executor_ref,deadline_at)
-      VALUES($1,$2,'repair',$3,$4,$5,$6,$7,$8,now()+interval '2 hours') RETURNING *`,
+        `INSERT INTO workflow_jobs(id,workflow_id,kind,request_key,source_request,plan_version_id,input_version_id,suite_version_id,executor_ref,deadline_at,parent_job_id)
+      VALUES($1,$2,'repair',$3,$4,$5,$6,$7,$8,least(coalesce($10::timestamptz,now()+interval '2 hours'),now()+interval '2 hours'),$9) RETURNING *`,
         [
           jobId,
           wid,
@@ -165,6 +179,8 @@ export class RunRecoveryService {
           version.id,
           suite?.id ?? null,
           `job-${jobId}`,
+          parent?.id ?? null,
+          parent?.deadline_at ?? null,
         ],
       )
     ).rows[0] as unknown as WorkflowJob;
@@ -193,6 +209,7 @@ export class RunRecoveryService {
     await workflow(tx, job.workflow_id, true);
     const latest = await jobById(tx, jobId),
       session = await sessionByJob(tx, jobId);
+    await assertJobParentActive(tx, latest);
     if (
       session.origin !== "run" ||
       session.status !== "running" ||
@@ -283,10 +300,11 @@ export class RunRecoveryService {
           "NO_CANDIDATE",
           "Generate a candidate before rerunning.",
         );
+      const sourceRun = await runById(tx, session.source_run_id!);
       const row = (
         await tx.query(
-          `INSERT INTO workflow_runs(workflow_id,job_id,implementation_version_id,input_bundle_id,kind,rerun_of_id,limits)
-        VALUES($1,$2,$3,$4,'recovery',$5,$6) RETURNING id`,
+          `INSERT INTO workflow_runs(workflow_id,job_id,implementation_version_id,input_bundle_id,kind,rerun_of_id,limits,execution_mode,phase_node_id)
+        VALUES($1,$2,$3,$4,'recovery',$5,$6,$7,$8) RETURNING id`,
           [
             job.workflow_id,
             job.id,
@@ -294,6 +312,8 @@ export class RunRecoveryService {
             session.input_bundle_id,
             session.source_run_id,
             DEMO_LIMITS,
+            sourceRun.execution_mode,
+            sourceRun.phase_node_id,
           ],
         )
       ).rows[0];
@@ -447,7 +467,9 @@ export class RunRecoveryService {
           done ? new Date().toISOString() : null,
         ],
       );
-      if (accepted)
+      // A repaired group/phase is evidence for that occurrence, not a new
+      // default for unrelated manual runs or sibling groups.
+      if (accepted && !job.parent_job_id)
         await tx.query(
           "INSERT INTO workflow_run_defaults(workflow_id,implementation_version_id,recovery_session_id,frozen_spec_id) VALUES($1,$2,$3,(SELECT p.frozen_spec_id FROM implementation_plan_versions p JOIN implementation_versions v ON v.plan_version_id=p.id WHERE v.id=$2)) ON CONFLICT(workflow_id,frozen_spec_id) DO UPDATE SET implementation_version_id=excluded.implementation_version_id,recovery_session_id=excluded.recovery_session_id,updated_at=now()",
           [session.workflow_id, attempt.candidate_version_id, session.id],

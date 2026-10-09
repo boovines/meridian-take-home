@@ -106,17 +106,25 @@ export async function evaluateStepCase(id: string) {
     ).rows[0];
     if (!scope)
       throw new DomainError(404, "NOT_FOUND", "Evaluation case not found.");
-    await withRecoveryBudget(db, String(scope.job_id), () =>
-      new EvaluationExecutionService(db).step(
-        id,
-        {
-          invoke: invokeInSandbox,
-          reason: reasonForStep,
-          extract: extractForStep,
-          model: runtimeModelConfiguration(),
-        },
-        AbortSignal.any([cancellationSignal(), AbortSignal.timeout(150000)]),
-      ),
+    await withRecoveryBudget(
+      db,
+      String(scope.job_id),
+      (capacitySignal) =>
+        new EvaluationExecutionService(db).step(
+          id,
+          {
+            invoke: invokeInSandbox,
+            reason: reasonForStep,
+            extract: extractForStep,
+            model: runtimeModelConfiguration(),
+          },
+          AbortSignal.any([
+            capacitySignal,
+            cancellationSignal(),
+            AbortSignal.timeout(150000),
+          ]),
+        ),
+      cancellationSignal(),
     );
   } finally {
     clearInterval(pulse);

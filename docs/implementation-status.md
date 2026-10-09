@@ -12,6 +12,23 @@ Historical provider experiments are retained below; alternate-provider integrati
 
 The open stack [#58](https://github.com/boovines/meridian-take-home/pull/58) → [#59](https://github.com/boovines/meridian-take-home/pull/59) adds automatic recovery of failed manual runs and durable engineer questions. MMAU1407799 completed on repair attempt 2 after fixing extraction evidence paths and a validation output-contract mismatch. Its accepted v3 is the visibly unverified manual default; a failed batch remains in the report. The session cost $0.9220 and used the original captured input and approved plan. No locked suite exists on this workflow, so this does not establish business correctness or change the earlier repeatability evidence. Clarification persistence, reload, scope, source reinspection, cancellation and worker restart are fixture-tested. See [the full acceptance record](features/bounded-repair.md#live-run-recovery-acceptance--october-8-2026).
 
+## Process revisions and grouped execution — October 9
+
+Open PRs [#61](https://github.com/boovines/meridian-take-home/pull/61) → [#62](https://github.com/boovines/meridian-take-home/pull/62) implement the [revision handoff](features/review-handoff.md) and [selected-email grouped execution](features/grouped-execution.md). At grouped-execution commit `b8aa6f7`, [CI passed](https://github.com/boovines/meridian-take-home/actions/runs/37883083401) for PostgreSQL, PGlite, static checks, worker bundling, production build and all 23 browser journeys. These checks use sanitized fixtures, not live grouping accuracy.
+
+| Requirement | Verified evidence | Remaining limitation |
+| --- | --- | --- |
+| Expert-controlled revision and per-block decisions | Persistence and browser journeys cover requests, explicit draft creation, individual proposal approval, stale edits and preserved v1 handoff. | Live v2 proposals still await the user's approval. |
+| Revision-specific review, freeze and engineering defaults | Persistence tests require a new review and request disposition; v2 methods start unapproved and v1 generation stays pinned to v1. | Live v2 has not been frozen or generated. |
+| Immutable input and grouping provenance | Persistence tests cover sealed clarification inputs, unchanged-child reuse, changed-child successors, actual recovered code versions and partial reports. | Semantic grouping quality requires live source inspection. |
+| Durable child execution and cancellation | Three real local Temporal journeys restart during a human wait, then answer, cancel the parent or deliver a persisted child cancellation; completed siblings survive without duplicate capture. | External provider behavior is substituted in these tests. |
+| Bounded generic execution | Fixture tests cover source coverage, shared capacity and spend fencing, preserved human gates and grouping recovery without changing unrelated manual defaults. | A completed execution alone does not certify business correctness. |
+| Product UI | Three live layouts were inspected; the results-first layout was selected and picker scaffolding removed. Browser journeys cover selection, clarification/reload, version inspection, human response, cancellation and mobile layout. | Live customer workflow acceptance remains pending. |
+
+The local demo now runs the stack against Supabase migrations 016 and 017. The motivating import-receiving workflow is a v2 draft with five proposed block edits and no accepted edits. A read-only comparison against the pre-revision snapshot confirmed the existing frozen graph/review evidence, three code versions, nine runs and thirty step records were unchanged; this workflow had no evaluation records to compare. Its draft instructions also still match v1. No model calls were made to prepare these Codex-authored proposals.
+
+Live acceptance requires the user's actual expert approval, applying the approved block edits, revision-specific review/freeze and generation, then bounded multi-email execution with inspected source coverage and per-group results. The existing inference ledger and reservations remain in use. No PR has been merged as part of this work.
+
 ## Authoritative context
 
 The original assignment and updated agent notes were reread in Chrome on October 7. They require React, Temporal, Composio, Supabase; anchored AI comments; at least two review rounds in the demo; immutable spec; a reusable code-first agent scaffold; real generated code; fixed-output evaluations; and repair using the supplied inbox as the primary dataset.
@@ -271,3 +288,7 @@ Read-only database comparison confirms all original 20 cases/161 assertions, inp
 ### Final v17 report verification — October 8
 
 Chrome started manual run `af569501-47b1-4756-b864-0863fdb46c59` with v17 and the original Gmail input bundle for the saved passing-control shipment. It completed all five visits and showed the expected seven totals: invoices 3 processed / 3 successful / 0 failed, goods 0 failed, batches 4 processed / 3 successful / 1 failed. The unsent preview identifies one invoice/batch relationship as lacking a CoA or supported relationship. The result was verified both in the UI and persisted output. This manual demonstration does not count as another full-suite pass.
+
+### October 9 — review follow-up schema correction
+
+A live review with existing open findings failed before inference because its structured-output schema contained unsupported `oneOf`. The reviewer now emits `anyOf` while retaining separate new/follow-up reference constraints. The failing regression was reproduced, then 17 focused review tests, typecheck, lint and worker bundling passed. Replaying the original input-token preflight returned HTTP 200 after the fix; no paid inference or frozen-board mutation was used for that probe.

@@ -27,6 +27,7 @@ Each feature document combines usage, rules, failure handling and verification r
 - [AI review and frozen handoff](features/review-handoff.md)
 - [Implementation plans and code generation](features/engineer-generation.md)
 - [Gmail input capture](features/gmail-inputs.md)
+- [Selected-email grouped execution](features/grouped-execution.md)
 - [Workflow runtime and human responses](features/workflow-runtime.md)
 - [Trusted evaluations](features/trusted-evaluations.md)
 - [Bounded repair](features/bounded-repair.md)

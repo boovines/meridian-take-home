@@ -356,7 +356,7 @@ export class PlanService {
       ).rows;
       const jobs = (
         await tx.query(
-          "SELECT j.*,p.frozen_spec_id,f.version_number AS process_version FROM workflow_jobs j JOIN implementation_plan_versions p ON p.id=j.plan_version_id JOIN frozen_specs f ON f.id=p.frozen_spec_id WHERE j.workflow_id=$1 ORDER BY j.created_at DESC,j.id DESC LIMIT 20",
+          "SELECT j.*,p.frozen_spec_id,f.version_number AS process_version FROM workflow_jobs j JOIN implementation_plan_versions p ON p.id=j.plan_version_id JOIN frozen_specs f ON f.id=p.frozen_spec_id WHERE j.workflow_id=$1 AND j.parent_job_id IS NULL ORDER BY j.created_at DESC,j.id DESC LIMIT 20",
           [workflowId],
         )
       ).rows;

@@ -41,3 +41,11 @@ export {
   decideRecovery,
   remainingRecoveryTime,
 } from "./recovery-activities";
+
+export {
+  advanceGroupedExecution,
+  captureGroupedEmails,
+  endGroupedExecution,
+  fenceGroupedExecution,
+  endOwnedJob,
+} from "./grouped-activities";

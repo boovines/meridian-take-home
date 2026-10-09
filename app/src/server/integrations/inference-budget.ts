@@ -173,15 +173,18 @@ export function configuredInferenceBudget(): InferenceBudgetGuard | null {
   const operator = operatorBudget();
   if (!scoped) return operator;
   if (!operator) return scoped;
+  return combineInferenceBudgets(scoped, operator);
+}
+export function combineInferenceBudgets(primary: InferenceBudgetGuard, secondary: InferenceBudgetGuard): InferenceBudgetGuard {
   return {
     async reserve(provider, usd, metadata, signal) {
-      const first = await scoped.reserve(provider, usd, metadata, signal);
+      const first = await primary.reserve(provider, usd, metadata, signal);
       let second: InferenceReservation;
       try {
-        second = await operator.reserve(provider, usd, metadata, signal);
+        second = await secondary.reserve(provider, usd, metadata, signal);
       } catch (error) {
         // The provider has not been called: release only this known unused hold.
-        await first.settle(0, { operator_reservation_rejected: true });
+        await first.settle(0, { secondary_reservation_rejected: true });
         throw error;
       }
       return {

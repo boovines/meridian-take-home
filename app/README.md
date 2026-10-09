@@ -69,7 +69,7 @@ The first command bundles workflows without credentials and runs in CI. The last
 | Location | Responsibility |
 | --- | --- |
 | `src/app/api/workflows` | Request validation and delegation; no orchestration or model prompts |
-| `src/components/canvas`, `src/components/reviews`, `src/components/engineering`, `src/components/evaluations`, `src/components/repairs`, `src/components/runtime` | Feature UI and browser state |
+| `src/components/canvas`, `src/components/reviews`, `src/components/engineering`, `src/components/evaluations`, `src/components/repairs`, `src/components/runtime`, `src/components/grouped-execution` | Feature UI and browser state |
 | `src/domain` | Typed contracts and pure graph/business rules; `errors.ts` and `validation.ts` hold cross-feature errors and scalar schemas; `repair-integrity.ts` checks for copied evaluation identifiers; `runtime-policy.ts` holds dependency-free activity liveness settings shared by workflows, workers and evaluation snapshots |
 | `src/domain/evaluation-statistics.ts`, `src/server/evaluations/statistics.ts` | Read-only case/assertion counts against each locked suite; history queries omit actual outputs and traces |
 | `src/components/evaluations/use-evaluation-data.ts` | Workspace loading, polling and historical suite/result projections; the panel owns selection and mutation actions |
@@ -85,6 +85,7 @@ The first command bundles workflows without credentials and runs in CI. The last
 | `src/server/evaluations` | Verified suites, trusted grading, case execution and result history |
 | `src/server/repairs` | Bounded sessions, candidate ancestry, diagnostic evidence projection and repeated-output field differences, bounded recorded-input replay, focused source patches, generation checkpoints and three-run confirmation |
 | `src/server/inputs` | Capture existing Gmail messages and attachment evidence into immutable input bundles |
+| `src/server/grouped-execution` | Selected-email orchestration, immutable grouping/clarification evidence, child scopes, aggregation, shared budgets/capacity |
 | `src/server/runtime` | Run/visit history, immutable interaction audit, run-scoped document access, isolated step contracts and human responses |
 | `src/server/artifacts` | Immutable file records, integrity checks and local/private Supabase storage |
 | `src/server/integrations` | Composio Gmail, OpenAI, Temporal, Vercel Sandbox and metered inference adapters |
@@ -115,7 +116,7 @@ For Vercel Sandbox development, link the dedicated project with Vercel CLI and o
 
 ## Runtime verification
 
-The [runtime guide](../docs/features/workflow-runtime.md) explains routing, human waits, limits, history and live recovery verification. Manual run controls and Gmail capture are available under Agent → Run workflow. Generated code only executes inside Vercel Sandbox. The worker owns all scheduling, and SQL records progress without a second scheduler.
+The [runtime guide](../docs/features/workflow-runtime.md) explains routing, human waits, limits, history and live recovery verification. Agent → Run workflow offers Selected emails for automatic grouped execution and Saved input for manual runs. The grouped inspector shows actual run/code provenance, clarification, human decisions, recovery history and partial reports. Generated code only executes inside Vercel Sandbox. The worker owns all scheduling, and SQL records progress without a second scheduler.
 
 ## Evaluation verification
 

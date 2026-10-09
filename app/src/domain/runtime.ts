@@ -69,6 +69,8 @@ export type RunStatus =
   | "needs_attention"
   | "cancelled";
 export interface RunRecord {
+  execution_mode: "workflow" | "grouping" | "aggregate";
+  phase_node_id: string | null;
   id: string;
   workflow_id: string;
   job_id: string;

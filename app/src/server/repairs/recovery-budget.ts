@@ -1,9 +1,12 @@
+import { withGroupedCapacity } from "../grouped-execution/capacity";
+import { GroupedBudget } from "../grouped-execution/budget";
 import { randomUUID } from "node:crypto";
 import type { Database } from "../database";
 import { DomainError } from "../../domain/errors";
 import { workflow } from "../workflows/store";
 import {
   withInferenceBudget,
+  combineInferenceBudgets,
   type InferenceBudgetGuard,
 } from "../integrations/inference-budget";
 
@@ -109,7 +112,8 @@ export class RecoveryBudget implements InferenceBudgetGuard {
 export async function withRecoveryBudget<T>(
   db: Database,
   jobId: string,
-  work: () => Promise<T>,
+  work: (signal: AbortSignal) => Promise<T>,
+  signal: AbortSignal = new AbortController().signal,
 ) {
   const session = (
     await db.query(
@@ -117,7 +121,22 @@ export async function withRecoveryBudget<T>(
       [jobId],
     )
   ).rows[0];
-  return session
-    ? withInferenceBudget(new RecoveryBudget(db, String(session.id)), work)
-    : work();
+  const job = (
+    await db.query(
+      "SELECT id,kind,parent_job_id FROM workflow_jobs WHERE id=$1",
+      [jobId],
+    )
+  ).rows[0];
+  const parentId = job?.kind === "grouped" ? job.id : job?.parent_job_id;
+  const parent = parentId ? new GroupedBudget(db, String(parentId)) : null;
+  const recovery = session ? new RecoveryBudget(db, String(session.id)) : null;
+  const budget =
+    parent && recovery
+      ? combineInferenceBudgets(parent, recovery)
+      : (parent ?? recovery);
+  const invoke = () =>
+    parentId
+      ? withGroupedCapacity(db, String(parentId), jobId, work, signal)
+      : work(signal);
+  return budget ? withInferenceBudget(budget, invoke) : invoke();
 }

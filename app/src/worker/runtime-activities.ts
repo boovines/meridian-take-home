@@ -44,18 +44,26 @@ export async function executeOccurrence(data: ScheduleStep, resume = false) {
       ])
     ).rows[0];
     if (!scope) throw new DomainError(404, "NOT_FOUND", "Run not found.");
-    return await withRecoveryBudget(db, String(scope.job_id), () =>
-      new StepService(db).execute(
-        data,
-        {
-          invoke: invokeInSandbox,
-          reason: reasonForStep,
-          extract: extractForStep,
-          model: runtimeModelConfiguration(),
-        },
-        AbortSignal.any([cancellationSignal(), AbortSignal.timeout(150000)]),
-        resume,
-      ),
+    return await withRecoveryBudget(
+      db,
+      String(scope.job_id),
+      (capacitySignal) =>
+        new StepService(db).execute(
+          data,
+          {
+            invoke: invokeInSandbox,
+            reason: reasonForStep,
+            extract: extractForStep,
+            model: runtimeModelConfiguration(),
+          },
+          AbortSignal.any([
+            capacitySignal,
+            cancellationSignal(),
+            AbortSignal.timeout(150000),
+          ]),
+          resume,
+        ),
+      cancellationSignal(),
     );
   } catch (error) {
     if (cancellationSignal().aborted) throw error;
@@ -91,12 +99,10 @@ export async function checkRecoveryCandidate(runId: string) {
     RUNTIME_HEARTBEAT_POLICY.interval_ms,
   );
   try {
-    const { checkRecoveryBuild } = await import(
-      "../server/repairs/recovery-build"
-    );
-    const { validateInSandbox } = await import(
-      "../server/integrations/sandbox-project"
-    );
+    const { checkRecoveryBuild } =
+      await import("../server/repairs/recovery-build");
+    const { validateInSandbox } =
+      await import("../server/integrations/sandbox-project");
     return await checkRecoveryBuild(
       await getDatabase(),
       runId,
