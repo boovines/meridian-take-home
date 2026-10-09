@@ -371,8 +371,9 @@ export class RepairService {
       | "error_message"
       | "evaluation_run_id"
     >[];
-    // An explicit restart must not forget the completed candidate which exposed
-    // a harness/operational blocker. Keep one prior-session candidate only when
+    // An explicit restart must retain useful observations, even when cancelled
+    // before a full evaluation. Partial evidence is diagnostic, never acceptance.
+    // Keep one prior-session candidate only when
     // this session has no candidate history, with exactly the same starting evidence.
     if (!previous.length) {
       const priorSession = await this.db.query(
@@ -380,7 +381,11 @@ export class RepairService {
          FROM repair_sessions s JOIN repair_attempts a ON a.session_id=s.id
          WHERE s.workflow_id=$1 AND s.id<>$2 AND s.plan_version_id=$3 AND s.suite_version_id=$4
          AND s.status NOT IN ('queued','running') AND a.baseline_evaluation_id=$5
-         AND a.status IN ('accepted','rejected') AND a.candidate_version_id IS NOT NULL AND a.evaluation_run_id IS NOT NULL
+         AND (a.status IN ('accepted','rejected') OR (a.status='cancelled' AND EXISTS (
+           SELECT 1 FROM evaluation_case_results r WHERE r.evaluation_run_id=a.evaluation_run_id
+           AND r.outcome IN ('passed','failed','error') AND r.finished_at IS NOT NULL
+           AND r.failure_code IS DISTINCT FROM 'CANCELLED'
+         ))) AND a.candidate_version_id IS NOT NULL AND a.evaluation_run_id IS NOT NULL
          ORDER BY s.created_at DESC,a.attempt_number DESC LIMIT 1`,
         [session.workflow_id, session.id, session.plan_version_id, session.suite_version_id, attempt.baseline_evaluation_id],
       );
