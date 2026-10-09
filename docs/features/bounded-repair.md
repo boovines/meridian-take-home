@@ -102,6 +102,8 @@ Verification evidence and the live command are recorded above. The current demo 
 
 ## Generalization and independent validation
 
+Malformed extraction envelopes retain the schema issue path and validation reason in the failure audit (for example, an invalid document UUID in a citation). Only an actual null envelope receives the bare-null diagnostic. This keeps repair from confusing a citation-format failure with missing business data; validation still rejects the same malformed responses.
+
 Prioritize traces that locate the first divergent boundary before expanding the suite. The runtime audit and repair tools are workflow-independent; invoice-specific extraction and matching remain generated step code. A higher aggregate score does not excuse lost source fidelity or a regression. Existing source-verified synthetic cases have already been visible to repair and therefore serve as regression checks. A future held-out validation claim requires fresh, independently verified cases withheld from the repair context; once used to guide repair, those cases are no longer held out. Supplied ground truth and the full-suite acceptance rule remain unchanged.
 
 ## Diagnostic step replay
