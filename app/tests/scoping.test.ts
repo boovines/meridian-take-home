@@ -378,3 +378,55 @@ it("never publishes after review locks the board; deleted targets retain audited
   expect(finding.resolution_kind).toBe("target_deleted");
   expect((await freeze.readiness(w.id)).issues.length).toBeGreaterThan(0);
 });
+
+it("validates review-anchor uniqueness before saving a preview and normalizes blank Otherwise text", async () => {
+  const w = await setup();
+  const duplicateAnchors = {
+    ...readyScaffold,
+    unresolved_anchors: [
+      {
+        key: "retention",
+        node_keys: ["result", "result"],
+        connection_keys: [],
+      },
+    ],
+  };
+  expect(() => scaffoldBoard(duplicateAnchors, w, readyScope)).toThrow(
+    "only once",
+  );
+  const graph = {
+    ...readyScaffold,
+    connections: readyScaffold.connections.map((c) =>
+      c.key === "revise" ? { ...c, is_default: true, condition_text: "  " } : c,
+    ),
+  };
+  const board = scaffoldBoard(graph, w, readyScope);
+  expect(board.connections.find((c) => c.id === "revise")?.condition_text).toBe(
+    "",
+  );
+});
+it("rolls back every inserted block when persistence fails partway through apply", async () => {
+  const w = await setup(),
+    data = await preview(w.id);
+  const failing: Database = {
+    ...db,
+    transaction: (fn) =>
+      db.transaction((tx) =>
+        fn({
+          ...tx,
+          query: async (sql, values) => {
+            if (sql.startsWith("INSERT INTO connections"))
+              throw new Error("Injected persistence failure");
+            return tx.query(sql, values);
+          },
+        }),
+      ),
+  };
+  await expect(
+    new ScaffoldApplyService(failing).apply(w.id, data),
+  ).rejects.toThrow("Injected persistence failure");
+  expect((await canvas.load(w.id)).nodes).toHaveLength(0);
+  expect((await canvas.load(w.id)).workflow.content_revision).toBe(0);
+  expect((await scoping.state(w.id)).session.applied_preview_id).toBeNull();
+  expect((await apply.apply(w.id, data)).nodes).toHaveLength(4);
+});

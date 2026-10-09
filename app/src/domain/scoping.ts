@@ -183,6 +183,13 @@ export function scaffoldBoard(
     invalid("The preview must preserve every unresolved scope question.");
   for (const a of graph.unresolved_anchors) {
     if (
+      new Set(a.node_keys).size !== a.node_keys.length ||
+      new Set(a.connection_keys).size !== a.connection_keys.length
+    )
+      invalid(
+        "An unresolved question must reference each block or connection only once.",
+      );
+    if (
       !unknowns.has(a.key) ||
       a.node_keys.some((k) => !nodeKeys.has(k)) ||
       a.connection_keys.some((k) => !graph.connections.some((c) => c.key === k))
@@ -260,7 +267,7 @@ export function scaffoldBoard(
         revision: 1,
         source_node_id: id(c.source),
         target_node_id: id(c.target),
-        condition_text: c.condition_text,
+        condition_text: c.condition_text.trim(),
         is_default: c.is_default,
       };
     }),
