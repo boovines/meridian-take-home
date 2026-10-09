@@ -8,11 +8,7 @@ export function evaluationConfiguration(): Json {
   return {
     contract_version: 1,
     runtime: runtimeModelConfiguration(),
-    extraction: {
-      provider: process.env.EXTRACTION_PROVIDER || "openai",
-      reinspection: process.env.EXTRACTION_REINSPECTION === "1",
-      llama_configuration: "agentic-2.5-parse-agentic-disable-extract-cache-v1",
-    },
+    extraction: { provider: "openai" },
     limits: { ...DEMO_LIMITS },
     fresh_extraction: true,
     inference_preflight: process.env.INFERENCE_BUDGET_LEDGER || process.env.INFERENCE_BUDGET_USD

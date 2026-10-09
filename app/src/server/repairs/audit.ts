@@ -1,6 +1,24 @@
 import { DomainError } from "../../domain/errors";
+import type { Database } from "../database";
 import type { ExecutionAuditService } from "../runtime/audit-service";
 export type ReadRepairAudit = (id: string, path: string[]) => Promise<unknown>;
+// Charge the attempt before storage access; retries and overlapping workers share
+// this allowance. Recheck ownership after the read without charging it twice.
+export function repairAuditBudget(db: Database, attemptId: string, token: string) {
+  return async (consume: boolean) => db.transaction(async (tx) => {
+    const row = (await tx.query(
+      "SELECT attempt_token,status,audit_read_count FROM repair_attempts WHERE id=$1 FOR UPDATE",
+      [attemptId],
+    )).rows[0];
+    if (!row || row.attempt_token !== token || row.status !== "running")
+      throw new DomainError(409, "STALE_REPAIR_RESULT", "This repair invocation no longer owns the attempt.");
+    if (consume) {
+      if (Number(row.audit_read_count) >= 3)
+        throw new DomainError(422, "AUDIT_READ_LIMIT", "At most three audit inspections are available per attempt.");
+      await tx.query("UPDATE repair_attempts SET audit_read_count=audit_read_count+1 WHERE id=$1", [attemptId]);
+    }
+  });
+}
 export class RepairAuditReader {
   private reads = 0;
   readonly inspected: { event_id: string; path: string[] }[] = [];
@@ -9,6 +27,7 @@ export class RepairAuditReader {
     private allowed: Set<string>,
     private audit: Pick<ExecutionAuditService, "read">,
     private signal: AbortSignal,
+    private reserve?: (consume: boolean) => Promise<void>,
   ) {}
   read: ReadRepairAudit = async (id, path) => {
     this.signal.throwIfAborted();
@@ -24,7 +43,10 @@ export class RepairAuditReader {
         "AUDIT_READ_LIMIT",
         "At most three audit inspections are available per attempt.",
       );
+    await this.reserve?.(true);
     const { event, payload } = await this.audit.read(this.workflowId, id);
+    this.signal.throwIfAborted();
+    await this.reserve?.(false);
     this.signal.throwIfAborted();
     let value = payload;
     for (const key of path) {
