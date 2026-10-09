@@ -177,4 +177,3 @@ CREATE TABLE recovery_inference_charges (
 );
 CREATE INDEX recovery_charge_session ON recovery_inference_charges(session_id);
 ALTER TABLE recovery_inference_charges ENABLE ROW LEVEL SECURITY;
-
