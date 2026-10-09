@@ -4,6 +4,7 @@ import {
   isCancellation,
   CancellationScope,
   ActivityCancellationType,
+  ChildWorkflowCancellationType,
   condition,
 } from "@temporalio/workflow";
 import type * as activities from "./evaluation-activities";
@@ -59,15 +60,16 @@ export async function evaluateSuite(jobId: string, evaluationId?: string) {
           await cleanup.endEvaluation(jobId, build.error, false, evaluationId);
           return;
         }
-        for (const id of context.result_ids) {
+        const runCase = async (id: string, parallel = false) => {
           const task = await io.beginEvaluationCase(id);
-          if (task.skip) continue;
+          if (task.skip) return;
           try {
             if (task.kind === "workflow") {
               await executeChild(executeEvaluationCase, {
                 workflowId: `execution-${task.run_id}`,
                 args: [task.run_id],
                 workflowIdReusePolicy: "REJECT_DUPLICATE",
+                ...(parallel ? { cancellationType: ChildWorkflowCancellationType.WAIT_CANCELLATION_COMPLETED } : {}),
               });
               await io.scoreWorkflowCase(id);
             } else await heavy.evaluateStepCase(id);
@@ -75,6 +77,37 @@ export async function evaluateSuite(jobId: string, evaluationId?: string) {
             if (isCancellation(error)) throw error;
             await io.failEvaluationCase(id);
           }
+        };
+        // Older activity results have no concurrency field. Their command order
+        // remains unchanged on replay; new evaluations freeze their own setting.
+        const concurrency = context.case_concurrency ?? 1;
+        if (concurrency === 1) {
+          for (const id of context.result_ids) await runCase(id);
+        } else {
+          const casesScope = new CancellationScope();
+          await casesScope.run(async () => {
+            let next = 0;
+            let stopped = false;
+            const lane = async () => {
+              while (!stopped && next < context.result_ids.length) {
+                const id = context.result_ids[next++];
+                try {
+                  await runCase(id, true);
+                } catch (error) {
+                  stopped = true;
+                  casesScope.cancel();
+                  throw error;
+                }
+              }
+            };
+            // Drain all active children before cleanup or a repair handoff.
+            const lanes = await Promise.allSettled(Array.from(
+              { length: Math.min(concurrency, context.result_ids.length) }, lane,
+            ));
+            const failures = lanes.filter(result => result.status === "rejected");
+            const failure = failures.find(result => !isCancellation(result.reason)) ?? failures[0];
+            if (failure) throw failure.reason;
+          });
         }
         await cleanup.endEvaluation(jobId, undefined, false, evaluationId);
       } finally {

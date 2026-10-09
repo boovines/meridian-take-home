@@ -159,6 +159,9 @@ Apply migrations through `npm run db:migrate` and run the existing Temporal work
 
 `npm run scoping:smoke` explicitly calls the live model with a sanitized request and an ephemeral database. It validates the interview, generated graph, human approval and review gate; it never reads a mailbox or applies to a saved workflow. Configure `OPENAI_API_KEY` and estimate inference spend before running it. The live check is separate from required fixture-based CI.
 
+
+Evaluation scheduling uses `domain/runtime-policy.ts`: two concurrent cases per new suite evaluation and four activity slots per standard worker. Existing runs keep their recorded policy; see [trusted evaluations](../docs/features/trusted-evaluations.md#bounded-case-concurrency). Deploy web and workers consistently for new operations, and let existing workers drain their running operations before retiring them.
+
 ## Run recovery
 
 Migration 014 extends the shared repair lifecycle to failed manual runs. Apply it with the matching web app and worker deployed together; an older worker cannot execute run-origin repair jobs. The existing durable outbox queues automatic recovery after failure. Its default limits are recorded per session: three candidates, two hours of active work, and $5 reserved/recorded inference usage. The optional operator inference ledger remains an additional limit. GPT-5.4 and the app's default GPT-5.4 mini are priced for the standard endpoint; unsupported settings fail before paid inference. See the [recovery contract](../docs/features/bounded-repair.md#recovery-from-a-failed-manual-run) for acceptance, version selection and current limitations.

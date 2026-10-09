@@ -233,22 +233,16 @@ export class EvaluationService {
           "JOB_CANCELLED",
           "Evaluation cancelled before starting.",
         );
-      const configuration = evaluationConfiguration();
-      const previous = (
-        await tx.query(
-          "SELECT e.execution_configuration FROM repair_confirmations c JOIN repair_confirmations earlier ON earlier.attempt_id=c.attempt_id AND earlier.round=1 JOIN evaluation_runs e ON e.id=earlier.evaluation_run_id WHERE c.evaluation_run_id=$1 AND c.round>1",
-          [run.id],
-        )
-      ).rows[0];
-      if (previous)
-        assertEvaluationConfiguration(previous.execution_configuration as Json);
-      if (!isDeepStrictEqual(run.execution_configuration, {}))
-        assertEvaluationConfiguration(run.execution_configuration);
-      else
-        await tx.query(
-          "UPDATE evaluation_runs SET execution_configuration=$2 WHERE id=$1",
-          [run.id, configuration],
-        );
+      const previous = (await tx.query(
+        "SELECT e.execution_configuration FROM repair_confirmations c JOIN repair_confirmations earlier ON earlier.attempt_id=c.attempt_id AND earlier.round=1 JOIN evaluation_runs e ON e.id=earlier.evaluation_run_id WHERE c.evaluation_run_id=$1 AND c.round>1", [run.id]
+      )).rows[0];
+      const recorded = !isDeepStrictEqual(run.execution_configuration, {});
+      const configuration = recorded ? run.execution_configuration
+        : previous ? previous.execution_configuration as Json : evaluationConfiguration();
+      assertEvaluationConfiguration(configuration);
+      if (previous && !isDeepStrictEqual(previous.execution_configuration, configuration))
+        throw new DomainError(409, "EVALUATION_CONFIGURATION_CHANGED", "Confirmation rounds require identical execution settings.");
+      if (!recorded) await tx.query("UPDATE evaluation_runs SET execution_configuration=$2 WHERE id=$1", [run.id, configuration]);
       run.execution_configuration = configuration;
       await tx.query(
         "UPDATE workflow_jobs SET status='running',phase='checking build',started_at=coalesce(started_at,now()),updated_at=now() WHERE id=$1",
