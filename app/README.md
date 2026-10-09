@@ -50,7 +50,7 @@ The live design exploration selected Compact workbench: all seven block types ar
 
 Apply migrations, then run `npm run worker` in a second terminal. The web app dispatches review IDs to the configured Temporal task queue; the worker reads the sealed draft from Supabase, calls OpenAI, and publishes validated findings. Keep both processes running for local demos. Vercel may host the web/API, but the long-running Temporal worker needs a separate persistent process.
 
-`Review & comments` opens anchored findings, replies, ordinary notes and review history. A missing desired outcome is clarified first. Review locks editing until it completes or is cancelled. Detail suggestions can be applied explicitly; graph changes remain manual. Freeze checks graph structure and requires one completed review and a decision on every finding. The resulting board cannot be edited in this demo.
+`Review & comments` opens anchored findings, replies, ordinary notes and review history. A missing desired outcome is clarified first. Review locks editing until it completes or is cancelled. Detail suggestions can be applied explicitly; graph changes remain manual. Freeze checks graph structure and requires one completed review and a decision on every finding. The resulting specification stays immutable. An engineer change request can lead to an explicitly opened new draft, with per-block customer approval and a fresh review before the next handoff.
 
 The fixture reviewer is available only with all three flags: `MERIDIAN_REVIEW_PROVIDER=fixture`, `MERIDIAN_DATABASE=local`, and `MERIDIAN_LOCAL_DEMO=true`. It is for browser tests, is recorded as `fixture-reviewer`, and does not verify AI quality or Temporal. It cannot run against the configured remote database.
 
@@ -69,7 +69,7 @@ The first command bundles workflows without credentials and runs in CI. The last
 | Location | Responsibility |
 | --- | --- |
 | `src/app/api/workflows` | Request validation and delegation; no orchestration or model prompts |
-| `src/components/scoping`, `src/components/canvas`, `src/components/reviews`, `src/components/engineering`, `src/components/evaluations`, `src/components/repairs`, `src/components/runtime` | Feature UI and browser state |
+| `src/components/scoping`, `src/components/canvas`, `src/components/reviews`, `src/components/engineering`, `src/components/evaluations`, `src/components/repairs`, `src/components/runtime`, `src/components/grouped-execution` | Feature UI and browser state |
 | `src/domain` | Typed contracts and pure graph/business rules; `errors.ts` and `validation.ts` hold cross-feature errors and scalar schemas; `repair-integrity.ts` checks for copied evaluation identifiers; `runtime-policy.ts` holds dependency-free activity liveness settings shared by workflows, workers and evaluation snapshots |
 | `src/domain/evaluation-statistics.ts`, `src/server/evaluations/statistics.ts` | Read-only case/assertion counts against each locked suite; history queries omit actual outputs and traces |
 | `src/components/evaluations/use-evaluation-data.ts` | Workspace loading, polling and historical suite/result projections; the panel owns selection and mutation actions |
@@ -81,10 +81,12 @@ The first command bundles workflows without credentials and runs in CI. The last
 | `src/server/reviews` | Transactional review, discussion and freeze behavior |
 | `src/server/reviews/reply-service.ts`, `src/server/reviews/reply-proposal-service.ts`, `src/server/integrations/openai-review-reply.ts` | Foreground answer proposals, per-block accept/reject decisions with editable wording, atomic revision-checked instruction saves and audit history |
 | `src/components/reviews/conversation-message.tsx`, `src/components/reviews/instruction-diff.tsx`, `src/components/reviews/reply-changes.tsx`, `src/components/reviews/thread-card.tsx` | Conversation rendering, word diffs and a shared inline/expanded response flow |
+| `src/server/process-revisions`, `src/components/process-revisions` | Engineer requests, explicit revision lifecycle and new unapproved handoff plans; existing review conversations own replies and per-block decisions |
 | `src/server/engineering` | Versioned plans, generation lifecycle, project assembly and source/download inspection |
 | `src/server/evaluations` | Verified suites, trusted grading, case execution and result history; `automatic-repair.ts` atomically hands an opted-in evaluation to one bounded repair session |
 | `src/server/repairs` | Bounded sessions, candidate ancestry, diagnostic evidence projection and repeated-output field differences, bounded recorded-input replay, focused source patches, generation checkpoints and three-run confirmation |
 | `src/server/inputs` | Prepare source-backed email packet suggestions and capture existing Gmail messages and attachment evidence into immutable input bundles |
+| `src/server/grouped-execution` | Selected-email orchestration, immutable grouping/clarification evidence, child scopes, aggregation, shared budgets/capacity |
 | `src/server/runtime` | Run/visit history, immutable interaction audit, run-scoped document access, isolated step contracts and human responses |
 | `src/server/artifacts` | Immutable file records, integrity checks and local/private Supabase storage |
 | `src/server/integrations` | Composio Gmail, OpenAI, Temporal, Vercel Sandbox and metered inference adapters |
@@ -109,13 +111,13 @@ The worker reconciles queued jobs every five seconds using stable Temporal workf
 
 The fixture generator uses `MERIDIAN_ENGINEERING_PROVIDER=fixture` together with the same local-database/local-demo guards as review. Browser tests exercise approval, generation, source download and revision without spending live credits. Fixture validation never claims Sandbox verification.
 
- Set `SUPABASE_SECRET_KEY` (or the legacy `SUPABASE_SERVICE_ROLE_KEY`) for private object storage, then run `npm run storage:setup`. The setup command creates or verifies a private bucket and refuses a public one. Without that key, development uses `../.runtime/artifacts`; production requires Supabase storage. Artifact rows record their storage backend and content hash so changing configuration never redirects an existing artifact to different bytes.
+ Set `SUPABASE_SECRET_KEY` (or the legacy `SUPABASE_SERVICE_ROLE_KEY`) for private object storage, then run `npm run storage:setup`. The setup command creates or verifies a private bucket and refuses a public one. Without that key, development uses `../.runtime/artifacts`; production requires Supabase storage. Artifact rows record their storage backend and content hash so changing configuration never redirects an existing artifact to different bytes. When running another checkout against the same database, set `LOCAL_ARTIFACT_PATH` to the original absolute artifact directory for both the web app and worker. Otherwise existing local artifact records still exist but their files cannot be read. A missing file is an operational storage error, not a reason to repair generated business logic.
 
 For Vercel Sandbox development, link the dedicated project with Vercel CLI and obtain its OIDC token through `vercel env pull`. Preserve other local secrets when refreshing that token. `npm run sandbox:smoke -- --live` creates a 30-second, nonpersistent sandbox with network egress denied, runs a small Node command, and always stops the sandbox. The selected Node image needs an explicit working directory; the adapter uses `/tmp/meridian`. Vercel project metadata stays in ignored `app/.vercel`. No application credentials are passed into the VM.
 
 ## Runtime verification
 
-The [runtime guide](../docs/features/workflow-runtime.md) explains routing, human waits, limits, history and live recovery verification. Manual run controls and Gmail capture are available under Agent → Run workflow. Generated code only executes inside Vercel Sandbox. The worker owns all scheduling, and SQL records progress without a second scheduler.
+The [runtime guide](../docs/features/workflow-runtime.md) explains routing, human waits, limits, history and live recovery verification. Agent → Run workflow offers Selected emails for automatic grouped execution and Saved input for manual runs. The grouped inspector shows actual run/code provenance, clarification, human decisions, recovery history and partial reports. Generated code only executes inside Vercel Sandbox. The worker owns all scheduling, and SQL records progress without a second scheduler.
 
 ## Evaluation verification
 
@@ -167,3 +169,9 @@ Evaluation scheduling uses `domain/runtime-policy.ts`: two concurrent cases per 
 The OpenAI integration keeps token preflight (`server/integrations/openai-preflight.ts`) separate from bounded response transport (`server/integrations/openai-response.ts`). Shared runtime deadline values live in `domain/runtime-policy.ts` and are recorded with evaluation settings.
 
 `server/integrations/inference-trace.ts` collects safe provider-stage metrics per runtime interaction. They flow into immutable execution audit summaries and the repair evidence catalogue. `worker/execution-failure.ts` preserves trusted failure categories through Temporal wrappers.
+
+## Run recovery
+
+Migration 014 extends the shared repair lifecycle to failed manual runs. Apply it with the matching web app and worker deployed together; an older worker cannot execute run-origin repair jobs. The existing durable outbox queues automatic recovery after failure. Its default limits are recorded per session: three candidates, two hours of active work, and $5 reserved/recorded inference usage. The optional operator inference ledger remains an additional limit. GPT-5.4 and the app's default GPT-5.4 mini are priced for the standard endpoint; unsupported settings fail before paid inference. See the [recovery contract](../docs/features/bounded-repair.md#recovery-from-a-failed-manual-run) for acceptance, version selection and current limitations.
+
+Engineer clarification lives in `domain/clarification.ts`, `server/repairs/clarification-service.ts` and `components/runtime/engineer-question.tsx`. Migration 015 persists questions, opt-in reuse and immutable invocation context. Deploy the matching worker and web code together; answered questions resume through durable worker polling without restarting budgets.

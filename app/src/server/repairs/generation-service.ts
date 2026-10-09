@@ -1,3 +1,8 @@
+import { ClarificationService } from "./clarification-service";
+import {
+  recoverySources,
+  clarificationProposal,
+} from "../../domain/clarification";
 import { isDeepStrictEqual } from "node:util";
 import { RepairStepReplay, type ReplayStep } from "./replay";
 import { invokeInSandbox } from "../integrations/sandbox-step";
@@ -10,7 +15,7 @@ import type { Database } from "../database";
 import { ArtifactService } from "../artifacts/service";
 import { assembleProject, validateProject } from "../engineering/project";
 import { VersionService } from "../engineering/version-service";
-import { RepairService } from "./service";
+import { RepairService, attemptById } from "./service";
 import { repairIntegrityEvidence, changedStepSources, type PreviousSourceEvidence } from "./evidence";
 import { completeRepairSources } from "./patch";
 import { repairDocumentBudget, RepairDocumentReader, type ReadRepairDocument } from "./documents";
@@ -38,9 +43,12 @@ export class RepairGenerationService {
   ) {}
   async run(attemptId: string, adapter: RepairGenerator, signal: AbortSignal) {
     const repairs = new RepairService(this.db);
+    const clarification = new ClarificationService(this.db);
+    const pending = await clarification.questionForAttempt(attemptId);
+    if (pending?.status === "open") return attemptById(this.db, attemptId);
     const claimed = await repairs.claimGeneration(attemptId);
     if (!claimed.token) return claimed.attempt;
-    const context = await repairs.generationContext(attemptId);
+    const context = await repairs.generationContext(attemptId, claimed.token);
     signal.throwIfAborted();
     const versions = new VersionService(this.db, this.artifacts);
     const { project: baseline } = await versions.load(
@@ -103,7 +111,7 @@ export class RepairGenerationService {
         new Set(
           [
             ...context.audit_events,
-            ...context.baseline_repetitions.flatMap(run => run.audit_events),
+            ...context.baseline_repetitions.flatMap((run) => run.audit_events),
             ...context.previous_attempts.flatMap(
               (a) => a.candidate_audit_events,
             ),
@@ -122,7 +130,9 @@ export class RepairGenerationService {
         invokeInSandbox,
         this.artifacts,
       );
-      const generated = repairSources.parse(
+      const generated = (
+        context.session.origin === "run" ? recoverySources : repairSources
+      ).parse(
         await adapter.generate(
           context,
           baseline,
@@ -135,6 +145,69 @@ export class RepairGenerationService {
       );
       signal.throwIfAborted();
       diagnosis = generated.diagnosis;
+      if ("clarification" in generated && generated.clarification) {
+        if (
+          generated.project.status !== "needs_attention" ||
+          generated.project.steps.length
+        )
+          throw new DomainError(
+            422,
+            "INVALID_CLARIFICATION",
+            "A question must pause generation without proposing executable changes.",
+          );
+        await clarification.ask(
+          attemptId,
+          claimed.token,
+          clarificationProposal.parse(generated.clarification),
+          diagnosis,
+        );
+        return attemptById(this.db, attemptId);
+      }
+      if (
+        "clarification_context" in context &&
+        context.clarification_context?.clarifications.length &&
+        generated.project.status === "ready"
+      ) {
+        const assessment =
+          "clarification_assessment" in generated
+            ? recoverySources.shape.clarification_assessment.parse(
+                generated.clarification_assessment,
+              )
+            : null;
+        if (
+          !assessment ||
+          assessment.disposition !== "clarifies_existing_rules"
+        )
+          throw new DomainError(
+            422,
+            assessment?.disposition === "requires_process_change"
+              ? "PROCESS_CHANGE_REQUIRED"
+              : "CLARIFICATION_UNVERIFIED",
+            assessment?.reason ||
+              "Compare the answer with the frozen requirements before continuing.",
+          );
+        const currentIds = new Set(
+          context.input_inventory.flatMap((b) =>
+            b.documents.map((d) => String(d.artifact_id)),
+          ),
+        );
+        const required = context.clarification_context.clarifications
+          .flatMap((c) => c.source_artifact_ids)
+          .filter((id) => currentIds.has(id));
+        if (
+          required.some(
+            (id) => !documents.inspected.some((d) => d.artifact_id === id),
+          ) ||
+          (currentIds.size
+            ? !documents.inspected.length
+            : !audits.inspected.length)
+        )
+          throw new DomainError(
+            422,
+            "CLARIFICATION_EVIDENCE_REQUIRED",
+            "Inspect the relevant captured source again after the engineer answer. An answer cannot replace documentary evidence.",
+          );
+      }
       project = assembleProject(
         context.spec.board,
         context.spec.id,
@@ -152,7 +225,15 @@ export class RepairGenerationService {
           Buffer.from(JSON.stringify(project)),
           {
             repair_attempt_id: attemptId,
+            clarification_context_id:
+              "clarification_context" in context
+                ? (context.clarification_context?.id ?? null)
+                : null,
             diagnosis,
+            clarification_assessment:
+              "clarification_assessment" in generated
+                ? generated.clarification_assessment
+                : null,
             inspected_documents: documents.inspected,
             inspected_audits: audits.inspected,
           },
@@ -162,14 +243,35 @@ export class RepairGenerationService {
     // Check both fresh and restored artifacts before publishing any runnable version.
     // Rejected source remains immutable diagnostic evidence, never acceptance evidence.
     assertRepairEvidenceIntegrity(
-      project.files, baseline.files, context.spec.board, repairIntegrityEvidence(context),
+      project.files,
+      baseline.files,
+      context.spec.board,
+      repairIntegrityEvidence(context),
     );
     // A new version id is not a new candidate if its executable files are identical.
     // Keep the generated artifact for diagnosis, but never buy another lucky sequence.
-    for (const previous of context.previous_attempts.filter(a => a.session_id === context.session.id && a.candidate_version_id)) {
-      const prior = await new VersionService(this.db, this.artifacts).load(claimed.job.workflow_id, String(previous.candidate_version_id));
+    if (
+      context.session.origin === "run" &&
+      isDeepStrictEqual(baseline.files, project.files)
+    )
+      throw new DomainError(
+        409,
+        "UNCHANGED_REPAIR_CANDIDATE",
+        "The proposed repair did not change the implementation. Inspect the saved diagnosis before spending on another run.",
+      );
+    for (const previous of context.previous_attempts.filter(
+      (a) => a.session_id === context.session.id && a.candidate_version_id,
+    )) {
+      const prior = await new VersionService(this.db, this.artifacts).load(
+        claimed.job.workflow_id,
+        String(previous.candidate_version_id),
+      );
       if (isDeepStrictEqual(prior.project.files, project.files))
-        throw new DomainError(409, "UNCHANGED_REPAIR_CANDIDATE", "The repair reproduced an already evaluated candidate. Its artifact is retained; change the implementation before starting another confirmation sequence.");
+        throw new DomainError(
+          409,
+          "UNCHANGED_REPAIR_CANDIDATE",
+          "The repair reproduced an already evaluated candidate. Its artifact is retained; change the implementation before starting another confirmation sequence.",
+        );
     }
     signal.throwIfAborted();
     if (

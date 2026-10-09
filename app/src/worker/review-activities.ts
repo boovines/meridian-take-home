@@ -4,6 +4,7 @@ import { getDatabase } from "../server/database";
 import { ReviewService } from "../server/reviews/review-service";
 import { reviewWithOpenAI } from "../server/integrations/openai-reviewer";
 import { DomainError } from "../domain/errors";
+import { REVIEW_CONTEXT_TOO_LARGE_MESSAGE } from "../server/reviews/review-context";
 export async function performReview(id: string) {
   const reviews = new ReviewService(await getDatabase());
   const pulse = setInterval(() => heartbeat(), 5000);
@@ -19,6 +20,13 @@ export async function performReview(id: string) {
   } catch (error) {
     if (
       error instanceof DomainError &&
+      error.code === "REVIEW_CONTEXT_TOO_LARGE"
+    ) {
+      await reviews.finish(id, "failed", REVIEW_CONTEXT_TOO_LARGE_MESSAGE);
+      return;
+    }
+    if (
+      error instanceof DomainError &&
       ["REVIEW_INACTIVE", "REVIEW_EXPIRED"].includes(error.code)
     )
       return;
@@ -27,7 +35,8 @@ export async function performReview(id: string) {
       message: "Review could not complete.",
       type: "ReviewFailure",
       nonRetryable: error instanceof DomainError,
-      details: error instanceof DomainError ? [{ code: error.code }] : undefined,
+      details:
+        error instanceof DomainError ? [{ code: error.code }] : undefined,
     });
   } finally {
     clearInterval(pulse);

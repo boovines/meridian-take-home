@@ -147,3 +147,103 @@ it("rejects foreign bundles and mismatched human fixtures before cases can be ve
     }),
   ).rejects.toMatchObject({ code: "INVALID_RESPONSE_FIXTURE" });
 });
+
+it("copies historical expectations as unverified and rejects evaluating v1 code against a v2 suite", async () => {
+  const { ProcessRevisionService } = await import(
+    "../src/server/process-revisions/service"
+  );
+  const { PlanService } = await import(
+    "../src/server/engineering/plan-service"
+  );
+  const { ReviewService } = await import(
+    "../src/server/reviews/review-service"
+  );
+  const { FreezeService } = await import(
+    "../src/server/reviews/freeze-service"
+  );
+  const { CanvasService } = await import("../src/server/canvas/service");
+  const { EvaluationService } = await import(
+    "../src/server/evaluations/evaluation-service"
+  );
+  const f = await runtimeFixture(db, artifacts, ["trigger", "outcome"]);
+  await f.runs.finish(f.job.id, { status: "cancelled" });
+  const old = await suites.create(f.w.id, {
+    request_key: randomUUID(),
+    name: "Trusted original",
+    parent_suite_version_id: null,
+  });
+  const item = await suites.addCase(
+    f.w.id,
+    old.id,
+    caseInput.parse({
+      case_key: "outcome",
+      name: "Outcome",
+      kind: "step",
+      node_id: f.nodes[1].id,
+      input_data: { input: {}, steps: {} },
+      assertions: [
+        {
+          key: "result",
+          label: "Expected result",
+          path: ["success"],
+          expected: true,
+        },
+      ],
+    }),
+  );
+  await suites.verifyCase(f.w.id, old.id, item.id, {
+    expected_revision: item.revision,
+  });
+  await suites.lock(f.w.id, old.id, {
+    expected_revision: (await suites.state(f.w.id)).suites[0].revision,
+  });
+  const v1 = (await new PlanService(db).state(f.w.id)).spec;
+  await new ProcessRevisionService(db).start(f.w.id, {
+    source_frozen_spec_id: v1.id,
+  });
+  const reviews = new ReviewService(db),
+    r = await reviews.start(f.w.id, { request_key: randomUUID() });
+  await reviews.prepare(r.id);
+  await reviews.publish(r.id, { findings: [] });
+  const board = await new CanvasService(db).load(f.w.id);
+  const v2 = await new FreezeService(db).freeze(f.w.id, {
+    expected_content_revision: board.workflow.content_revision,
+    acknowledge_unreviewed: false,
+  });
+  const next = await suites.create(f.w.id, {
+    request_key: randomUUID(),
+    name: "Relevance-reviewed v2",
+    parent_suite_version_id: old.id,
+    frozen_spec_id: String(v2.id),
+  });
+  const copied = (await suites.state(f.w.id, next.id)).cases[0];
+  expect(copied.verified_at).toBeNull();
+  expect(copied.assertions).toEqual(item.assertions);
+  await expect(
+    suites.lock(f.w.id, next.id, { expected_revision: next.revision }),
+  ).rejects.toMatchObject({ code: "VERIFICATION_REQUIRED" });
+  await suites.verifyCase(f.w.id, next.id, copied.id, {
+    expected_revision: copied.revision,
+  });
+  await suites.lock(f.w.id, next.id, {
+    expected_revision: (await suites.state(f.w.id)).suites[0].revision,
+  });
+  await expect(
+    new EvaluationService(db).start(f.w.id, {
+      request_key: randomUUID(),
+      implementation_version_id: f.version.id,
+      suite_version_id: next.id,
+    }),
+  ).rejects.toMatchObject({ code: "INVALID_EVALUATION" });
+  expect((await suites.state(f.w.id, old.id)).cases[0].assertions).toEqual(
+    item.assertions,
+  );
+  expect(
+    (
+      await db.query(
+        "SELECT id FROM workflow_jobs WHERE workflow_id=$1 AND status='queued'",
+        [f.w.id],
+      )
+    ).rows,
+  ).toHaveLength(0);
+});
