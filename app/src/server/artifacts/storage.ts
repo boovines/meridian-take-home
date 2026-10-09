@@ -79,6 +79,10 @@ export class SupabaseObjectStore implements ObjectStore {
   }
 }
 export function objectStore(backend?: "local" | "supabase"): ObjectStore {
+  // Historical local rows retain their original identity. The hosted reader can
+  // use a verified private copy at the same key; ArtifactService checks its hash.
+  if (backend === "local" && process.env.LOCAL_ARTIFACT_READ_BACKEND === "supabase")
+    return new SupabaseObjectStore();
   if (
     backend === "local" ||
     (!backend && process.env.MERIDIAN_DATABASE === "local")

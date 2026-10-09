@@ -21,7 +21,7 @@ export async function createDatabase(
 ): Promise<Database> {
   if (url) {
     const pool = new Pool({
-      connectionString: url,
+      ...databaseConnectionOptions(url),
       max: 4,
       connectionTimeoutMillis: 10000,
       query_timeout: 15000,
@@ -94,6 +94,20 @@ export async function createDatabase(
         }),
       ),
     close: () => db.close(),
+  };
+}
+
+// Hosted environments cannot read a CA file from the developer's laptop.
+// An explicitly supplied CA replaces URL TLS parameters without disabling verification.
+export function databaseConnectionOptions(url: string) {
+  const ca = process.env.SUPABASE_DB_SSL_CA;
+  if (!ca) return { connectionString: url };
+  const connection = new URL(url);
+  for (const key of ["sslmode", "sslrootcert", "sslcert", "sslkey", "ssl"])
+    connection.searchParams.delete(key);
+  return {
+    connectionString: connection.toString(),
+    ssl: { ca, rejectUnauthorized: true },
   };
 }
 

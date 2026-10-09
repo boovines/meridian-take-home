@@ -20,7 +20,11 @@ export async function frozenSpec(
     await tx.query(
       specId
         ? "SELECT * FROM frozen_specs WHERE workflow_id=$1 AND id=$2"
-        : "SELECT f.* FROM frozen_specs f JOIN workflows w ON w.current_frozen_spec_id=f.id WHERE w.id=$1",
+        : `SELECT f.* FROM frozen_specs f JOIN workflows w ON f.workflow_id=w.id
+           WHERE w.id=$1 AND (w.current_frozen_spec_id=f.id OR (
+             w.current_frozen_spec_id IS NULL AND w.state='frozen'
+             AND NOT EXISTS (SELECT 1 FROM frozen_specs other WHERE other.workflow_id=w.id AND other.id<>f.id)
+           ))`,
       specId ? [workflowId, specId] : [workflowId],
     )
   ).rows[0];
