@@ -1,3 +1,4 @@
+import { assertEvaluationConfiguration } from "../evaluations/configuration";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import type { z } from "zod";
@@ -242,6 +243,10 @@ export class StepService {
     if (prepared.reply) return prepared.reply;
     const { run, stepId, token, node, method, board, context } = prepared;
     try {
+      if (run.kind === "evaluation") {
+        const row = (await this.db.query("SELECT e.execution_configuration FROM workflow_runs r JOIN evaluation_case_results c ON c.id=r.evaluation_case_result_id JOIN evaluation_runs e ON e.id=c.evaluation_run_id WHERE r.id=$1", [run.id])).rows[0];
+        assertEvaluationConfiguration(row?.execution_configuration as Json);
+      }
       const { project } = await this.versions.load(
         run.workflow_id,
         run.implementation_version_id,

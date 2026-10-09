@@ -22,7 +22,7 @@ export function CaseEditor({
     [kind, setKind] = useState(initial?.kind || "workflow"),
     [node, setNode] = useState(initial?.node_id || nodes[0]?.id || ""),
     [bundle, setBundle] = useState(
-      initial?.input_bundle_id || bundles[0]?.id || "",
+      initial ? initial.input_bundle_id || "" : bundles[0]?.id || "",
     ),
     [context, setContext] = useState(
       JSON.stringify(initial?.input_data || { input: {}, steps: {} }, null, 2),
@@ -59,7 +59,7 @@ export function CaseEditor({
         name,
         kind,
         node_id: kind === "step" ? node : null,
-        input_bundle_id: kind === "workflow" ? bundle : null,
+        input_bundle_id: bundle || null,
         input_data: kind === "step" ? JSON.parse(context) : null,
         human_responses: kind === "workflow" ? JSON.parse(responses) : [],
         assertions: checks.map((c) => ({
@@ -105,36 +105,39 @@ export function CaseEditor({
         Test scope
         <select
           value={kind}
-          onChange={(e) => setKind(e.target.value as "workflow" | "step")}
+          onChange={(e) => {
+            setKind(e.target.value as "workflow" | "step");
+            setBundle("");
+          }}
         >
           <option value="workflow">Full workflow</option>
           <option value="step">One step</option>
         </select>
       </label>
+      <label>
+        {kind === "workflow" ? "Captured input" : "Captured input (optional)"}
+        <select
+          required={kind === "workflow"}
+          value={bundle}
+          onChange={(e) => setBundle(e.target.value)}
+        >
+          <option value="">{kind === "workflow" ? "Choose an input" : "Use JSON input only"}</option>
+          {bundles.map((b) => (
+            <option key={b.id} value={b.id}>
+              {b.shipment_reference || "Captured input"} · {b.source_kind} ·{" "}
+              {new Date(b.created_at).toLocaleString()}
+            </option>
+          ))}
+        </select>
+      </label>
+      {!bundles.length && (
+        <p className="field-help">
+          Capture an input in the Agent tab to use source documents.
+          Step cases can use JSON inputs.
+        </p>
+      )}
       {kind === "workflow" ? (
         <>
-          <label>
-            Captured input
-            <select
-              required
-              value={bundle}
-              onChange={(e) => setBundle(e.target.value)}
-            >
-              <option value="">Choose an input</option>
-              {bundles.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.shipment_reference || "Captured input"} · {b.source_kind} ·{" "}
-                  {new Date(b.created_at).toLocaleString()}
-                </option>
-              ))}
-            </select>
-          </label>
-          {!bundles.length && (
-            <p className="field-help">
-              Capture an input in the Agent tab before adding a workflow case.
-              Step cases can use JSON inputs.
-            </p>
-          )}
           <details>
             <summary>Human responses for this case</summary>
             <p className="field-help">
@@ -191,7 +194,9 @@ export function CaseEditor({
           </label>
           <p className="field-help">
             Use input and steps (prior outputs keyed by block ID). A Human
-            method also requires human_response.
+            method also requires human_response. When a captured input is selected,
+            its immutable input replaces the JSON input field and makes its source
+            documents available; prior step outputs still come from this context.
           </p>
         </>
       )}

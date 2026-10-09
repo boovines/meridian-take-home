@@ -767,7 +767,7 @@ export class RepairService {
           )
         ).rows
       : [];
-    const confirmations = (await this.db.query("SELECT c.*,e.status,e.verdict FROM repair_confirmations c JOIN evaluation_runs e ON e.id=c.evaluation_run_id WHERE c.workflow_id=$1 ORDER BY c.created_at,c.round", [wid])).rows;
+    const confirmations = sessions[0] ? (await this.db.query("SELECT c.*,e.status,e.verdict FROM repair_confirmations c JOIN repair_attempts a ON a.id=c.attempt_id JOIN evaluation_runs e ON e.id=c.evaluation_run_id WHERE a.session_id=$1 ORDER BY a.attempt_number,c.round", [sessions[0].id])).rows : [];
     return { sessions, attempts, replays, confirmations };
   }
 }
