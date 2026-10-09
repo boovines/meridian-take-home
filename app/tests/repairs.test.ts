@@ -511,6 +511,43 @@ it("retains one rejected candidate across an explicit restart only for the same 
   expect((await repairs.generationContext(differentAttempt.id)).previous_attempts).toHaveLength(0);
   await repairs.finish(different.job.id, "cancelled", "Different evidence excludes historical candidate.");
 });
+it.each(["none", "error", "failed", "passed"] as const)(
+  "uses cancelled candidate %s evidence only for diagnosis on an explicit restart",
+  async (observed) => {
+    const { f, job, initial, session } = await prepared(true);
+    const first = await repairs.beginAttempt(job.id, 1);
+    const published = await generation.run(first.id, generator, AbortSignal.timeout(10000));
+    const evaluation = await repairs.createEvaluation(first.id);
+    const ready = (await evals.prepare(job.id, evaluation.id))!;
+    const result = ready.results[0];
+    if (observed !== "none") {
+      await evals.beginCase(result.id);
+      await evals.recordCase(result.id, observed === "error"
+        ? { error: { code: "EXTRACTION_UNRESOLVED", category: "implementation", message: "The source does not establish this relationship." } }
+        : { actual: { shipment: "SYNTHETIC-001", failed_goods: observed === "passed" ? 1 : 2 } });
+    }
+    await repairs.finish(job.id, "cancelled", "Stop paid diagnostics after the first observation.");
+    const restarted = await repairs.start(f.w.id, {
+      request_key: randomUUID(), baseline_evaluation_id: initial.evaluation.id,
+    });
+    await repairs.prepare(restarted.job.id);
+    const next = await repairs.beginAttempt(restarted.job.id, 1);
+    const context = await repairs.generationContext(next.id);
+    expect(context.previous_attempts).toHaveLength(observed === "none" ? 0 : 1);
+    expect(context.session.baseline_version_id).toBe(f.version.id);
+    expect(context.evaluation?.id).toBe(initial.evaluation.id);
+    expect(context.cases).toHaveLength(2);
+    if (observed !== "none") {
+      const prior = context.previous_attempts[0];
+      expect(prior).toMatchObject({ session_id: session.id, status: "cancelled",
+        candidate_version_id: published.candidate_version_id });
+      expect(prior.candidate_results).toHaveLength(2);
+      expect(prior.candidate_results).toContainEqual(expect.objectContaining({ outcome: observed }));
+      expect(prior.candidate_results).toContainEqual(expect.objectContaining({ outcome: "not_run" }));
+    }
+    await repairs.finish(restarted.job.id, "cancelled", "Restart evidence verified.");
+  },
+);
 it.each(["regressing", "still-failing"])(
   "supplies rejected candidate source and %s case traces without adopting it",
   async (scenario) => {
