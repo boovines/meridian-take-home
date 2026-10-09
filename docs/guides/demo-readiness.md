@@ -71,9 +71,12 @@ A deployment status of Ready does not establish application readiness. The evide
 
 ## Current verification result
 
-- Local suite: 446 tests passed, one PostgreSQL-only test skipped because no local `TEST_DATABASE_URL` was available. PostgreSQL CI is tracked separately.
+- Local suite: 446 tests passed, one PostgreSQL-only test skipped because no local `TEST_DATABASE_URL` was available. PostgreSQL CI passed all 447 tests across 58 files on implementation commit `76cc2c3`; every required application check passed.
 - Browser suite: all 38 journeys passed, including failed-read recovery and concurrent audit disclosure requests.
 - Lint, typecheck, production build, worker bundle, documentation links and diff hygiene passed.
-- Staged production build: <https://meridian-take-home-ouscp2qu3-justin-hous-projects.vercel.app>. Authenticated hosted requests returned HTTP 200 for the original order-entry board, synthetic generated source with passed evaluation evidence, completed execution trace, audit list and private audit payload. This also verifies the deployment contains the migration files required by startup checks.
+- Verified production build: <https://meridian-take-home-ouscp2qu3-justin-hous-projects.vercel.app>. Authenticated hosted requests returned HTTP 200 for the original order-entry board, synthetic generated source with passed evaluation evidence, completed execution trace, audit list and private audit payload. This also verifies the deployment contains the migration files required by startup checks.
 - Repair PR: <https://github.com/boovines/meridian-take-home/pull/88>, stacked on PR 86 and left open.
 - Remaining external blocker: larger PDF calls still receive the provider's enforced project-spend-limit error after the owner raised a limit. The separate application verification budget is not exhausted. A complete unchanged 24-case suite must pass before calling that real-document demo verified. Do not lower expectations or present partial execution as a pass.
+
+- Promoted verified deployment `dpl_HMpTCukwprGLjoQBqTJANqYkYMkZ` to <https://meridian-take-home.vercel.app>. The browser confirmed current source files and “Passed · Suite V1” on the synthetic order workflow after promotion. No PR was merged.
+- The repaired local server is running at <http://127.0.0.1:3217> against the live services; its source viewer also loaded the same passed evaluation. An existing unrelated server on port 3107 still serves older UI and was left untouched. Use the repaired checkout/server when validating these changes.
