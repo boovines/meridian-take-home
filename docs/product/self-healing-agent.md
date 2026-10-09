@@ -87,8 +87,58 @@ The [architecture](../architecture/overview.md) and [verification plan](../verif
 
 ## Current implementation checkpoint
 
+The proposed run-recovery extension below is not implemented. It changes manual-run recovery only; the explicit evaluation-driven repair behavior described above remains the current implementation.
+
 The [generation](../features/engineer-generation.md), [runtime](../features/workflow-runtime.md), and [evaluation](../features/trusted-evaluations.md) guides describe implemented behavior and routes. The evaluation screen supports full-workflow and JSON-output step checks, explicit verification, sealed suite revisions, full-suite execution, comparison details and visit traces. Arbitrary unit-test code and broad OCR benchmarks remain deferred. Evaluation starts explicitly. Bounded repair is implemented; automatic first evaluation, arbitrary test-code execution and broad OCR benchmarking remain deferred.
 
 ### Bounded repair implementation checkpoint
 
 Repair is now implemented with a three-attempt limit and a recorded two-hour session deadline. Every candidate uses the same approved plan and locked suite; regression checks compare assertion identities. Candidate history and the retained baseline are distinct. The Evaluation tab includes a baseline sidebar, attempt diagnoses, acceptance reasons and links to code/evaluations. The executable repair schema is in migrations 009, 012 and 013 and the implemented contract is in `docs/features/bounded-repair.md`. Live synthetic repair passed. See [implementation status](../implementation-status.md) for current Gmail/PDF results; fixture checks do not establish shipment accuracy.
+
+## Proposed extension: recovery from a failed manual run
+
+Status: scoped in the October 8 engineer interview; implementation pending. This section supersedes “repair always requires an explicit action” for future manual-run failures once shipped. Evaluation repair and repeated confirmation remain explicit actions.
+
+### User experience and completion
+
+A failed manual run should automatically start diagnosis using its actual step traces, audit payloads and source documents. Existing failed runs should offer **Diagnose and recover**. The engineer should not have to create an evaluation suite merely to repair a broken output contract. A legitimate business failure, such as a good missing required information, is a valid process result and must not trigger code repair just to turn it into a pass.
+
+Show the affected step, a plain-language diagnosis, current stage, attempt count, and links to evidence and changes. For example, “Repairing invoice extraction — attempt 1 of 3” should explain that an evidence path points to an object when the contract requires the extracted value. Do not stop at “7 field evidence issues.” Keep the original failed run and every recovery attempt visible.
+
+If the agent needs information, show its specific question beside the relevant evidence, with a text answer and **Submit and continue**. Persist the question and session so closing the browser loses nothing. Questions about implementation are separate from human approval steps in the customer's process. Cancel remains available during work or while waiting.
+
+After successful recovery, show the repaired report immediately. Label it **Completed after repair — business results not yet verified** unless separate evidence supports a stronger claim. Make this version the default for future manual runs, visibly unverified; keep earlier versions selectable. Do not change the confirmed evaluation baseline. A selected version passing one run or one regression suite is not repeated confirmation.
+
+### Diagnosis and repair boundaries
+
+Use the existing audit, document-inspection, sandbox and bounded repair tools. Classify the failure before acting: implementation defects can be patched; missing or unreadable source material needs input correction; unavailable providers or credentials need operational attention. A successful model call followed by a field-evidence contract error is an implementation failure, not proof that the document lacks the field. Record the diagnosis and supporting evidence, including uncertainty.
+
+Allow at most three candidate repairs per recovery session. Check each candidate, rerun the affected input from the beginning, and retain results. Preserve the frozen process, engineer-approved methods and trusted expectations. Stop if progress requires changing any of them. Answers may clarify existing rules but cannot silently weaken or replace them. An answer that changes the rule must be surfaced as a process-change blocker.
+
+An engineer answer guides another source inspection; it is not replacement documentary evidence. “The batch is ABC123” cannot establish a certificate match without readable supporting material. New or replacement documents require a new captured input bundle and linked run; preserve the original input and failure. Customer-required human approvals remain mandatory, including fresh responses on new runs.
+
+Enforce the existing one-operation-per-workflow rule across recovery and its child executions. Release/transfer operation ownership durably when a failed run starts recovery; duplicate completion events must not create duplicate sessions. Internal reruns and evaluations must not recursively start recovery. Record time and spend limits; human waiting should not consume active execution time, and answers must not reset the attempt budget. If canceled or exhausted, retain the latest evidence and explain what the engineer must do next.
+
+### Verification and version selection
+
+Check the changed implementation, rerun the affected shipment with the same immutable input, then run the applicable existing locked regression suite once before making the candidate the manual-run default. Targeted checks may aid diagnosis but cannot replace that suite. Do not silently launch the more expensive three-full-run confirmation campaign; expose it as an explicit Evaluation action.
+
+When the suite already has failures, recovery may accept a candidate that fixes the affected run and introduces no new failures. Preserve every previously passing assertion and do not accept new execution errors or lost coverage. Show remaining failures and keep the version unverified. Compare against a recorded baseline for the same suite and execution settings; if no comparable baseline exists, establish one or report regression status as unknown rather than claiming no regressions. A canceled, blocked or indeterminate check cannot establish acceptance. Keep a regressing candidate in history and continue from the retained non-regressing baseline.
+
+Without a locked suite, successful contract checks and rerunning the affected input can establish recovery, but not business correctness. Never manufacture trusted expectations from the candidate's own output. Reusable recovery machinery must work for other workflows; shipment matching policy belongs in generated implementations and approved clarification context.
+
+### Clarifications and durable records
+
+An answer applies to the current captured shipment by default. Add **Use for future runs of this workflow**, off by default; the engineer chooses its scope. The agent may recommend reuse for a general clarification such as “REG means registration number,” but cannot silently promote a shipment-specific fact. Reusable clarification context belongs to the frozen workflow without modifying its immutable business rules. Preserve question, answer, scope, source references and the versions/attempts that used it. Later answers must not retroactively change historical repair evidence.
+
+Extend the existing repair lifecycle rather than creating a second repair engine. Model the repair origin explicitly as a failed manual run or an evaluation; a run-origin session may have no trusted suite. Pin source run, input bundle, approved plan, initial version, optional suite and comparable baseline, retained candidate, limits and stop reason. Existing evaluation-origin constraints must stay enforceable. Attempts link their diagnosis, code version, rerun, optional regression evaluation and acceptance decision.
+
+Engineer questions need independently addressable, durable records tied to a recovery session and attempt, with open/answered/canceled state and idempotent answer submission. Reusable clarification records need their own scope and provenance because they outlive the session; freeze the context used by each attempt. Store a separate workflow reference for the default manual-run version, updated atomically only after acceptance, rather than inferring it from the newest generated version. These are proposed model changes, not claims about existing SQL tables. Final migrations must preserve workflow ownership and history and index session/run/question lookups.
+
+Proposed API actions are: start recovery for a failed run, inspect its session and questions, and submit an answer with an explicit reuse choice. Reuse the existing durable-job cancellation and code/run inspection routes. Start and answer operations require idempotency keys and reject stale or terminal-session submissions. Automatic failure handling should call the same recovery service as the explicit action.
+
+### Delivery and acceptance
+
+Deliver two new dependent feature PRs, leaving both open: **run-driven diagnosis and recovery**, followed by **engineer clarification and continuation**. The first includes the failed-run entry point, classified diagnosis, bounded patches, rerun/regression checks, manual-version selection and recovery progress UI. The second adds persisted questions, scoped answers, source reinspection and pause/resume. Reuse existing repair internals; avoid adding another generic job or conversation framework.
+
+Fixture-based verification must cover a repairable extraction-contract defect; a valid business failure that needs no repair; unchanged frozen rules/methods/tests; no new regression despite existing failures; rejection of a regressing candidate; recovery without a suite remaining unverified; input/provider blockers; duplicate dispatch; cancellation and exhaustion; and no recursive recovery. Browser coverage should follow failure through diagnosis to the repaired report and separately through an engineer question, reload, answer and continuation. Verify reuse stays off by default and answers cannot substitute for source evidence. Test the combined PR stack locally; keep live provider checks separate and cost-bounded.
