@@ -194,6 +194,8 @@ export function invocationFailure(error: unknown): RuntimeError {
     "EXTRACTION_SCHEMA_INVALID",
     "EXTRACTION_EVIDENCE_INVALID",
     "EXTRACTION_UNRESOLVED",
+    "REPAIR_EVIDENCE_LEAK",
+    "REPAIR_INTEGRITY_UNCHECKABLE",
   ];
   const routeCode =
     /^(INVALID_ROUTES|AMBIGUOUS_ROUTE|NO_MATCHING_ROUTE|INVALID_OUTCOME):/.exec(
@@ -209,6 +211,7 @@ export function invocationFailure(error: unknown): RuntimeError {
         ? "implementation"
         : known &&
             [
+              "REPAIR_INTEGRITY_LIMIT",
               "EVALUATION_CONFIGURATION_CHANGED",
               "SANDBOX_UNAVAILABLE",
               "MODEL_UNAVAILABLE",

@@ -4,13 +4,14 @@ import { invokeInSandbox } from "../integrations/sandbox-step";
 import type { z } from "zod";
 import { DomainError } from "../../domain/errors";
 import { repairSources } from "../../domain/repair";
+import { assertRepairEvidenceIntegrity } from "../../domain/repair-integrity";
 import type { Project } from "../../domain/project";
 import type { Database } from "../database";
 import { ArtifactService } from "../artifacts/service";
 import { assembleProject, validateProject } from "../engineering/project";
 import { VersionService } from "../engineering/version-service";
 import { RepairService } from "./service";
-import { changedStepSources, type PreviousSourceEvidence } from "./evidence";
+import { repairIntegrityEvidence, changedStepSources, type PreviousSourceEvidence } from "./evidence";
 import { completeRepairSources } from "./patch";
 import { repairDocumentBudget, RepairDocumentReader, type ReadRepairDocument } from "./documents";
 import { repairAuditBudget, RepairAuditReader, type ReadRepairAudit } from "./audit";
@@ -41,6 +42,11 @@ export class RepairGenerationService {
     if (!claimed.token) return claimed.attempt;
     const context = await repairs.generationContext(attemptId);
     signal.throwIfAborted();
+    const versions = new VersionService(this.db, this.artifacts);
+    const { project: baseline } = await versions.load(
+      claimed.job.workflow_id,
+      claimed.attempt.baseline_version_id,
+    );
     // Reuse a complete durable artifact if a prior activity died before publishing.
     const checkpoint = (
       await this.db.query(
@@ -64,11 +70,6 @@ export class RepairGenerationService {
         (checkpoint.metadata as Record<string, unknown>).diagnosis,
       );
     } else {
-      const versions = new VersionService(this.db, this.artifacts);
-      const { project: baseline } = await versions.load(
-        claimed.job.workflow_id,
-        claimed.attempt.baseline_version_id,
-      );
       const previousSources = await Promise.all(
         context.previous_attempts
           .filter((prior) => prior.candidate_version_id)
@@ -158,6 +159,11 @@ export class RepairGenerationService {
         )
       ).id;
     }
+    // Check both fresh and restored artifacts before publishing any runnable version.
+    // Rejected source remains immutable diagnostic evidence, never acceptance evidence.
+    assertRepairEvidenceIntegrity(
+      project.files, baseline.files, context.spec.board, repairIntegrityEvidence(context),
+    );
     // A new version id is not a new candidate if its executable files are identical.
     // Keep the generated artifact for diagnosis, but never buy another lucky sequence.
     for (const previous of context.previous_attempts.filter(a => a.session_id === context.session.id && a.candidate_version_id)) {

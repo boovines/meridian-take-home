@@ -1280,3 +1280,74 @@ it("does not claim matching configuration for legacy evaluations with unknown se
   expect(context.baseline_repetitions).toEqual([]);
   await repairs.finish(started.job.id, "cancelled", "Unknown settings are not matching evidence");
 });
+
+it("retains but never publishes a repair that copies a case identifier, including checkpoint recovery", async () => {
+  const { f, job } = await prepared();
+  const attempt = await repairs.beginAttempt(job.id, 1);
+  const adapter = { ...generator, generate: vi.fn(async (c: Parameters<typeof generator.generate>[0]) => {
+    const result = await generator.generate(c);
+    result.project.steps[0].source_lines.push('const example = "SYNTHETIC-001";');
+    return result;
+  }) };
+  for (let recovery = 0; recovery < 2; recovery++) {
+    await expect(generation.run(attempt.id, adapter, AbortSignal.timeout(10000)))
+      .rejects.toMatchObject({ code: "REPAIR_EVIDENCE_LEAK" });
+  }
+  expect(adapter.generate).toHaveBeenCalledTimes(1);
+  const retained = await db.query("SELECT id FROM artifacts WHERE workflow_id=$1 AND metadata->>'repair_attempt_id'=$2 AND kind='generated_project'", [f.w.id, attempt.id]);
+  expect(retained.rows).toHaveLength(1);
+  expect((await repairs.state(f.w.id)).attempts[0].candidate_version_id).toBeNull();
+  expect((await db.query("SELECT id FROM implementation_versions WHERE artifact_id=$1", [retained.rows[0].id])).rows).toHaveLength(0);
+  await repairs.finish(job.id, "needs_attention", "Evidence-specific runtime identifier rejected.", "REPAIR_EVIDENCE_LEAK");
+});
+
+it("records a contaminated diagnostic patch without invoking a sandbox", async () => {
+  const { RepairStepReplay } = await import("../src/server/repairs/replay");
+  const { f, job } = await prepared();
+  const attempt = await repairs.beginAttempt(job.id, 1);
+  const claim = await repairs.claimGeneration(attempt.id);
+  const context = await repairs.generationContext(attempt.id);
+  const baseline = (await new VersionService(db, artifacts).load(f.w.id, f.version.id)).project;
+  const invoke = vi.fn();
+  const replay = new RepairStepReplay(db, context, baseline, claim.token!, AbortSignal.timeout(10000), invoke, artifacts);
+  const result = await replay.run({ recorded_input_id: context.results[0].id,
+    candidate_patch: { node_id: f.nodes[1].id, source_lines: ['export async function run() { return {kind:"complete", output:{shipment:"SYNTHETIC-001",failed_goods:1},matching_connection_ids:[]}; }'] } });
+  expect(result).toMatchObject({status:"error",error:{code:"REPAIR_EVIDENCE_LEAK",category:"implementation"},diagnostic_only:true});
+  expect(invoke).not.toHaveBeenCalled();
+  const state = await repairs.state(f.w.id);
+  expect(state.replays[0]).toMatchObject({status:"completed",request_artifact_id:expect.any(String),result_artifact_id:expect.any(String)});
+  expect(state.attempts[0].candidate_version_id).toBeNull();
+  await repairs.finish(job.id,"cancelled","Offline integrity test complete.");
+});
+
+it("allows diagnostic comments and provenance metadata through publication, recovery and replay", async () => {
+  const { job } = await prepared();
+  const attempt = await repairs.beginAttempt(job.id, 1);
+  const adapter = { ...generator, generate: vi.fn(async (c: Parameters<typeof generator.generate>[0]) => {
+    const result = await generator.generate(c);
+    result.project.steps[0].source_lines.push('// Diagnose SYNTHETIC-001 without treating it as a runtime answer.', `const traceLabel = "${c.session.id}";`);
+    return result;
+  }) };
+  const publish = vi.spyOn(RepairService.prototype, "publishCandidate").mockRejectedValueOnce(new Error("Simulated crash before publication"));
+  try {
+    await expect(generation.run(attempt.id, adapter, AbortSignal.timeout(10000))).rejects.toThrow("Simulated crash");
+  } finally { publish.mockRestore(); }
+  const recovered = await generation.run(attempt.id, adapter, AbortSignal.timeout(10000));
+  expect(recovered.candidate_version_id).toBeTruthy();
+  expect(adapter.generate).toHaveBeenCalledTimes(1);
+  await repairs.finish(job.id, "cancelled", "Permitted checkpoint inspected");
+
+  const next = await prepared();
+  const a = await repairs.beginAttempt(next.job.id, 1), claim = await repairs.claimGeneration(a.id);
+  const c = await repairs.generationContext(a.id);
+  const baseline = (await new VersionService(db, artifacts).load(next.f.w.id, next.f.version.id)).project;
+  const { RepairStepReplay } = await import("../src/server/repairs/replay");
+  const invoke = vi.fn(async () => ({ kind: "complete", output: {}, matching_connection_ids: [] }));
+  const replay = new RepairStepReplay(db, c, baseline, claim.token!, AbortSignal.timeout(10000), invoke, artifacts);
+  expect(await replay.run({ recorded_input_id: c.results[0].id, candidate_patch: {
+    node_id: next.f.nodes[1].id,
+    source_lines: ['// Diagnose SYNTHETIC-001.', `const traceLabel = "${c.session.id}";`, 'export async function run(context) { return {kind:"complete",output:context.input,matching_connection_ids:[]}; }'],
+  } })).toMatchObject({ status: "completed", diagnostic_only: true });
+  expect(invoke).toHaveBeenCalledTimes(1);
+  await repairs.finish(next.job.id, "cancelled", "Permitted replay inspected");
+});
