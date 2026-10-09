@@ -14,6 +14,9 @@ export async function GET(
       new URL(request.url).searchParams.get("kind") === "manual"
         ? "manual"
         : undefined,
+      new URL(request.url).searchParams.has("spec")
+        ? parseId(new URL(request.url).searchParams.get("spec")!)
+        : undefined,
     ),
   );
 }

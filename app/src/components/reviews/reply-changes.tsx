@@ -29,6 +29,7 @@ export function ReplyChanges({
     proposalId: string,
     nodeId: string,
     instructions?: string,
+    title?: string,
   ) => void;
 }) {
   const proposed = replyProposalEvent.safeParse(message.event_data);
@@ -67,6 +68,10 @@ export function ReplyChanges({
           decision?.success && decision.data.decision === "accept"
             ? decision.data.instructions
             : undefined;
+        const proposedTitle =
+          decision?.success && decision.data.decision === "accept"
+            ? (decision.data.title ?? edit.after.title)
+            : (drafts[`${key}:title`] ?? edit.after.title);
         const text =
           saved ??
           (pending
@@ -81,6 +86,25 @@ export function ReplyChanges({
               </span>
             </summary>
             <div className="block-proposal-editor">
+              {pending && proposedTitle !== undefined && (
+                <label>
+                  Block name
+                  <input
+                    aria-label={`Proposed name for ${title}`}
+                    value={proposedTitle}
+                    maxLength={200}
+                    disabled={disabled}
+                    onChange={(event) =>
+                      onDraft(`${key}:title`, event.target.value)
+                    }
+                  />
+                </label>
+              )}
+              {edit.before.title !== proposedTitle && (
+                <p className="field-help">
+                  Name: {edit.before.title} → {proposedTitle}
+                </p>
+              )}
               <div
                 className={`proposal-edit-comparison${pending ? " editable" : ""}`}
               >
@@ -134,13 +158,19 @@ export function ReplyChanges({
                   <div className="proposal-actions">
                     <button
                       className="primary"
-                      disabled={disabled || status === "stale" || !text.trim()}
+                      disabled={
+                        disabled ||
+                        status === "stale" ||
+                        !text.trim() ||
+                        (proposedTitle !== undefined && !proposedTitle.trim())
+                      }
                       onClick={() =>
                         onDecision(
                           "accept",
                           message.id,
                           edit.node_id,
                           text.trim(),
+                          proposedTitle?.trim(),
                         )
                       }
                     >

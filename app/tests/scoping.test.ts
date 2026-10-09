@@ -165,6 +165,19 @@ it("applies a connected graph once, retains human approval/loop and requires rea
   await expect(
     scoping.saveNote(w.id, { note: "locked", expected_revision: 2 }),
   ).rejects.toMatchObject({ code: "WORKFLOW_LOCKED" });
+  // A qualifying v1 scaffold review cannot satisfy a newly opened v2 revision.
+  const { ProcessRevisionService } = await import("../src/server/process-revisions/service");
+  await new ProcessRevisionService(db).start(w.id, { source_frozen_spec_id: String(spec.id) });
+  expect((await freeze.readiness(w.id)).completed_review_id).toBeNull();
+  await expect(freeze.freeze(w.id, { expected_content_revision: 1, acknowledge_unreviewed: true }))
+    .rejects.toMatchObject({ code: "NOT_READY" });
+  const revisedReview = await reviews.start(w.id, { request_key: randomUUID() });
+  await reviews.prepare(revisedReview.id);
+  await reviews.publish(revisedReview.id, { findings: [] });
+  const revisedSpec = await freeze.freeze(w.id, { expected_content_revision: 1, acknowledge_unreviewed: false });
+  expect(revisedSpec.version_number).toBe(2);
+  expect(revisedSpec.parent_frozen_spec_id).toBe(spec.id);
+
 });
 it("does not overwrite a manually populated or stale board", async () => {
   const w = await setup(),

@@ -5,15 +5,16 @@ export const gmailSearch = z
     page_token: z.string().max(2000).optional(),
   })
   .strict();
+export const gmailMessageSelection = z
+  .array(z.string().regex(/^[a-f0-9]{10,40}$/))
+  .min(1)
+  .refine(
+    (ids) => new Set(ids).size === ids.length,
+    "Select each message once.",
+  );
 export const gmailCapture = z
   .object({
-    message_ids: z
-      .array(z.string().regex(/^[a-f0-9]{10,40}$/))
-      .min(1)
-      .refine(
-        (ids) => new Set(ids).size === ids.length,
-        "Select each message once.",
-      ),
+    message_ids: gmailMessageSelection,
     shipment_reference: z.string().trim().min(1).max(200),
   })
   .strict();

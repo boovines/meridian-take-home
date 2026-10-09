@@ -1,3 +1,4 @@
+import type { EngineerChangeRequest } from "./process-revision";
 import { z } from "zod";
 import { uuid, revisionSchema } from "./validation";
 import type { Board } from "./canvas";
@@ -83,6 +84,7 @@ export type ReviewerOutput = z.infer<typeof reviewerOutput>;
 export interface ReviewRun {
   id: string;
   workflow_id: string;
+  process_version?: number;
   status:
     | "queued"
     | "running"
@@ -104,8 +106,10 @@ export interface ReviewRun {
   finished_at: string | null;
 }
 export interface DiscussionThread {
+  engineer_request?: EngineerChangeRequest | null;
   id: string;
   workflow_id: string;
+  process_version?: number;
   kind: "finding" | "note" | "clarification";
   scope: "workflow" | "elements";
   title: string;
@@ -125,7 +129,7 @@ export interface DiscussionMessage {
   thread_id: string;
   message_number: number;
   parent_message_id: string | null;
-  author_kind: "customer" | "ai" | "system";
+  author_kind: "customer" | "engineer" | "ai" | "system";
   kind: "comment" | "event";
   body: string;
   event_data: Record<string, unknown> | null;
@@ -157,11 +161,9 @@ export function findingLabel(
         (message.kind === "comment" ||
           message.event_data?.action === "reopened"),
     )
-    .reduce<DiscussionMessage | undefined>(
-      (last, message) =>
-        !last || message.message_number > last.message_number ? message : last,
-      undefined,
-    );
+    .reduce<
+      DiscussionMessage | undefined
+    >((last, message) => (!last || message.message_number > last.message_number ? message : last), undefined);
   return latest?.kind === "comment" && latest.author_kind === "customer"
     ? "Answered"
     : "Open";
