@@ -41,3 +41,5 @@ Deletions and review actions refresh authoritative state in place to include rel
 - The library shows up to 100 workflows; pagination, search, collaboration, and ownership controls are not implemented.
 - The canvas primarily targets laptop and desktop use. Narrow layouts retain the block palette as icons and overlay the detail panel.
 - Product scope and future requirements remain in the [whiteboard PRD](../product/whiteboard.md). Implemented review, generation and evaluation behavior is documented in the adjacent feature contracts.
+
+Board and review fetches are ordered independently. A late initial or refresh response cannot replace a newer acknowledged board save or a newer review result.
