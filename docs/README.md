@@ -28,13 +28,14 @@ Each feature document combines usage, rules, failure handling and verification r
 - [AI review and frozen handoff](features/review-handoff.md)
 - [Implementation plans and code generation](features/engineer-generation.md)
 - [Gmail input capture](features/gmail-inputs.md)
+- [Selected-email grouped execution](features/grouped-execution.md)
 - [Workflow runtime and human responses](features/workflow-runtime.md)
 - [Trusted evaluations](features/trusted-evaluations.md)
 - [Bounded repair](features/bounded-repair.md)
 
 ## Authority and maintenance
 
-PRDs record intended product behavior. Feature contracts describe implemented behavior; confirm it against source and tests when making changes. SQL migrations define the executable database schema. The architecture/data-model audit explains why those boundaries exist. The evidence log records dated checks, not a blanket guarantee about later changes. Flag disagreements explicitly rather than treating an older proposal as current implementation.
+PRDs record intended product behavior. Feature contracts describe implemented behavior; confirm it against source and tests when making changes. SQL migrations define the executable database schema. The architecture/data-model audit explains why those boundaries exist. The evidence log records dated checks, not a blanket guarantee about later changes. Flag disagreements explicitly rather than treating an older proposal as current implementation. Current feature contracts describe this checkout; dated evidence and pending PRs do not automatically describe the current running deployment. Setup commands have one canonical home in the app README; walkthroughs link there.
 
 Archived interviews preserve decisions and alternatives, including tables that were later omitted. They are background, not competing specifications. Keep future scope in the [root README](../README.md#future-work-outside-demo-scope).
 

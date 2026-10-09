@@ -6,6 +6,8 @@ import type { ReviewState } from "@/domain/review";
 import { api, errorMessage } from "@/lib/api";
 import { ThreadCard } from "./thread-card";
 export function ReviewPanel({
+  conversationId,
+  onConversationChange,
   board,
   state,
   onRefresh,
@@ -14,6 +16,8 @@ export function ReviewPanel({
   onHighlight,
   selected,
 }: {
+  conversationId?: string | null;
+  onConversationChange?: (id: string | null) => void;
   board: Board;
   state: ReviewState;
   onRefresh: () => Promise<void>;
@@ -43,9 +47,20 @@ export function ReviewPanel({
       setBusy(false);
     }
   }
+  const currentVersion = board.workflow.process_version ?? 1;
   const findings = state.threads.filter((t) => t.kind === "finding"),
-    open = findings.filter((t) => t.status === "open"),
-    notes = state.threads.filter((t) => t.kind === "note");
+    open = findings.filter(
+      (t) => t.status === "open" && (t.process_version ?? 1) === currentVersion,
+    ),
+    requests = state.threads.filter((t) => t.engineer_request),
+    notes = state.threads.filter(
+      (t) => t.kind === "note" && !t.engineer_request,
+    );
+  const initialRequestId = requests.find((t) => t.status === "open")?.id;
+  useEffect(() => {
+    if (conversationId === "first_request" && initialRequestId)
+      onConversationChange?.(initialRequestId);
+  }, [conversationId, initialRequestId, onConversationChange]);
   const [hoveredThread, setHoveredThread] = useState<string | null>(null);
   const [focusedThread, setFocusedThread] = useState<string | null>(null);
   const visibleThread = (id: string | null) =>
@@ -62,7 +77,10 @@ export function ReviewPanel({
     onHighlight(highlightedThread);
     return () => onHighlight(null);
   }, [highlightedThread, onHighlight]);
-  const latest = state.runs[0];
+  const revisionRuns = state.runs.filter(
+    (r) => (r.process_version ?? 1) === currentVersion,
+  );
+  const latest = revisionRuns[0];
   return (
     <aside className="inspector review-panel" aria-label="Review and comments">
       <div className="panel-heading">
@@ -148,9 +166,10 @@ export function ReviewPanel({
                   : "All findings resolved"}
               </strong>
               <span>
-                {state.runs.filter((r) => r.status === "completed").length}{" "}
+                {revisionRuns.filter((r) => r.status === "completed").length}{" "}
                 completed review
-                {state.runs.filter((r) => r.status === "completed").length === 1
+                {revisionRuns.filter((r) => r.status === "completed").length ===
+                1
                   ? ""
                   : "s"}
               </span>
@@ -169,6 +188,27 @@ export function ReviewPanel({
           )}
         </>
       )}
+      {requests
+        .filter(
+          (t) => t.status === "open" || showHistory || t.id === conversationId,
+        )
+        .map((t) => (
+          <ThreadCard
+            key={t.id}
+            opened={conversationId === t.id}
+            onExpandedChange={(open) =>
+              onConversationChange?.(open ? t.id : null)
+            }
+            thread={t}
+            state={state}
+            board={board}
+            locked={busy || board.workflow.state === "reviewing"}
+            onRefresh={onRefresh}
+            onLocate={onLocate}
+            onHover={setHoveredThread}
+            onFocusThread={setFocusedThread}
+          />
+        ))}
       {open.map((t) => (
         <ThreadCard
           key={t.id}
@@ -204,14 +244,20 @@ export function ReviewPanel({
       {showHistory && (
         <div className="review-history">
           {findings
-            .filter((t) => t.status === "closed")
+            .filter(
+              (t) =>
+                t.status === "closed" ||
+                (t.process_version ?? 1) !== currentVersion,
+            )
             .map((t) => (
               <ThreadCard
                 key={t.id}
                 thread={t}
                 state={state}
                 board={board}
-                locked={locked || busy}
+                locked={
+                  locked || busy || (t.process_version ?? 1) !== currentVersion
+                }
                 onRefresh={onRefresh}
                 onLocate={onLocate}
                 onHover={setHoveredThread}

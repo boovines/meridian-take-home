@@ -22,20 +22,26 @@ export const repairSources = z
   })
   .strict();
 export interface RepairSession {
+  origin: "evaluation" | "run";
+  source_run_id: string | null;
+  input_bundle_id: string | null;
+  execution_configuration: import("./runtime").Json;
+  recovery_limits: Record<string, number>;
   id: string;
   workflow_id: string;
   job_id: string;
   plan_version_id: string;
-  suite_version_id: string;
+  suite_version_id: string | null;
   initial_version_id: string;
-  initial_evaluation_id: string;
+  initial_evaluation_id: string | null;
   baseline_version_id: string;
-  baseline_evaluation_id: string;
+  baseline_evaluation_id: string | null;
   attempt_limit: number;
   status:
     | "queued"
     | "running"
     | "passed"
+    | "recovered"
     | "needs_attention"
     | "failed"
     | "cancelled";
@@ -49,9 +55,10 @@ export interface RepairAttempt {
   session_id: string;
   attempt_number: number;
   baseline_version_id: string;
-  baseline_evaluation_id: string;
+  baseline_evaluation_id: string | null;
   candidate_version_id: string | null;
   evaluation_run_id: string | null;
+  rerun_id: string | null;
   diagnosis: z.infer<typeof repairSources>["diagnosis"] | null;
   status: "running" | "accepted" | "rejected" | "failed" | "cancelled";
   decision_reason: string | null;

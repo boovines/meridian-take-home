@@ -15,7 +15,7 @@ import { selectRoutes } from "../../domain/runtime";
 import type { Database } from "../database";
 import { workflow } from "../workflows/store";
 import { jobById } from "../engineering/job-service";
-import { frozenSpec, planSteps } from "../engineering/plan-service";
+import { specForPlan, planSteps } from "../engineering/plan-service";
 import { VersionService } from "../engineering/version-service";
 import { finishedRuns, runById, stepById } from "./store";
 
@@ -27,6 +27,10 @@ import {
 import { documentsForRun } from "./documents";
 import { ArtifactService } from "../artifacts/service";
 import { ExecutionAuditService } from "./audit-service";
+import { assertJobParentActive } from "../grouped-execution/ownership";
+import { sourcesForCapture } from "../grouped-execution/sources";
+import { validateGrouping } from "../../domain/grouped-execution";
+import { bundleInput } from "../../domain/runtime";
 export class StepService {
   constructor(
     private db: Database,
@@ -39,6 +43,16 @@ export class StepService {
       await workflow(tx, run.workflow_id, true);
       run = await runById(tx, data.run_id);
       const job = await jobById(tx, run.job_id);
+      await assertJobParentActive(tx, job);
+      if (
+        run.execution_mode !== "workflow" &&
+        data.node_id !== run.phase_node_id
+      )
+        throw new DomainError(
+          422,
+          "INVALID_PHASE_NODE",
+          "This phase may execute only its approved primitive.",
+        );
       if (
         finishedRuns.includes(run.status) ||
         !["running", "waiting_for_human"].includes(job.status)
@@ -48,7 +62,7 @@ export class StepService {
           "RUN_INACTIVE",
           "Run no longer accepts execution results.",
         );
-      const spec = await frozenSpec(tx, run.workflow_id),
+      const spec = await specForPlan(tx, run.workflow_id, job.plan_version_id),
         node = spec.board.nodes.find((n) => n.id === data.node_id);
       const method = (await planSteps(tx, job.plan_version_id)).find(
         (s) => s.node_id === data.node_id,
@@ -213,7 +227,8 @@ export class StepService {
         await tx.query("SELECT manifest FROM input_bundles WHERE id=$1", [
           run.input_bundle_id,
         ])
-      ).rows[0].manifest as { input: Json };
+      ).rows[0].manifest;
+      const manifest = bundleInput.shape.manifest.parse(input);
       const outputs: Record<string, Json> = {};
       if (Object.keys(data.input_step_refs).length) {
         const rows = (
@@ -226,11 +241,25 @@ export class StepService {
           outputs[String(row.node_id)] = row.output_data as Json;
       }
       const context: Record<string, Json> = {
-        input: input.input,
+        input: manifest.input,
         steps: outputs,
+        execution: { mode: run.execution_mode },
       };
+      const groupingSources =
+        run.execution_mode === "grouping" ? sourcesForCapture(manifest) : null;
+      if (groupingSources)
+        context.source_inventory = groupingSources.map((s) => ({ ...s }));
       if (human?.response) context.human_response = human.response;
-      return { run, stepId, token, node, method, board: spec.board, context };
+      return {
+        run,
+        stepId,
+        token,
+        node,
+        method,
+        board: spec.board,
+        context,
+        groupingSources,
+      };
     });
   }
   async execute(
@@ -241,10 +270,24 @@ export class StepService {
   ): Promise<StepReply> {
     const prepared = await this.prepare(data, resume);
     if (prepared.reply) return prepared.reply;
-    const { run, stepId, token, node, method, board, context } = prepared;
+    const {
+      run,
+      stepId,
+      token,
+      node,
+      method,
+      board,
+      context,
+      groupingSources,
+    } = prepared;
     try {
       if (run.kind === "evaluation") {
-        const row = (await this.db.query("SELECT e.execution_configuration FROM workflow_runs r JOIN evaluation_case_results c ON c.id=r.evaluation_case_result_id JOIN evaluation_runs e ON e.id=c.evaluation_run_id WHERE r.id=$1", [run.id])).rows[0];
+        const row = (
+          await this.db.query(
+            "SELECT e.execution_configuration FROM workflow_runs r JOIN evaluation_case_results c ON c.id=r.evaluation_case_result_id JOIN evaluation_runs e ON e.id=c.evaluation_run_id WHERE r.id=$1",
+            [run.id],
+          )
+        ).rows[0];
         assertEvaluationConfiguration(row?.execution_configuration as Json);
       }
       const { project } = await this.versions.load(
@@ -266,11 +309,36 @@ export class StepService {
           token,
         ),
       );
-      const routes = selectRoutes(
-        node,
-        board.connections.filter((e) => e.source_node_id === node.id),
-        result.matching_connection_ids,
-      ).map((e) => e.id);
+      if (
+        run.execution_mode !== "workflow" &&
+        result.matching_connection_ids.length
+      )
+        throw new DomainError(
+          422,
+          "INVALID_PHASE_ROUTES",
+          "Grouping and aggregation return a result without scheduling workflow connections.",
+        );
+      if (groupingSources) {
+        try {
+          validateGrouping(result.output, groupingSources);
+        } catch (error) {
+          throw new DomainError(
+            422,
+            "GROUPING_OUTPUT_INVALID",
+            error instanceof Error
+              ? error.message
+              : "Grouping output does not account for the captured sources.",
+          );
+        }
+      }
+      const routes =
+        run.execution_mode !== "workflow"
+          ? []
+          : selectRoutes(
+              node,
+              board.connections.filter((e) => e.source_node_id === node.id),
+              result.matching_connection_ids,
+            ).map((e) => e.id);
       signal.throwIfAborted();
       return this.publish(data.run_id, stepId, token, { result, routes });
     } catch (error) {
@@ -295,6 +363,7 @@ export class StepService {
       run = await runById(tx, runId);
       const job = await jobById(tx, run.job_id),
         step = await stepById(tx, stepId);
+      await assertJobParentActive(tx, job);
       const current = (
         await tx.query(
           "SELECT attempt_token FROM step_executions WHERE id=$1",

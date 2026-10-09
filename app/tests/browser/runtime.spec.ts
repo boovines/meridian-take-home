@@ -6,6 +6,7 @@ test("captures a packet, records a human decision, previews a report, and retrie
 }, testInfo) => {
   const workflowId = crypto.randomUUID(),
     versionId = crypto.randomUUID(),
+    specId = crypto.randomUUID(),
     bundleId = crypto.randomUUID(),
     nodeId = crypto.randomUUID(),
     jobId = crypto.randomUUID();
@@ -22,6 +23,7 @@ test("captures a packet, records a human decision, previews a report, and retrie
   const auditId = crypto.randomUUID();
   let auditReads = 0;
   const state = () => ({
+    initial_manual_version_id: versionId,
     runs,
     steps: runs.length
       ? [
@@ -68,9 +70,16 @@ test("captures a packet, records a human decision, previews a report, and retrie
             name: "Shipment review",
             desired_outcome: "Inspect and preview a shipment report.",
           },
+          specs: [{ id: specId, version_number: 1, created_at: date }],
           spec: {
-            id: crypto.randomUUID(),
+            id: specId,
+            version_number: 1,
             board: {
+              workflow: {
+                id: workflowId,
+                name: "Shipment review",
+                desired_outcome: "Inspect and preview a shipment report.",
+              },
               nodes: [{ id: nodeId, title: "Review shipment" }],
               connections: [],
             },
@@ -204,6 +213,7 @@ test("captures a packet, records a human decision, previews a report, and retrie
   await page.goto(`/workflows/${workflowId}/engineer`);
   await page.getByRole("button", { name: "Agent", exact: true }).click();
   await page.getByRole("button", { name: "Run workflow", exact: true }).click();
+  await page.getByRole("button", { name: "Saved input", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Start run", exact: true }),
   ).toBeDisabled();
@@ -265,7 +275,9 @@ test("captures a packet, records a human decision, previews a report, and retrie
     page.locator("pre").filter({ hasText: "schedule.pdf" }),
   ).toContainText("2026-10-09");
   expect(auditReads).toBe(1);
-  await page.locator('.run-trace').screenshot({path:testInfo.outputPath('execution-audit.png')});
+  await page
+    .locator(".run-trace")
+    .screenshot({ path: testInfo.outputPath("execution-audit.png") });
   await page.setViewportSize({ width: 390, height: 844 });
   expect(
     await page
