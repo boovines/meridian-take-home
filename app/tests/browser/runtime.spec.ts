@@ -210,7 +210,7 @@ test("captures a packet, records a human decision, previews a report, and retrie
   await page.getByText("Capture from Gmail", { exact: true }).click();
   await page
     .getByRole("textbox", {
-      name: "Shipment number or Gmail search",
+      name: "Search Gmail",
       exact: true,
     })
     .fill("DEMO-100");
@@ -218,6 +218,7 @@ test("captures a packet, records a human decision, previews a report, and retrie
     .getByRole("button", { name: "Search emails", exact: true })
     .click();
   await page.getByRole("checkbox", { name: /Documents for DEMO-100/ }).check();
+  await page.getByText("Enter a reference manually", { exact: true }).click();
   await page
     .getByRole("textbox", { name: "Shipment reference", exact: true })
     .fill("DEMO-100");

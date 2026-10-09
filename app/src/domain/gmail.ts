@@ -10,7 +10,6 @@ export const gmailCapture = z
     message_ids: z
       .array(z.string().regex(/^[a-f0-9]{10,40}$/))
       .min(1)
-      .max(10)
       .refine(
         (ids) => new Set(ids).size === ids.length,
         "Select each message once.",

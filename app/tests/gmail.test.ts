@@ -9,6 +9,7 @@ import { ArtifactService } from "../src/server/artifacts/service";
 import { BundleService } from "../src/server/runtime/bundle-service";
 import { RunService } from "../src/server/runtime/run-service";
 import { CanvasService } from "../src/server/canvas/service";
+import { GmailGroupingService } from "../src/server/inputs/gmail-grouping";
 import { GmailCaptureService } from "../src/server/inputs/gmail-capture";
 import {
   ComposioGmail,
@@ -17,7 +18,7 @@ import {
 } from "../src/server/integrations/composio-gmail";
 import { documentsForRun } from "../src/server/runtime/documents";
 import { invocationFailure } from "../src/server/runtime/invoke-step";
-import type { GmailReader } from "../src/domain/gmail";
+import { gmailCapture, type GmailReader } from "../src/domain/gmail";
 import { runtimeFixture } from "./fixtures/runtime";
 let db: Database, artifacts: ArtifactService, directory: string;
 beforeAll(async () => {
@@ -323,4 +324,22 @@ it("supplies captured bytes to the approved Agent broker and returns only its JS
     ),
   ).rejects.toMatchObject({ code: "METHOD_VIOLATION" });
   expect(reason).toHaveBeenCalledTimes(1);
+});
+
+it("accepts more than ten emails without allowing duplicate selections", () => {
+  const ids = Array.from({ length: 14 }, (_, i) => i.toString(16).padStart(16, "0"));
+  expect(gmailCapture.parse({ message_ids: ids, shipment_reference: "DEMO" }).message_ids).toHaveLength(14);
+  expect(gmailCapture.safeParse({ message_ids: [...ids, ids[0]], shipment_reference: "DEMO" }).success).toBe(false);
+});
+
+it("prepares source-backed packets without downloading attachments or publishing bundles", async () => {
+  const w = await new CanvasService(db).create({ name: "Packet preparation", desired_outcome: "One request per packet" });
+  const source = reader();
+  source.message = async (id) => ({ id, thread_id: id, subject: "Request", sender: "demo@example.test", received_at: "", text: "Reference DEMO-123", attachments: [] });
+  source.attachment = vi.fn(async () => { throw new Error("Preparation must not read attachments"); });
+  const service = new GmailGroupingService(db, source, async () => ({ groups: [{ reference: "DEMO-123", message_ids: [messageId], evidence: { message_id: messageId, quote: "Reference DEMO-123" }, reason: "Explicit reference" }], unresolved: [] }));
+  const result = await service.prepare(w.id, {message_ids:[messageId]}, AbortSignal.timeout(10000));
+  expect(result.groups[0].reference).toBe("DEMO-123");
+  expect(source.attachment).not.toHaveBeenCalled();
+  expect((await db.query("SELECT id FROM input_bundles WHERE workflow_id=$1",[w.id])).rows).toHaveLength(0);
 });
