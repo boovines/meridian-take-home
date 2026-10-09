@@ -88,4 +88,10 @@ Migration 013 retains each candidate’s confirmation rounds separately. The fir
 
 The existing repair history shows every confirmation run with its result and inspection link. Older successful evaluations remain historical results without a three-run claim. Three passes are the demo acceptance threshold, not proof of correctness on unseen documents. Fixtures verify the gate and persistence; live measurements establish extraction behavior separately.
 
+### Source inspection after inconsistent fresh runs
+
+A failed baseline with recorded execution settings can include up to two earlier completed evaluations of the exact same implementation, suite and execution configuration. Legacy evaluations with unknown settings are excluded. The diagnostic projection includes only cases that fail in the current baseline, with their step traces and allowlisted audit events. A prior passing result is comparison evidence, not a trusted extraction label.
+
+The repair document tool accepts up to three original PDF page numbers per read. The host selects those pages, preserves their original numbering and source hash in inspection provenance, and enforces the existing three-read / 20 MB original-document allowance across retries. Ownership and cancellation are checked again after PDF processing before any page evidence is returned. The model is directed to inspect the first varying extraction and its source before changing deterministic identity comparisons. Page selection improves available evidence; it does not prove that the model interpreted it correctly.
+
 Historical candidate evidence does not extend the current session’s duplicate-candidate ban across explicit engineer restarts. A restart still requires its own complete confirmation sequence; prior passes cannot contribute.

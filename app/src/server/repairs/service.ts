@@ -453,13 +453,27 @@ export class RepairService {
         };
       }),
     );
+    const evaluation = await evaluationById(this.db, attempt.baseline_evaluation_id);
+    const failedCaseIds = baselineResults.filter(r => r.outcome !== "passed").map(r => r.case_id);
+    const earlierRuns = failedCaseIds.length && !isDeepStrictEqual(evaluation.execution_configuration, {}) ? (await this.db.query(
+      `SELECT id,status,verdict FROM evaluation_runs WHERE workflow_id=$1 AND implementation_version_id=$2
+       AND suite_version_id=$3 AND execution_configuration=$4::jsonb AND created_at<$5 AND status='completed'
+       ORDER BY created_at DESC LIMIT 2`,
+      [session.workflow_id, attempt.baseline_version_id, session.suite_version_id, JSON.stringify(evaluation.execution_configuration), evaluation.created_at],
+    )).rows : [];
+    const baseline_repetitions = await Promise.all(earlierRuns.map(async run => ({
+      id: String(run.id), status: String(run.status), verdict: String(run.verdict),
+      traces: await evaluationTraces(this.db, session.workflow_id, String(run.id), failedCaseIds),
+      audit_events: await evaluationAudits(this.db, session.workflow_id, String(run.id), failedCaseIds),
+    })));
     return {
       attempt,
       session,
       plan,
+      baseline_repetitions,
       steps: await planSteps(this.db, plan.id),
       spec: await frozenSpec(this.db, session.workflow_id),
-      evaluation: await evaluationById(this.db, attempt.baseline_evaluation_id),
+      evaluation,
       results: baselineResults,
       cases,
       input_inventory: inventory,

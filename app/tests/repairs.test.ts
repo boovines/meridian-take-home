@@ -933,6 +933,10 @@ it("stops confirmation at its first failure and keeps all fresh runs", async () 
   expect((await repairs.decide(attempt.id)).session.status).toBe("running");
   await expect(repairs.createEvaluation(attempt.id, 3)).rejects.toMatchObject({code:"NO_CANDIDATE"});
   const next = await repairs.beginAttempt(job.id, 2);
+  const diagnosisContext = await repairs.generationContext(next.id);
+  expect(diagnosisContext.evaluation.id).toBe(two.id);
+  expect(diagnosisContext.baseline_repetitions.map(run => run.id)).toEqual([one.id]);
+  expect(diagnosisContext.baseline_repetitions[0].verdict).toBe("passed");
   await expect(generation.run(next.id, { ...generator, generate: c => generator.generate({ ...c, attempt: { ...c.attempt, attempt_number: 1 } }) }, AbortSignal.timeout(10000))).rejects.toMatchObject({ code: "UNCHANGED_REPAIR_CANDIDATE" });
   const history = (await repairs.state(attempt.workflow_id)).confirmations;
   expect(history.map(c => c.verdict)).toEqual(["passed", "failed"]);
@@ -1184,4 +1188,95 @@ it.each(["step", "workflow"])("blocks configuration drift in the %s execution wo
   const result = (await resultsByEvaluation(db, evaluation.id)).find(r => r.id === target.id)!;
   expect(result).toMatchObject({ outcome: "error", failure_category: "infrastructure", failure_code: "EVALUATION_CONFIGURATION_CHANGED" });
   await repairs.finish(job.id, "needs_attention", "Configuration drift is inconclusive");
+});
+
+it("fences PDF page evidence after processing and charges original bytes across readers", async () => {
+  const { PDFDocument } = await import("pdf-lib");
+  const pdf = await PDFDocument.create();
+  pdf.addPage([100, 200]); pdf.addPage([300, 400]);
+  const bytes = Buffer.from(await pdf.save());
+  const { f, job } = await prepared(true, bytes);
+  const attempt = await repairs.beginAttempt(job.id, 1);
+  const first = await repairs.claimGeneration(attempt.id);
+  const context = await repairs.generationContext(attempt.id);
+  const id = String(context.input_inventory[0].documents[0].artifact_id);
+  const reader = (token: string) => new RepairDocumentReader(f.w.id, new Set([id]), artifacts, AbortSignal.timeout(10000), repairDocumentBudget(db, attempt.id, token));
+  const old = reader(first.token!);
+  let nextToken = "";
+  const save = PDFDocument.prototype.save;
+  const saving = vi.spyOn(PDFDocument.prototype, "save").mockImplementationOnce(async function (this: Awaited<ReturnType<typeof PDFDocument.create>>, options) {
+    const selected = await save.call(this, options);
+    nextToken = (await repairs.claimGeneration(attempt.id)).token!;
+    return selected;
+  });
+  try {
+    await expect(old.read(id, [2])).rejects.toMatchObject({ code: "STALE_REPAIR_RESULT" });
+  } finally { saving.mockRestore(); }
+  expect(old.inspected).toEqual([]);
+  const selected = await reader(nextToken).read(id, [2]);
+  expect(selected.source_page_numbers).toEqual([2]);
+  expect((await PDFDocument.load(selected.bytes)).getPageCount()).toBe(1);
+  await reader(nextToken).read(id, [1]);
+  await expect(reader(nextToken).read(id, [1])).rejects.toMatchObject({ code: "REPAIR_DOCUMENT_LIMIT" });
+  const budget = (await db.query("SELECT document_read_count,document_byte_count FROM repair_attempts WHERE id=$1", [attempt.id])).rows[0];
+  expect(budget).toMatchObject({ document_read_count: 3, document_byte_count: 3 * bytes.length });
+  await repairs.finish(job.id, "cancelled", "Page evidence ownership and budget verified");
+});
+
+it("compares only the latest two completed runs with matching recorded configuration", async () => {
+  const { f, job, suite } = await prepared(false, false, true);
+  await repairs.finish(job.id, "cancelled", "Prepare repeat-history fixture");
+  const evaluate = async (passing: boolean) => {
+    const run = await evals.start(f.w.id, { request_key: randomUUID(), implementation_version_id: f.version.id, suite_version_id: suite.id });
+    await record(run.job.id, run.evaluation.id, { shipment: "SYNTHETIC-001", failed_goods: passing ? 1 : 2 }, true);
+    return run.evaluation.id;
+  };
+  const first = await evaluate(true), second = await evaluate(true);
+  vi.stubEnv("OPENAI_RUNTIME_MODEL", "other-recorded-model");
+  try { await evaluate(true); } finally { vi.unstubAllEnvs(); }
+  const baseline = await evaluate(false);
+  const started = await repairs.start(f.w.id, { request_key: randomUUID(), baseline_evaluation_id: baseline });
+  await repairs.prepare(started.job.id);
+  const attempt = await repairs.beginAttempt(started.job.id, 1);
+  const context = await repairs.generationContext(attempt.id);
+  expect(context.baseline_repetitions.map(run => run.id)).toEqual([second, first]);
+  const event = context.baseline_repetitions[0].audit_events[0];
+  expect(event).toBeDefined();
+  await generation.run(attempt.id, {
+    ...generator,
+    generate: async (c, _baseline, _signal, _previous, _documents, readAudit) => {
+      expect(await readAudit(String(event.id), [])).toMatchObject({ value: { shipment: "SYNTHETIC-001", failed_goods: 1 } });
+      return generator.generate(c);
+    },
+  }, AbortSignal.timeout(10000));
+  await repairs.finish(started.job.id, "cancelled", "Historical comparison scope verified");
+});
+
+it("does not claim matching configuration for legacy evaluations with unknown settings", async () => {
+  const { f, job, initial } = await prepared();
+  await repairs.finish(job.id, "cancelled", "Prepare legacy history fixture");
+  const legacy = async (key: string) => {
+    // Model pre-migration completed rows: the added configuration column defaults
+    // to {}, while their original immutable grades remain intact.
+    const row = (await db.query(
+      `INSERT INTO evaluation_runs(workflow_id,job_id,implementation_version_id,suite_version_id,run_key,status,verdict,finished_at)
+       SELECT workflow_id,job_id,implementation_version_id,suite_version_id,$2,status,verdict,finished_at FROM evaluation_runs WHERE id=$1 RETURNING id`,
+      [initial.evaluation.id, key],
+    )).rows[0];
+    await db.query(
+      `INSERT INTO evaluation_case_results(workflow_id,evaluation_run_id,suite_version_id,case_id,status,outcome,actual_output,check_results,finished_at)
+       SELECT workflow_id,$2,suite_version_id,case_id,status,outcome,actual_output,check_results,finished_at FROM evaluation_case_results WHERE evaluation_run_id=$1`,
+      [initial.evaluation.id, row.id],
+    );
+    return String(row.id);
+  };
+  await legacy("legacy-earlier");
+  const baseline = await legacy("legacy-baseline");
+  const started = await repairs.start(f.w.id, { request_key: randomUUID(), baseline_evaluation_id: baseline });
+  await repairs.prepare(started.job.id);
+  const attempt = await repairs.beginAttempt(started.job.id, 1);
+  const context = await repairs.generationContext(attempt.id);
+  expect(context.evaluation.execution_configuration).toEqual({});
+  expect(context.baseline_repetitions).toEqual([]);
+  await repairs.finish(started.job.id, "cancelled", "Unknown settings are not matching evidence");
 });

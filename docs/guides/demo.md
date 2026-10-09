@@ -52,6 +52,10 @@ The fictional PDFs and expectation manifest under `app/tests/fixtures/import-rec
 
 These are workflow inputs and expected results, not matching code in the platform. Capture the PDFs as source artifacts, add full-workflow cases to an explicit suite revision, verify/lock that revision, and re-evaluate the retained baseline before repair. Preserve the original shipment cases and prior suite/results. The PDFs exercise generated document reading without depending on private intermediate step schemas. They are optional live benchmarks, not LLM calls in required CI.
 
+## Current retained demonstration
+
+Use shipment code **v12** with suite v5. It passed 24/24 twice, then 23/24 on the third fresh run, so it is **not confirmed**. V14 regressed; v13 and v15 were cancelled. Select v12 explicitly in Agent → Run workflow and choose the original Gmail packet used in the retained passing-control report, not the isolated source-check fixture. The fresh retained-code report shows 3 successful invoices and 4 batches, with 3 successful and 1 failed; it is not sent. Use the recorded failure history to demonstrate repair honestly, rather than representing this one-packet report as full-suite repeatability.
+
 ## Short recording sequence
 
 Use retained history for expensive generation and evaluation rather than leaving the audience watching a spinner. Name the actual code and suite versions, and distinguish a historical pass from a completed confirmation sequence.

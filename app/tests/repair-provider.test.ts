@@ -29,7 +29,7 @@ it.each(["application/pdf", "text/plain"])("feeds %s evidence back to the model,
   const result = await repairProjectSources({} as RepairContext, {} as Project, AbortSignal.timeout(10000), [], read, async()=>({}));
   expect(result).toEqual(answer);
   expect(read).toHaveBeenCalledTimes(3);
-  expect(read).toHaveBeenCalledWith(id);
+  expect(read).toHaveBeenCalledWith(id, undefined);
   expect(model.doGenerateCalls).toHaveLength(4);
   expect(model.doGenerateCalls[3].toolChoice).toEqual({ type: "none" });
   const evidence = model.doGenerateCalls[1].prompt.find(message => message.role === "tool");
@@ -53,4 +53,21 @@ it('passes an exact audit subtree to repair without exposing unrelated artifacts
   expect(readAudit).toHaveBeenCalledWith(id,['records','0']);
   expect(readDocument).not.toHaveBeenCalled();
   expect(JSON.stringify(model.doGenerateCalls[1].prompt.find(m=>m.role==='tool'))).toContain('2026-10-09');
+});
+
+
+it("passes selected original page numbers to the source reader and back to the model", async () => {
+  const id = randomUUID();
+  const answer = { diagnosis: { summary: "Ambiguous source", affected_node_ids: [], changes: [] }, project: { status: "needs_attention", explanation: "Needs source confirmation", steps: [] } };
+  let calls = 0;
+  const model = new MockLanguageModelV4({ doGenerate: async () => ({
+    content: ++calls === 1 ? [{ type: "tool-call", toolCallId: "pages", toolName: "inspectDocument", input: JSON.stringify({ artifact_id: id, pages: [44] }) }] : [{ type: "text", text: JSON.stringify(answer) }],
+    finishReason: { unified: calls === 1 ? "tool-calls" : "stop", raw: undefined },
+    usage: { inputTokens: { total: 1, noCache: 1, cacheRead: undefined, cacheWrite: undefined }, outputTokens: { total: 1, text: 1, reasoning: undefined } }, warnings: [],
+  }) });
+  state.model = model;
+  const read = vi.fn(async () => ({ artifact_id: id, name: "selected.pdf", media_type: "application/pdf", bytes: Buffer.from("%PDF-1.7 fixture"), source_page_numbers: [44] }));
+  await repairProjectSources({} as RepairContext, {} as Project, AbortSignal.timeout(10000), [], read, async () => ({}));
+  expect(read).toHaveBeenCalledWith(id, [44]);
+  expect(JSON.stringify(model.doGenerateCalls[1].prompt.find(m => m.role === "tool"))).toContain("original source pages 44");
 });
