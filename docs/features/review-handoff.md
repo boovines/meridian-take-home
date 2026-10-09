@@ -31,3 +31,5 @@ Verification: reply tests cover unchanged blocks before approval, independent bl
 Known demo limits: review history displays the latest 20 runs; conversation pagination is deferred. Unsaved comment text is kept on request errors, but closing the panel discards it. Human comment creation supports the current selection or the whole workflow; AI findings can anchor multiple elements. No notifications, assignments, permissions, realtime collaboration or post-freeze edits are included.
 
 If a reply response is lost, an unchanged retry retains the original request key, thread revision and parent message even if another refresh has advanced the visible discussion. A definitive stale-context rejection allows the next attempt to use the refreshed context.
+
+The comparison diff is a named keyboard-focusable region, so long instructions can be scrolled with the keyboard inside the equal-height panes. At narrow widths the panes stack vertically.
