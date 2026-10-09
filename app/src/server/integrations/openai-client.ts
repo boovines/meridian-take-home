@@ -117,6 +117,13 @@ export function meteredOpenAIFetch(base: typeof fetch, responseDeadline = false)
         "BUDGET_UNAVAILABLE",
         "Priced usage unavailable; spend reservation retained.",
       );
+    const outputs: { type?: unknown; content?: { type?: unknown }[] }[] = Array.isArray(result.output) ? result.output : [];
+    const typeName = (type: unknown, allowed: string[]) => typeof type === "string" && allowed.includes(type) ? type : "other";
+    annotateInferenceTrace({
+      response_status: typeName(result.status, ["completed", "incomplete", "failed", "in_progress", "queued", "cancelled"]),
+      response_output_types: outputs.slice(0, 12).map(item => typeName(item?.type, ["message", "reasoning", "function_call"])),
+      response_content_types: outputs.flatMap(item => Array.isArray(item?.content) ? item.content.slice(0, 12) : []).slice(0, 24).map(item => typeName(item?.type, ["output_text", "refusal"])),
+    });
     const longContext = u.input_tokens > 272000;
     const actual =
       (((u.input_tokens - cached) * 2.5 + cached * 0.25) * (longContext ? 2 : 1) +
