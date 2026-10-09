@@ -228,6 +228,8 @@ Engineer clarification lives in `domain/clarification.ts`, `server/repairs/clari
 
 ## Vercel hosting
 
+An older worker may have frozen a workflow without setting the newer current-version pointer. Engineering can read its sole frozen snapshot while the workflow remains frozen; it does not rewrite the pointer or guess between multiple versions.
+
 Deploy from `app/`; `vercel.json` selects Next.js and the Node runtime project setting should be 24.x. Configure the live-service variables above in Vercel. `SUPABASE_DB_SSL_CA` accepts the project CA PEM contents when a laptop certificate path is unavailable; certificate verification remains enabled. Keep Vercel deployment protection enabled and use its shareable-link feature for invited reviewers. There is no application role/auth system.
 
 The Temporal worker remains a separate persistent process. It must share the database, queue and private artifact storage with the deployment. A web deployment alone does not run queued work. Do not copy the laptop's inference-ledger path into Vercel: that guard requires a shared local filesystem and does not enforce a distributed web/worker spending limit.
