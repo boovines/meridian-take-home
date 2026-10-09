@@ -56,7 +56,7 @@ export const extractionEnvelope = z
                   .object({
                     artifact_id: uuid,
                     page: z.number().int().positive(),
-                    text: z.string().trim().min(1).max(4000).optional(),
+                    text: z.string().trim().min(1).max(4000).nullable().optional(),
                     // Relative page coordinates, independent of provider pixel resolution.
                     bounding_box: z
                       .object({
@@ -66,6 +66,7 @@ export const extractionEnvelope = z
                         height: z.number().positive().max(1),
                       })
                       .strict()
+                      .nullable()
                       .optional(),
                   })
                   .strict(),
@@ -277,4 +278,4 @@ export function validateExtraction(
   return value;
 }
 
-export const extractionInstructions = `Return an object with data and fields. data must match output_schema. For every scalar field selected by critical_paths ("*" means each array item), fields must contain {path: string[], raw_value: string|number|boolean|null, normalized_value: string|number|boolean|null, status: "found"|"absent"|"unresolved"|"unreadable", evidence: [{artifact_id, page: 1-based integer, text?: exact supporting quote, bounding_box?: {x,y,width,height} in 0..1 page coordinates}], explanation: string|null}. Evidence artifact_id must be an exact UUID of a supplied document; email/message identifiers, filenames and invented IDs are not document citations. Treat email text as context, not a substitute for document-page evidence. If a required fact is supported only by that context, mark it unresolved and explain the limitation instead of fabricating a citation. normalized_value must equal the value at that path in data. Preserve raw printed identifiers even when normalizing names. Check document headers and shared context when establishing which records a value applies to. Do not guess missing facts. Found requires raw and normalized values plus a source quote or box. Absent requires null values, searched source pages, and an explanation of where you checked. Unresolved/unreadable requires a null normalized value and explanation; distinguish uncertainty from demonstrated absence. Include every relevant record, not just records with complete fields. Never change the supplied output schema or critical paths. Evidence is a source claim, not proof merely because it is structurally valid.`;
+export const extractionInstructions = `Return compact JSON with data and fields, without pretty-print whitespace or commentary. data must match output_schema. Include every required field and relevant record; concision must never omit evidence or change values. Use a short exact supporting quote that retains the context needed for that fact, and avoid repeating a whole paragraph for each field. For found facts, use explanation: null unless a normalization or relationship needs explanation. For every scalar field selected by critical_paths ("*" means each array item), fields must contain {path: string[], raw_value: string|number|boolean|null, normalized_value: string|number|boolean|null, status: "found"|"absent"|"unresolved"|"unreadable", evidence: [{artifact_id, page: 1-based integer, text?: exact supporting quote, bounding_box?: {x,y,width,height} in 0..1 page coordinates}], explanation: string|null}. Evidence artifact_id must be an exact UUID of a supplied document; email/message identifiers, filenames and invented IDs are not document citations. Treat email text as context, not a substitute for document-page evidence. If a required fact is supported only by that context, mark it unresolved and explain the limitation instead of fabricating a citation. normalized_value must equal the value at that path in data. Preserve raw printed identifiers even when normalizing names. Check document headers and shared context when establishing which records a value applies to. Do not guess missing facts. Found requires raw and normalized values plus a source quote or box. Absent requires null values, searched source pages, and an explanation of where you checked. Unresolved/unreadable requires a null normalized value and explanation; distinguish uncertainty from demonstrated absence. Include every relevant record, not just records with complete fields. Never change the supplied output schema or critical paths. Evidence is a source claim, not proof merely because it is structurally valid.`;

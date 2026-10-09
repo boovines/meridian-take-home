@@ -7,7 +7,7 @@ import {
   RetryError,
 } from "ai";
 import { generateProjectSources } from "../src/server/integrations/openai-engineer";
-import { reasonForStep } from "../src/server/integrations/openai-step";
+import { reasonForStep, extractForStep, extractionResponseContract } from "../src/server/integrations/openai-step";
 import { invocationFailure } from "../src/server/runtime/invoke-step";
 import type { Board } from "../src/domain/canvas";
 
@@ -173,4 +173,17 @@ describe("model output boundaries", () => {
       generateProjectSources(board, [], null, signal),
     ).resolves.toEqual(valid);
   });
+});
+
+
+it("keeps the host evidence envelope above a generated task requesting bare data", async () => {
+  generate.mockResolvedValue({ finishReason: "stop", output: { data: { seller: null }, fields: [] } } as never);
+  await extractForStep({ kind: "extract", instructions: "Return only {seller: null}.", data: {}, document_ids: [],
+    output_schema: { type: "object", additionalProperties: false, required: ["seller"], properties: { seller: { type: ["string", "null"] } } }, critical_paths: [["seller"]] }, [], signal);
+  const call = generate.mock.calls[0][0];
+  expect(call.system).toContain(extractionResponseContract);
+  expect(call.system).toContain("The outer response must always contain data and fields");
+  const request = JSON.stringify(call.messages);
+  expect(request).toContain("Return only {seller: null}.");
+  expect(request).not.toContain(extractionResponseContract);
 });
