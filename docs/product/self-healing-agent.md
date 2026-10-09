@@ -87,7 +87,7 @@ The [architecture](../architecture/overview.md) and [verification plan](../verif
 
 ## Current implementation checkpoint
 
-The run-recovery extension below is implemented in the open PR stack and is undergoing live acceptance. It changes manual-run recovery only; evaluation-driven repair still requires an explicit action.
+The run-recovery extension below is implemented in the open PR stack and has completed live execution-recovery acceptance. It changes manual-run recovery only; evaluation-driven repair still requires an explicit action.
 
 The [generation](../features/engineer-generation.md), [runtime](../features/workflow-runtime.md), and [evaluation](../features/trusted-evaluations.md) guides describe implemented behavior and routes. The evaluation screen supports full-workflow and JSON-output step checks, explicit verification, sealed suite revisions, full-suite execution, comparison details and visit traces. Arbitrary unit-test code and broad OCR benchmarks remain deferred. Evaluation starts explicitly. Bounded repair is implemented; automatic first evaluation, arbitrary test-code execution and broad OCR benchmarking remain deferred.
 
@@ -97,7 +97,7 @@ Repair is now implemented with a three-attempt limit and a recorded two-hour ses
 
 ## Proposed extension: recovery from a failed manual run
 
-Status: implemented in the open recovery/clarification stack; fixture verification is recorded in the feature contract and live acceptance is pending. This section supersedes “repair always requires an explicit action” for future manual-run failures once shipped. Evaluation repair and repeated confirmation remain explicit actions.
+Status: implemented in the open recovery/clarification stack; fixture and live recovery verification are recorded in the feature contract. This section supersedes “repair always requires an explicit action” for future manual-run failures once shipped. Evaluation repair and repeated confirmation remain explicit actions.
 
 ### User experience and completion
 
