@@ -55,6 +55,9 @@ export function meteredOpenAIFetch(base: typeof fetch): typeof fetch {
         "BUDGET_UNAVAILABLE",
         "Budgeted inference requires a priced GPT-5.4 or GPT-5.4 mini request with bounded output and function tools.",
       );
+    // An omitted tier means project-configured "auto", potentially priced higher.
+    // Pin the same standard tier used by the reservation and reconciliation.
+    const body = JSON.stringify({ ...r, service_tier: "default" });
     const countBody = Object.fromEntries(
       [
         "model",
@@ -94,21 +97,23 @@ export function meteredOpenAIFetch(base: typeof fetch): typeof fetch {
         preflight_attempts: attempts,
         preflight_failures: failures,
         max_output_tokens: r.max_output_tokens,
-        request_sha256: createHash("sha256").update(init.body).digest("hex"),
+        request_sha256: createHash("sha256").update(body).digest("hex"),
       },
       init.signal || undefined,
     );
     // A transport error, timeout or missing usage may still be billed. Leave the
     // reservation intact; every SDK retry must obtain a separate reservation.
-    const response = await base(input, init);
+    const response = await base(input, { ...init, body });
     if (!response.ok) {
       await reservation.annotate({ http_status: response.status });
       return response;
     }
-    const body = await response.clone().json(),
-      u = body.usage,
+    const result = await response.clone().json(),
+      u = result.usage,
       cached = u?.input_tokens_details?.cached_tokens || 0;
     if (
+      !prices[result.model] || prices[result.model].input !== price.input ||
+      result.service_tier !== "default" ||
       !u ||
       !Number.isInteger(u.input_tokens) ||
       !Number.isInteger(u.output_tokens) ||
@@ -121,16 +126,17 @@ export function meteredOpenAIFetch(base: typeof fetch): typeof fetch {
       throw new DomainError(
         503,
         "BUDGET_UNAVAILABLE",
-        "Usage unavailable; spend reservation retained.",
+        "Priced usage unavailable; spend reservation retained.",
       );
+    const longContext = u.input_tokens > 272000 && !r.model.includes("mini");
     const actual =
-      ((u.input_tokens - cached) * price.input +
-        cached * price.cached +
-        u.output_tokens * price.output) /
+      (((u.input_tokens - cached) * price.input + cached * price.cached) * (longContext ? 2 : 1) +
+        u.output_tokens * price.output * (longContext ? 1.5 : 1)) /
       1e6;
     await reservation.settle(actual, {
-      response_id: body.id,
-      returned_model: body.model,
+      response_id: result.id,
+      returned_model: result.model,
+      service_tier: result.service_tier,
       usage: u,
     });
     return response;

@@ -10,7 +10,7 @@ import {
 import { ApplicationFailure } from "@temporalio/common";
 import type * as activities from "./runtime-activities";
 import { RuntimeEngine } from "../domain/runtime-engine";
-import { RUNTIME_HEARTBEAT_POLICY } from "../domain/runtime";
+import { RUNTIME_HEARTBEAT_POLICY } from "../domain/runtime-policy";
 const io = proxyActivities<
   Pick<
     typeof activities,

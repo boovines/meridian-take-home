@@ -565,7 +565,6 @@ it("diagnoses a real extraction-contract rejection from persisted model audit an
           },
     reason: async () => ({}),
     extract: async () => ({
-      output: {
         data: {
           registration: {
             status: "found",
@@ -585,8 +584,6 @@ it("diagnoses a real extraction-contract rejection from persisted model audit an
             ],
           },
         ],
-      },
-      metadata: { provider: "fixture" },
     }),
   });
   async function execute(
@@ -679,6 +676,7 @@ it("diagnoses a real extraction-contract rejection from persisted model audit an
     rerunId,
     await execute(rerunId, rerun.definition, true),
   );
+  expect(await runById(db, rerunId)).toMatchObject({ status: "completed", failure_message: null });
   expect(await recovery.decide(attempt.id)).toEqual({ done: true });
   expect((await recovery.state(f.w.id, rerunId))?.session.status).toBe(
     "recovered",
