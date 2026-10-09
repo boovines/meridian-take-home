@@ -34,7 +34,7 @@ Mutable `workflows`, `nodes` and `connections` support independent edits. A node
 
 `frozen_specs` stores the immutable graph and review evidence. Freeze atomically checks structure, at least one completed review, and closed findings. Later semantic edits require an acknowledgment if they have not been reviewed. The demo locks the board after handoff; customer decisions cannot be silently changed by generation or repair.
 
-Separate rows are justified by independently updated lifecycles, not by treating every noun as a table. Nodes use indexed workflow lookups and targeted writes. Frozen graphs and captured manifests are JSON because they are immutable aggregates read as a unit. Large source files and generated projects live in artifact storage, with hashes and ownership metadata in the database. The executable schema contains 23 application tables; detailed constraints and indexes are in `app/migrations`.
+Separate rows are justified by independently updated lifecycles, not by treating every noun as a table. Nodes use indexed workflow lookups and targeted writes. Frozen graphs and captured manifests are JSON because they are immutable aggregates read as a unit. Large source files and generated projects live in artifact storage, with hashes and ownership metadata in the database. The executable schema contains 26 application tables; detailed constraints and indexes are in `app/migrations`.
 
 ## Generation and trusted repair
 
@@ -42,7 +42,7 @@ Approved plans, generated projects, input bundles and verified suites are separa
 
 The generator writes actual Node modules against a reusable step contract. The host supplies captured inputs and prior step outputs. Agent steps may request a bounded document interpretation; generated code cannot retrieve arbitrary files, bypass human gates, send email, or grade itself. Full source is retained before syntax validation. A successful build is not a claim of business correctness.
 
-The engineer explicitly starts repair. The frozen process, approved methods and locked expectations remain fixed. Each session allows three candidates. Every candidate completes the full suite before acceptance; it cannot become the next baseline if it breaks any previously passing assertion. Rejected candidates retain their diagnosis, source and results. Failures that require a method, process or expectation change stop for an engineer decision.
+The engineer explicitly starts repair. The frozen process, approved methods and locked expectations remain fixed. Each session allows three candidates. Every candidate completes the full suite before acceptance; it cannot become the next baseline if it breaks any previously passing assertion. A fully passing candidate must complete three consecutive fresh full-suite passes in total, counting its first pass, with the same code, suite and recorded configuration before the session is confirmed. Confirmation stops on its first failure or inconclusive result. Rejected candidates retain their diagnosis, source and results. Failures that require a method, process or expectation change stop for an engineer decision.
 
 ## The canvas and code tradeoff
 
@@ -52,6 +52,19 @@ The host deliberately retains control of routing, approvals and evaluation. That
 
 ## Verification and further work
 
-Required CI runs lint, type checking, a production build, Temporal workflow bundling, PostgreSQL persistence/domain tests and browser journeys with sanitized fixtures. Live provider checks are separate and never claimed as fixture-test evidence. The completed real-inbox evaluation currently matches 1 of 11 supplied shipments; other reports contain incorrect totals. A candidate that weakened batch identity was cancelled, and independent regression cases were added without changing supplied answers. Document selection and packaging-to-manufacturing batch matching need further work. See `docs/implementation-status.md` for measured results.
+Required CI runs lint, type checking, a production build, Temporal workflow bundling, PostgreSQL persistence/domain tests and browser journeys with sanitized fixtures. Live provider checks are separate and never claimed as fixture-test evidence. The supplied dataset has passed once and failed on an unchanged fresh rerun, so historical success must not be presented as repeatability. The expanded suite preserves all original checks and adds source-inspected extraction diagnostics. See [implementation status](../implementation-status.md) for every current measured result and the confirmation outcome. Source observations authored by Codex are labeled as such; they are not claimed as independent human verification.
 
 The next investments would be broader independent extraction labels, selective retrieval of evidence beyond bounded previews, cost/quality observability, and production access/retention controls. I would then add versioned workflow revisions after handoff and a repository round trip. Continuous Gmail watching, automatic report delivery, arbitrary parallel overlap and process mining remain outside the demo. I would measure execution-history growth before choosing partitioning or sharding; node-row count alone is not a reason to abandon a relational model.
+
+## Assessment against the assignment
+
+| Criterion | Demonstrated behavior | Practical limit |
+| --- | --- | --- |
+| Primitive design | Seven business-oriented block types; labeled exclusive routes, loops, and paired parallel branches. The shipment flow uses parallel readers; the small returns flow uses four blocks. | Customers still edit graph changes manually; broader usability testing has not been performed. |
+| Comment/revision loop | Live returns review clarified the inclusive 30-day boundary, invalid-input behavior and identifier propagation. The instructions changed before freeze, with recorded explanations. The shipment report also changed after a consequential finding. | Resolution expresses the process owner's decision; the AI does not prove semantic completeness. |
+| Frozen spec | Instructions, desired outcome, transitions, node configuration and review evidence are immutable. Engineer methods and human gates are explicit. Generation reads that artifact rather than relying on this chat. | Post-freeze revisions are deferred; newly discovered business requirements need a new workflow in the demo. |
+| Repository organization | UI, pure contracts, transactional services, adapters and Temporal orchestration have explicit boundaries. SQL migrations define persistence; large/private evidence stays outside source. | No production traffic benchmark or retention policy is claimed. |
+| Communication | Setup, current architecture, a short recording sequence and a dated evidence log are linked from the README. The report separates live execution, fixture tests, synthetic cases and source-inspected labels. | Earlier recordings show historical states; use the latest evidence when presenting accuracy. |
+| Scope judgment | Existing small SOPs demonstrate reuse. Report sending, repository import, post-freeze edits and hosted access are deferred. Inference is budgeted and repair is bounded. | Alternate-provider comparison and automatic reinspection are outside the supported implementation. Passing CI does not authorize merging. |
+
+The local walkthrough was operated by Codex through Chrome with real providers. It demonstrates application behavior, not an independent customer usability study or human verification of every evaluation label.

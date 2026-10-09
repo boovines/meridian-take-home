@@ -42,13 +42,13 @@ Application files follow feature boundaries. API handlers validate requests and 
 
 The revised [Whiteboard PRD](docs/product/whiteboard.md) and [Self-Healing Agent PRD](docs/product/self-healing-agent.md) retain product decisions. [Architecture and diagrams](docs/architecture/overview.md) describe boundaries and invariants. The [data-model decision audit](docs/architecture/data-model.md) explains table boundaries, keys, indexes and alternatives; `app/migrations` is the executable schema. [Archived interview](docs/archive/interviews/README.md) proposals include conditional tables that were intentionally omitted once Temporal became the scheduling authority.
 
-Mutable nodes and connections have independent rows and optimistic revisions. Immutable snapshots, input manifests and generated artifacts retain the exact context used by reviews, runs and evaluations. The frozen process, approved plan and locked expectations cannot be rewritten by a repair agent. Each repair session retains every candidate and only advances its baseline after full-suite regression checks.
+Mutable nodes and connections have independent rows and optimistic revisions. Immutable snapshots, input manifests and generated artifacts retain the exact context used by reviews, runs and evaluations. The frozen process, approved plan and locked expectations cannot be rewritten by a repair agent. Each repair session retains every candidate and only advances its baseline after full-suite regression checks. Confirmation requires three consecutive fresh full-suite passes for the same candidate and configuration; one historical pass is insufficient.
 
 ## Verification and development
 
 From `app/`, run `npm run lint`, `npm run typecheck`, `npm test`, `npm run worker:check`, `npm run build`, and `npm run test:browser`. Install the browser once with `npx playwright install chromium`. GitHub Actions runs these checks on ordinary and stacked PRs, with the full test suite on both PGlite and PostgreSQL 17 and isolated local storage for browser journeys. Separate check results and downloadable test reports identify failures; the required `app` gate requires every application check to pass. Live scripts are opt-in and consume configured provider resources.
 
-Follow [CONTRIBUTING.md](CONTRIBUTING.md): feature branches, focused PRs, actual verification, and passing required checks before merge. Never commit credentials, mailbox content, or real shipment documents. The [evidence log](docs/implementation-status.md) distinguishes implemented behavior, verified integrations, and remaining limitations.
+Follow [CONTRIBUTING.md](CONTRIBUTING.md): feature branches, focused PRs, actual verification, and explicit approval before merging. Feature PRs remain open as a dependent stack; passing CI is not merge permission. Never commit credentials, mailbox content, or real shipment documents. The [evidence log](docs/implementation-status.md) distinguishes implemented behavior, verified integrations, and remaining limitations.
 
 ## Future work (outside demo scope)
 

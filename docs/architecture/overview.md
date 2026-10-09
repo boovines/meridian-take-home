@@ -1,6 +1,6 @@
 # Architecture
 
-Architecture and design contracts · October 7, 2026. Canvas authoring, review/freeze, implementation plans/generation, runtime, evaluations, bounded repair and Gmail ingestion are implemented. A real packet completes end to end; full-dataset shipment accuracy remains incomplete. See [implementation status](../implementation-status.md) for measured outcomes and [migrations](../../app/migrations) for executable schema.
+Architecture and design contracts · October 8, 2026. Canvas authoring, review/freeze, implementation plans/generation, runtime, evaluations, bounded repair and Gmail ingestion are implemented. A real packet completes end to end; full-dataset shipment accuracy remains incomplete. See [implementation status](../implementation-status.md) for measured outcomes and [migrations](../../app/migrations) for executable schema.
 
 Start with the revised [Whiteboard PRD](../product/whiteboard.md) and [Self-Healing Agent PRD](../product/self-healing-agent.md). Current table rationale is in the [data-model audit](data-model.md); exact fields and constraints are defined by [migrations](../../app/migrations). [Archived interview proposals](../archive/interviews/README.md) preserve earlier alternatives and are not the executable schema.
 
@@ -24,17 +24,19 @@ flowchart TD
     Dispatch --> Runtime["Trusted workflow runtime"]
     Files --> Runtime
     Runtime <--> Sandbox["Isolated generated code"]
-    Runtime <--> Interpret["Host-brokered OpenAI document interpretation"]
+    Runtime <--> Interpret["Host-brokered document interpretation and evidence validation"]
     Runtime --> DB
     Runtime --> Grader["Trusted evaluator: locked cases and expectations"]
     Grader --> DB
-    Grader --> Decision["Pass, retain baseline, or request attention"]
+    Grader --> Decision["Reject regression, retain baseline, or confirm 3 full passes"]
     Decision --> Generate
 ```
 
 The return to generation is conditional on an explicitly started repair session and its remaining budget. It is not an endless loop. Manual runs need no grading; unit tests need no full workflow run. Reports are previews only. Generated code cannot bypass human gates, rewrite fixtures, or publish its own acceptance result.
 
 The web/API can deploy to Vercel. Temporal Cloud owns orchestration; its worker runs as a separate persistent Node process. Vercel Sandbox is selected for generated execution. Supabase Postgres stores application state and immutable evidence; direct server connections verify TLS with the project CA. OpenAI performs review and generation, and Composio supplies read-only Gmail retrieval. Database transactions never span model calls or generated execution. The app README documents the implemented module boundaries.
+
+Decision-relevant document extraction can use a generated JSON schema and field evidence contract. The host validates source ownership/page bounds and field dispositions; it does not decide pharmaceutical matching rules. OpenAI supplies document interpretation. Older generated `reason` requests retain their original path; the evidence contract applies to generated `extract` requests. Alternate-provider switching and automatic reinspection are not implemented in this checkpoint. Fixture tests do not establish a live accuracy improvement.
 
 PostgreSQL connections are bounded per process. Server-side statement and idle-transaction deadlines release abandoned locks; the database adapter discards failed connections rather than returning them to the pool. This protects subsequent operations after a dropped connection, but does not turn an interrupted evaluation into a successful one. Its recorded error remains visible and a new evaluation establishes fresh evidence.
 
@@ -88,6 +90,9 @@ erDiagram
     workflow_jobs ||--o{ evaluation_runs : executes
     workflow_jobs ||--o| repair_sessions : owns
     repair_sessions ||--o{ repair_attempts : records
+    repair_attempts ||--o{ repair_replays : diagnoses
+    repair_attempts ||--o{ repair_confirmations : confirms
+    evaluation_runs ||--o| repair_confirmations : supplies
 ```
 
 ```mermaid
@@ -122,7 +127,7 @@ Unique request/scheduling keys prevent duplicate logical actions. Worker fencing
 
 ## Efficiency and scope
 
-The executable schema has 24 application tables: four canvas, four review, ten engineering/evaluation, and six runtime/artifact records. Temporal owns parallel coordination, so the two proposed coordination tables are omitted. One nodes table covers every primitive type; one discussion model covers notes and findings; one jobs mechanism admits expensive operations. This is a set of record boundaries, not 24 services.
+The executable schema has 26 application tables: four canvas, four review, twelve engineering/evaluation/repair, and six runtime/artifact records. Temporal owns parallel coordination, so the two proposed coordination tables are omitted. One nodes table covers every primitive type; one discussion model covers notes and findings; one jobs mechanism admits expensive operations. These tables share the existing application and worker.
 
 One row per node does not by itself cause a scaling problem. Load a board with workflow-filtered queries; update a single node by key; query incoming/outgoing connections with endpoint indexes. An in-memory map helps rendering and traversal after loading the graph but does not replace persistent constraints or concurrency control. Do not store duplicate adjacency lists on nodes when connections already define the graph.
 

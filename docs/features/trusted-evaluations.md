@@ -15,7 +15,7 @@ When final totals do not explain a failure, add independently checked evidence c
 
 The operation banner allows cancellation. The Agent tab also shows the latest evaluation status for its selected version. Full-workflow human actions use scripted responses for each visit; automated tests do not wait for a person. Reports are captured without sending email.
 
-Bounded repair and Gmail capture are available; see [bounded repair](bounded-repair.md) and [capturing inputs](gmail-inputs.md). Evaluations start explicitly after generation. One-step cases use supplied JSON context; document extraction should be checked through a full-workflow case with captured documents. Current fixtures verify the interface and grading flow, not shipment accuracy.
+Bounded repair and Gmail capture are available; see [bounded repair](bounded-repair.md) and [capturing inputs](gmail-inputs.md). Evaluations start explicitly after generation. One-step cases use supplied JSON context and can optionally reference an immutable captured document bundle for isolated extraction checks. Current fixtures verify the interface and grading flow, not shipment accuracy.
 
 ## Implementation contract
 
