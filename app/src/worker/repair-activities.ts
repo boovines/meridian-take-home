@@ -47,12 +47,12 @@ export async function generateRepairCandidate(id: string) {
     clearInterval(pulse);
   }
 }
-export async function createRepairEvaluation(id: string) {
-  return (await new RepairService(await getDatabase()).createEvaluation(id)).id;
+export async function createRepairEvaluation(id: string, round = 1) {
+  return (await new RepairService(await getDatabase()).createEvaluation(id, round)).id;
 }
 export async function decideRepairAttempt(id: string) {
-  const { session } = await new RepairService(await getDatabase()).decide(id);
-  return { done: session.status !== "running" };
+  const { session, attempt } = await new RepairService(await getDatabase()).decide(id);
+  return { done: session.status !== "running", confirming: attempt.status === "running" };
 }
 export async function endRepair(
   id: string,

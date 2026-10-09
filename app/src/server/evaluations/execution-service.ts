@@ -1,3 +1,4 @@
+import { assertEvaluationConfiguration } from "./configuration";
 import { BundleService } from "../runtime/bundle-service";
 import { documentsForBundle } from "../runtime/documents";
 import { randomUUID } from "node:crypto";
@@ -105,6 +106,7 @@ export class EvaluationExecutionService {
     });
     if (!token) return;
     try {
+      assertEvaluationConfiguration(evaluation.execution_configuration);
       const { project } = await this.versions.load(
         result.workflow_id,
         evaluation.implementation_version_id,

@@ -83,3 +83,11 @@ export function repairBlocker(
     return "Resolve input, infrastructure, or unclassified errors before repairing code.";
   return null;
 }
+
+export interface RepairConfirmation {
+  attempt_id: string;
+  round: number;
+  evaluation_run_id: string;
+  status: EvaluationRun["status"];
+  verdict: EvaluationRun["verdict"];
+}

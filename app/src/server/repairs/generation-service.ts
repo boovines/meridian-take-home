@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import { RepairStepReplay, type ReplayStep } from "./replay";
 import { invokeInSandbox } from "../integrations/sandbox-step";
 import type { z } from "zod";
@@ -155,6 +156,13 @@ export class RepairGenerationService {
           },
         )
       ).id;
+    }
+    // A new version id is not a new candidate if its executable files are identical.
+    // Keep the generated artifact for diagnosis, but never buy another lucky sequence.
+    for (const previous of context.previous_attempts.filter(a => a.candidate_version_id)) {
+      const prior = await new VersionService(this.db, this.artifacts).load(claimed.job.workflow_id, String(previous.candidate_version_id));
+      if (isDeepStrictEqual(prior.project.files, project.files))
+        throw new DomainError(409, "UNCHANGED_REPAIR_CANDIDATE", "The repair reproduced an already evaluated candidate. Its artifact is retained; change the implementation before starting another confirmation sequence.");
     }
     signal.throwIfAborted();
     if (

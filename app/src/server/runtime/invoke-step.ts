@@ -209,6 +209,7 @@ export function invocationFailure(error: unknown): RuntimeError {
         ? "implementation"
         : known &&
             [
+              "EVALUATION_CONFIGURATION_CHANGED",
               "SANDBOX_UNAVAILABLE",
               "MODEL_UNAVAILABLE",
               "MODEL_PROJECT_SPEND_LIMIT",
