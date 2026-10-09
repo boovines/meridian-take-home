@@ -83,7 +83,7 @@ The first command bundles workflows without credentials and runs in CI. The last
 | `src/server/inputs` | Capture existing Gmail messages and attachment evidence into immutable input bundles |
 | `src/server/runtime` | Run/visit history, immutable interaction audit, run-scoped document access, isolated step contracts and human responses |
 | `src/server/artifacts` | Immutable file records, integrity checks and local/private Supabase storage |
-| `src/server/integrations` | Composio Gmail, OpenAI/LlamaCloud, Temporal, Vercel Sandbox and metered inference adapters |
+| `src/server/integrations` | Composio Gmail, OpenAI, Temporal, Vercel Sandbox and metered inference adapters |
 | `src/server/database.ts`, `src/server/http.ts` | Database and HTTP infrastructure |
 | `src/worker` | Temporal workflow definitions, activities and worker entry point |
 | `migrations` | Ordered SQL migrations; existing applied migrations are not rewritten |
