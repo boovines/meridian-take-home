@@ -129,9 +129,10 @@ export function GroupedRunPanel({
     [base, state.spec.id],
   );
   useEffect(() => {
+    const counter = sequence;
     void refresh().catch((e) => setError(errorMessage(e)));
     return () => {
-      sequence.current++;
+      counter.current++;
     };
   }, [refresh]);
   const running = !!detail && active(detail.job),

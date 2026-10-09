@@ -126,7 +126,13 @@ for (const ending of ["complete", "cancel"] as const)
         ...(approved ? ["aggregate"] : []),
       ].map(execution),
       children: children(),
-      child_history: children().map(({ execution: _, ...c }) => c),
+      child_history: children().map((c) => ({
+        id: c.id,
+        group_key: c.group_key,
+        label: c.label,
+        job_id: c.job_id,
+        input_bundle_id: c.input_bundle_id,
+      })),
       decision: {
         id: "decision",
         sequence: 1,
