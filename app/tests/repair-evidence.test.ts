@@ -136,3 +136,31 @@ it("fits repeated audit and passing-value evidence without losing locked inputs,
   }
   expect(JSON.stringify(context)).toBe(before);
 });
+
+it("keeps a late changed field visible even when both repeated trace previews are truncated", () => {
+  const node = randomUUID(), caseId = randomUUID();
+  const previous = { records: Array.from({ length: 30 }, (_, index) => ({
+    label: "Unchanged supporting detail. ".repeat(40), identifier: `ITEM${index}1234`,
+  })) };
+  const current = structuredClone(previous);
+  current.records[29].identifier = "ITEM2912340";
+  const trace = (output_data: unknown, occurrence_id: string) => ({
+    case_id: caseId, node_id: node, node_visit_number: 1, status: "completed", occurrence_id, output_data,
+  });
+  const context = {
+    spec: { board: {} }, steps: [], cases: [], results: [], input_inventory: [], audit_events: [], previous_attempts: [],
+    traces: [trace(current, "current-occurrence")],
+    baseline_repetitions: [{ id: "prior-evaluation", traces: [trace(previous,"prior-occurrence")], audit_events: [] }],
+  } as unknown as RepairContext;
+  const before = JSON.stringify(context);
+  const prompt = JSON.parse(repairPrompt(context, { files: {} } as Project));
+  expect(prompt.step_traces[0].output_data.truncated).toBe(true);
+  expect(prompt.baseline_repetitions[0].traces[0].output_data.truncated).toBe(true);
+  expect(prompt.baseline_repetitions[0].output_differences.changes).toEqual([{
+    case_id: caseId, node_id: node, node_visit_number: 1,
+    earlier_occurrence_id: "prior-occurrence", current_occurrence_id: "current-occurrence",
+    path: ["records",29,"identifier"],
+    earlier: { present:true, value:"ITEM291234" }, current: { present:true, value:"ITEM2912340" },
+  }]);
+  expect(JSON.stringify(context)).toBe(before);
+});

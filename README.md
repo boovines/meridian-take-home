@@ -59,6 +59,7 @@ Follow [CONTRIBUTING.md](CONTRIBUTING.md): feature branches, focused PRs, actual
 - **Support overlapping parallel sections.** The demo requires explicitly paired parallel splits and merges. More general overlapping parallel routing is deferred.
 - **Deliver report emails.** The demo captures and previews the intended report. Actual email delivery is deferred.
 - **Generate maps from existing sources.** SOP upload for an initial canvas is a low-priority stretch; automated process mining from business systems is outside demo scope.
+- **Verify citation meaning.** Page bounds and artifact identity do not prove that a cited page supports an extracted value. A live spot-check found a correct batch value with an incorrect page citation outside the locked suite; add source-verified citation expectations before claiming fully auditable extraction.
 - **Benchmark extraction more broadly.** Start with targeted checks on representative demo PDFs; broad comparisons across OCR systems and document collections are deferred.
 - **Change documents during a paused run.** Human responses are text or decisions in the demo. New documents require a new input bundle and run; in-run document uploads and dependency-aware reprocessing are deferred.
 - **Resume failed runs from checkpoints.** A user-requested retry starts from the beginning with the same code and inputs, linked to the failed run. General failed-step resume is deferred.

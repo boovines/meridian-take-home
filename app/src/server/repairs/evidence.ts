@@ -3,6 +3,7 @@ import type { AssertionResult } from "../../domain/evaluation";
 import type { Project } from "../../domain/project";
 import type { RepairContext } from "./generation-service";
 import { implementationPath } from "./patch";
+import { repetitionDifferences } from "./repetition";
 
 export type PreviousSourceEvidence = {
   attempt_number: number;
@@ -138,6 +139,9 @@ export function repairPrompt(
     Math.floor(160000 / Math.max(1, traceCount)),
   );
   let outputLimit = initialOutputLimit;
+  const repetitions = (context.baseline_repetitions ?? []).map(run => ({
+    ...run, output_differences: repetitionDifferences(context.traces, run.traces),
+  }));
   while (outputLimit >= 64) {
     for (const compactChecks of [false, true]) {
       const traces = (rows: Record<string, unknown>[]) =>
@@ -175,7 +179,7 @@ export function repairPrompt(
         input_inventory: context.input_inventory,
         step_traces: traces(context.traces),
         execution_audit_events: auditCatalogue(context.audit_events),
-        baseline_repetitions: (context.baseline_repetitions ?? []).map(({ traces: priorTraces, audit_events, ...run }) => ({
+        baseline_repetitions: repetitions.map(({ traces: priorTraces, audit_events, ...run }) => ({
           ...run, traces: traces(priorTraces), audit_events: auditCatalogue(audit_events), trace_coverage: coverage(priorTraces),
         })),
         repetition_contract: "At most two earlier completed runs of this exact baseline version, locked suite and execution configuration. Only cases failing in the current baseline are included. Compare earliest differing outputs; a previously passing final result does not make all its extracted fields trusted. Repeated model responses are evidence of variability, not authority to weaken the frozen business requirements. Inspect source pages before deciding whether extraction or its consumer is wrong.",
