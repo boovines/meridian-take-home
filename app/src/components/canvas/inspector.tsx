@@ -1,12 +1,13 @@
 "use client";
-import { useState, type FormEvent } from "react";
-import { ArrowRight, Trash2, X } from "lucide-react";
+import { useEffect, useState, type FormEvent } from "react";
+import { ArrowRight, Check, Trash2, X } from "lucide-react";
 import {
   type Board,
   type CanvasNode,
   type Connection,
   nodeLabels,
 } from "@/domain/canvas";
+import { ErrorNotice } from "../error-notice";
 import { api, ApiError, errorMessage } from "@/lib/api";
 import { primitives } from "./primitives";
 interface Props {
@@ -15,6 +16,7 @@ interface Props {
   onSaved: () => Promise<void>;
   onClose: () => void;
   onDirty: (dirty: boolean) => void;
+  onBusy: (busy: boolean) => void;
 }
 export function NodeInspector({
   node,
@@ -23,16 +25,37 @@ export function NodeInspector({
   onSaved,
   onClose,
   onDirty,
+  onBusy,
 }: Props & { node: CanvasNode }) {
   const [title, setTitle] = useState(node.title),
     [instructions, setInstructions] = useState(node.instructions),
     [split, setSplit] = useState(node.split_mode || ""),
     [join, setJoin] = useState(node.join_for_split_id || "");
-  const [revision, setRevision] = useState(node.revision),
+  const [baseline, setBaseline] = useState(node),
     [saving, setSaving] = useState(false),
     [error, setError] = useState(""),
     [conflict, setConflict] = useState<CanvasNode | null>(null),
     [confirmDelete, setConfirmDelete] = useState(false);
+  // A position save advances the row revision without changing the editor's
+  // contents. Rebase only when every process field still matches our baseline;
+  // never silently adopt a revision containing someone else's instruction edit.
+  const sameContent =
+    node.title === baseline.title &&
+    node.instructions === baseline.instructions &&
+    node.type === baseline.type &&
+    node.split_mode === baseline.split_mode &&
+    node.join_for_split_id === baseline.join_for_split_id &&
+    JSON.stringify(node.config) === JSON.stringify(baseline.config);
+  const revision = sameContent
+    ? Math.max(node.revision, baseline.revision)
+    : baseline.revision;
+  const hasChanges =
+    title !== baseline.title ||
+    instructions !== baseline.instructions ||
+    split !== (baseline.split_mode || "") ||
+    join !== (baseline.join_for_split_id || "");
+  const [saved, setSaved] = useState(false);
+  useEffect(() => onDirty(hasChanges), [hasChanges, onDirty]);
   const [target, setTarget] = useState(""),
     [condition, setCondition] = useState("");
   const path = `/api/workflows/${board.workflow.id}/nodes/${node.id}`;
@@ -43,6 +66,7 @@ export function NodeInspector({
   async function save(e: FormEvent) {
     e.preventDefault();
     setSaving(true);
+    onBusy(true);
     setError("");
     try {
       const n = await api<CanvasNode>(path, "PATCH", {
@@ -52,7 +76,8 @@ export function NodeInspector({
         split_mode: split || null,
         join_for_split_id: join || null,
       });
-      setRevision(n.revision);
+      setBaseline(n);
+      setSaved(true);
       onDirty(false);
       setConflict(null);
       await onSaved();
@@ -62,10 +87,12 @@ export function NodeInspector({
         setConflict((e.details as { current: CanvasNode }).current);
     } finally {
       setSaving(false);
+      onBusy(false);
     }
   }
   async function remove() {
     setSaving(true);
+    onBusy(true);
     setError("");
     try {
       await api(path, "DELETE", { expected_revision: revision });
@@ -76,11 +103,13 @@ export function NodeInspector({
       setError(errorMessage(e));
     } finally {
       setSaving(false);
+      onBusy(false);
     }
   }
   async function connect(e: FormEvent) {
     e.preventDefault();
     setSaving(true);
+    onBusy(true);
     setError("");
     try {
       await api(`/api/workflows/${board.workflow.id}/connections`, "POST", {
@@ -95,6 +124,7 @@ export function NodeInspector({
       setError(errorMessage(e));
     } finally {
       setSaving(false);
+      onBusy(false);
     }
   }
   return (
@@ -111,9 +141,7 @@ export function NodeInspector({
       </div>
       <p className="field-help">{primitives[node.type].prompt}</p>
       {error && (
-        <div className="inline-error" role="alert">
-          {error}
-        </div>
+        <ErrorNotice title="Couldn’t save this change" message={error} />
       )}
       {conflict && (
         <div className="conflict-box">
@@ -124,11 +152,9 @@ export function NodeInspector({
           </p>
           <button
             onClick={() => {
-              setRevision(conflict.revision);
+              setBaseline(conflict);
               setConflict(null);
-              setError(
-                "Review your draft below, then save to replace the version you just compared.",
-              );
+              setError("");
             }}
           >
             Keep my draft and use this saved revision
@@ -194,9 +220,23 @@ export function NodeInspector({
                 ))}
             </select>
           </label>
-          <button className="primary full-width" disabled={!!conflict}>
-            {saving ? "Saving…" : "Save block"}
+          <button
+            className={`primary full-width${saved && !hasChanges ? " saved-button" : ""}`}
+            disabled={!!conflict || (saved && !hasChanges)}
+          >
+            {saving ? (
+              "Saving…"
+            ) : saved && !hasChanges ? (
+              <>
+                <Check size={15} aria-hidden="true" /> Saved
+              </>
+            ) : (
+              "Save block"
+            )}
           </button>
+          <span className="sr-only" role="status">
+            {saved && !hasChanges ? "Block saved" : ""}
+          </span>
         </fieldset>
       </form>
       <div className="inspector-section">
@@ -282,6 +322,7 @@ export function ConnectionInspector({
   onSaved,
   onClose,
   onDirty,
+  onBusy,
 }: Props & { connection: Connection }) {
   const [condition, setCondition] = useState(connection.condition_text),
     [otherwise, setOtherwise] = useState(connection.is_default),
@@ -293,6 +334,7 @@ export function ConnectionInspector({
   async function save(e: FormEvent) {
     e.preventDefault();
     setSaving(true);
+    onBusy(true);
     setError("");
     try {
       const c = await api<Connection>(path, "PATCH", {
@@ -309,10 +351,12 @@ export function ConnectionInspector({
         setConflict((e.details as { current: Connection }).current);
     } finally {
       setSaving(false);
+      onBusy(false);
     }
   }
   async function remove() {
     setSaving(true);
+    onBusy(true);
     try {
       await api(path, "DELETE", { expected_revision: revision });
       onDirty(false);
@@ -322,6 +366,7 @@ export function ConnectionInspector({
       setError(errorMessage(e));
     } finally {
       setSaving(false);
+      onBusy(false);
     }
   }
   const title = (id: string) =>
@@ -343,9 +388,7 @@ export function ConnectionInspector({
         {title(connection.target_node_id)}
       </h2>
       {error && (
-        <div role="alert" className="inline-error">
-          {error}
-        </div>
+        <ErrorNotice title="Couldn’t save this change" message={error} />
       )}
       {conflict && (
         <div className="conflict-box">

@@ -126,5 +126,38 @@ test("approves a plan, downloads generated source, and keeps previous versions o
   await page.reload();
   await page.getByRole("button", { name: "Agent", exact: true }).click();
   await expect(page.getByText("Syntax check failed.", { exact: false })).toBeVisible();
+
+  const explanation =
+    "Read batch certificates was approved as Code, but its instructions require interpreting document contents. Only an Agent step can request document interpretation. Review the approved method before generating again.";
+  await page.route(`**/api/workflows/${w.id}/engineering`, async (route) => {
+    const response = await route.fetch();
+    const state = await response.json();
+    state.jobs = [
+      {
+        ...state.jobs[0],
+        status: "failed",
+        error_code: "GENERATION_NEEDS_ATTENTION",
+        error_message: explanation,
+      },
+    ];
+    await route.fulfill({ response, json: state });
+  });
+  await page.reload();
+  await page.getByRole("button", { name: "Agent", exact: true }).click();
+  const notice = page
+    .getByRole("alert")
+    .filter({ hasText: "Generation needs an engineer decision" });
+  await expect(notice).toBeVisible();
+  await expect(
+    notice.getByText(explanation, { exact: true }),
+  ).not.toBeVisible();
+  await notice.getByText("View details", { exact: true }).click();
+  await expect(notice.getByText(explanation, { exact: true })).toBeVisible();
+  await notice
+    .getByRole("button", { name: "Review implementation", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Implementation", exact: true }),
+  ).toHaveAttribute("aria-current", "page");
   expect(errors).toEqual([]);
 });

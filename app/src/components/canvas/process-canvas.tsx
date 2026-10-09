@@ -15,17 +15,30 @@ import {
   type Connection as FlowConnection,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { type Board, type CanvasNode, nodeLabels } from "@/domain/canvas";
+import {
+  type Board,
+  type CanvasNode,
+  type NodeType,
+  nodeTypes as primitiveTypes,
+  nodeLabels,
+} from "@/domain/canvas";
 import { primitives } from "./primitives";
 type ProcessNode = Node<
-  { block: CanvasNode; findingCount: number; onOpenReviews: () => void },
+  {
+    block: CanvasNode;
+    findingCount: number;
+    reviewHighlighted: boolean;
+    onOpenReviews: () => void;
+  },
   "process"
 >;
 function ProcessBlock({ data, selected }: NodeProps<ProcessNode>) {
   const n = data.block,
     Icon = primitives[n.type].icon;
   return (
-    <div className={`process-block ${n.type}${selected ? " selected" : ""}`}>
+    <div
+      className={`process-block ${n.type}${selected ? " selected" : ""}${data.reviewHighlighted ? " review-highlighted" : ""}`}
+    >
       <Handle
         type="target"
         position={Position.Top}
@@ -72,25 +85,33 @@ const nodeTypes = { process: ProcessBlock };
 interface Props {
   board: Board;
   selected?: string;
+  reviewHighlight?: {
+    nodeIds: string[];
+    connectionIds: string[];
+    wholeWorkflow: boolean;
+  };
   findingCounts?: Record<string, number>;
   onOpenReviews?: () => void;
   locked: boolean;
   onSelect: (kind: "node" | "connection", id: string) => void;
   onConnect: (c: FlowConnection) => void;
   onMove: (n: CanvasNode, x: number, y: number) => void;
+  onAdd: (type: NodeType, position: { x: number; y: number }) => void;
 }
 function FlowCanvas({
   board,
   selected,
   findingCounts,
+  reviewHighlight,
   onOpenReviews,
   locked,
   onSelect,
   onConnect,
   onMove,
+  onAdd,
 }: Props) {
   const frame = useRef<HTMLDivElement>(null);
-  const { fitView } = useReactFlow();
+  const { fitView, screenToFlowPosition } = useReactFlow();
   useEffect(() => {
     if (!frame.current) return;
     let animationFrame = 0;
@@ -126,12 +147,24 @@ function FlowCanvas({
             : { x: n.x, y: n.y },
         data: {
           block: n,
+          reviewHighlighted: !!(
+            reviewHighlight?.wholeWorkflow ||
+            reviewHighlight?.nodeIds.includes(n.id)
+          ),
           findingCount: findingCounts?.[n.id] || 0,
           onOpenReviews: onOpenReviews || (() => {}),
         },
         selected: n.id === selected,
       })),
-    [board.nodes, positions, measurements, selected, findingCounts, onOpenReviews],
+    [
+      board.nodes,
+      positions,
+      measurements,
+      selected,
+      findingCounts,
+      reviewHighlight,
+      onOpenReviews,
+    ],
   );
   const onNodesChange: OnNodesChange<ProcessNode> = (changes) => {
     const dimensions = changes.filter((c) => c.type === "dimensions");
@@ -143,7 +176,8 @@ function FlowCanvas({
             c.dimensions &&
             (current[c.id]?.width !== c.dimensions.width ||
               current[c.id]?.height !== c.dimensions.height)
-          ) next = { ...next, [c.id]: c.dimensions };
+          )
+            next = { ...next, [c.id]: c.dimensions };
         }
         return next;
       });
@@ -169,13 +203,50 @@ function FlowCanvas({
           target: c.target_node_id,
           label: c.is_default ? "Otherwise" : c.condition_text,
           selected: c.id === selected,
-          markerEnd: { type: MarkerType.ArrowClosed },
-          style: { strokeWidth: 1.6 },
+          className:
+            reviewHighlight?.wholeWorkflow ||
+            reviewHighlight?.connectionIds.includes(c.id)
+              ? "review-highlighted"
+              : undefined,
+          markerEnd: {
+            type: MarkerType.ArrowClosed,
+            color:
+              reviewHighlight?.wholeWorkflow ||
+              reviewHighlight?.connectionIds.includes(c.id)
+                ? "var(--blue)"
+                : undefined,
+          },
+          style: {
+            strokeWidth:
+              reviewHighlight?.wholeWorkflow ||
+              reviewHighlight?.connectionIds.includes(c.id)
+                ? 3
+                : 1.6,
+          },
           labelStyle: { fontSize: 11 },
           labelBgPadding: [6, 4] as [number, number],
         }))}
         nodeTypes={nodeTypes}
         onNodesChange={onNodesChange}
+        onDragOver={(event) => {
+          if (
+            locked ||
+            !event.dataTransfer.types.includes("application/meridian-block")
+          )
+            return;
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "copy";
+        }}
+        onDrop={(event) => {
+          event.preventDefault();
+          const type = event.dataTransfer.getData("application/meridian-block");
+          if (locked || !primitiveTypes.includes(type as NodeType)) return;
+          const position = screenToFlowPosition({
+            x: event.clientX,
+            y: event.clientY,
+          });
+          onAdd(type as NodeType, { x: position.x - 105, y: position.y - 25 });
+        }}
         onNodeClick={(_, n) => onSelect("node", n.id)}
         onEdgeClick={(_, e) => onSelect("connection", e.id)}
         onConnect={onConnect}

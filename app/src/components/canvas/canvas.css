@@ -187,6 +187,14 @@
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+.process-block.review-highlighted {
+  outline: 3px solid var(--blue);
+  outline-offset: 4px;
+  box-shadow: 0 0 0 7px color-mix(in srgb, var(--blue) 12%, transparent);
+}
+.react-flow__edge.review-highlighted .react-flow__edge-path {
+  stroke: var(--blue);
+}
 .block-kind {
   display: flex;
   align-items: center;
@@ -473,4 +481,18 @@
   .workbench .workflow-list {
     padding: 20px;
   }
+}
+
+.palette-item[draggable="true"] {
+  cursor: grab;
+}
+.palette-item[draggable="true"]:active {
+  cursor: grabbing;
+}
+.saved-button:disabled {
+  opacity: 1;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--line);
+  cursor: default;
 }

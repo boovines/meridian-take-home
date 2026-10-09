@@ -149,9 +149,19 @@ export function findingLabel(
 ) {
   if (thread.status === "closed")
     return thread.resolution_kind === "rejected" ? "Rejected" : "Resolved";
-  return messages
-    .filter((m) => m.thread_id === thread.id && m.kind === "comment")
-    .at(-1)?.author_kind === "customer"
+  const latest = messages
+    .filter(
+      (message) =>
+        message.thread_id === thread.id &&
+        (message.kind === "comment" ||
+          message.event_data?.action === "reopened"),
+    )
+    .reduce<DiscussionMessage | undefined>(
+      (last, message) =>
+        !last || message.message_number > last.message_number ? message : last,
+      undefined,
+    );
+  return latest?.kind === "comment" && latest.author_kind === "customer"
     ? "Answered"
     : "Open";
 }

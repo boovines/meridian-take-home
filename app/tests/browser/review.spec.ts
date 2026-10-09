@@ -132,3 +132,129 @@ test("clarifies an empty outcome and can cancel to resume editing", async ({
     page.getByText("1 completed review", { exact: true }),
   ).toBeVisible();
 });
+
+test("one response composer replies, resolves, reopens and rejects with matching status", async ({
+  page,
+  request,
+}) => {
+  const workflow = await seededWorkflow(request);
+  await page.goto(`/workflows/${workflow.id}`);
+  await page.getByRole("button", { name: /Review & comments/ }).click();
+  await page
+    .getByRole("button", { name: "Start draft review", exact: true })
+    .click();
+  const thread = page
+    .locator(".review-thread")
+    .filter({ hasText: "Which invoice fields are required?" });
+  await expect(thread.locator(".thread-status")).toHaveText("Open");
+  await expect(thread.getByRole("textbox")).toHaveCount(1);
+  const response = thread.getByRole("textbox", {
+    name: "Response to Which invoice fields are required?",
+    exact: true,
+  });
+  const type = thread.getByRole("combobox", {
+    name: "Response type for Which invoice fields are required?",
+    exact: true,
+  });
+  await response.fill("The five fields in our SOP are required.");
+  await thread.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(thread.locator(".thread-status")).toHaveText("Answered");
+  await response.fill(
+    "This wording is already specified in the process; no change needed.",
+  );
+  await type.selectOption("resolve");
+  await expect(response).toHaveValue(
+    "This wording is already specified in the process; no change needed.",
+  );
+  await thread
+    .getByRole("button", { name: "Resolve finding", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Show resolved findings and review history" })
+    .click();
+  await expect(thread.locator(".thread-status")).toHaveText("Resolved");
+  await thread.locator(":scope > summary").click();
+  await expect(thread).toContainText(
+    "This wording is already specified in the process; no change needed.",
+  );
+  await thread.getByRole("button", { name: "Reopen finding" }).click();
+  await expect(thread.locator(".thread-status")).toHaveText("Open");
+  await type.selectOption("reject");
+  await response.fill("This requirement belongs to another team's workflow.");
+  await thread.getByRole("button", { name: "Reject suggestion" }).click();
+  await expect(thread.locator(".thread-status")).toHaveText("Rejected");
+  await page.reload();
+  await page.getByRole("button", { name: /Review & comments/ }).click();
+  await page
+    .getByRole("button", { name: "Show resolved findings and review history" })
+    .click();
+  await expect(thread.locator(".thread-status")).toHaveText("Rejected");
+});
+
+test("review hover and keyboard focus highlight only referenced blocks and connections", async ({
+  page,
+  request,
+}, testInfo) => {
+  const workflow = await seededWorkflow(request);
+  const board = await (
+    await request.get(`/api/workflows/${workflow.id}`)
+  ).json();
+  const task = board.nodes.find(
+    (node: { type: string }) => node.type === "task",
+  );
+  const outcome = board.nodes.find(
+    (node: { type: string }) => node.type === "outcome",
+  );
+  const edge = board.connections.find(
+    (connection: { source_node_id: string }) =>
+      connection.source_node_id === task.id,
+  );
+  const note = await request.post(`/api/workflows/${workflow.id}/threads`, {
+    data: {
+      title: "Report these validation results",
+      body: "Carry the checked fields into the report.",
+      node_ids: [task.id, outcome.id],
+      connection_ids: [edge.id],
+      request_key: crypto.randomUUID(),
+    },
+  });
+  expect(note.ok()).toBe(true);
+  await page.goto(`/workflows/${workflow.id}`);
+  await page.getByRole("button", { name: /Review & comments/ }).click();
+  await page
+    .getByRole("button", { name: "Start draft review", exact: true })
+    .click();
+  const finding = page
+    .locator(".review-thread")
+    .filter({ hasText: "Which invoice fields are required?" });
+  const discussion = page
+    .locator(".review-thread")
+    .filter({ hasText: "Report these validation results" });
+  const highlightedBlocks = page.locator(".process-block.review-highlighted");
+  const highlightedEdges = page.locator(".react-flow__edge.review-highlighted");
+  await finding.hover();
+  await expect(highlightedBlocks).toHaveCount(1);
+  await expect(highlightedBlocks).toContainText("Validate invoice");
+  await expect(highlightedEdges).toHaveCount(0);
+  await discussion.hover();
+  await expect(highlightedBlocks).toHaveCount(2);
+  await expect(highlightedEdges).toHaveCount(1);
+  await expect(page.locator(".process-block.selected")).toHaveCount(0);
+  await page.screenshot({
+    path: testInfo.outputPath("review-anchor-highlight.png"),
+    fullPage: true,
+  });
+  await page.getByRole("heading", { name: workflow.name }).hover();
+  await expect(highlightedBlocks).toHaveCount(0);
+  await discussion.locator(":scope > summary").focus();
+  await expect(highlightedBlocks).toHaveCount(2);
+  await expect(highlightedEdges).toHaveCount(1);
+  await discussion.getByRole("textbox").focus();
+  await expect(highlightedBlocks).toHaveCount(2);
+  await page.getByRole("button", { name: "Close review", exact: true }).focus();
+  await expect(highlightedBlocks).toHaveCount(0);
+  await discussion.hover();
+  await page.getByRole("button", { name: "Close review", exact: true }).click();
+  await expect(highlightedBlocks).toHaveCount(0);
+  await expect(highlightedEdges).toHaveCount(0);
+});

@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { ErrorNotice } from "../error-notice";
 import { api, errorMessage } from "@/lib/api";
 import {
   findingLabel,
@@ -14,16 +15,22 @@ export function ThreadCard({
   locked,
   onRefresh,
   onLocate,
+  onHover,
+  onFocusThread,
 }: {
   thread: DiscussionThread;
   state: ReviewState;
   board: Board;
   locked: boolean;
   onRefresh: () => Promise<void>;
+  onHover: (threadId: string | null) => void;
+  onFocusThread: (threadId: string | null) => void;
   onLocate: (kind: "node" | "connection", id: string) => void;
 }) {
   const [reply, setReply] = useState(""),
-    [reason, setReason] = useState(""),
+    [responseType, setResponseType] = useState<"reply" | "resolve" | "reject">(
+      "reply",
+    ),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const messages = state.messages.filter((m) => m.thread_id === thread.id),
@@ -49,11 +56,12 @@ export function ThreadCard({
       } else {
         await api(`${base}/actions`, "POST", {
           action,
-          reason,
+          reason: action === "reopen" ? "" : reply,
           expected_revision: thread.revision,
           request_key: crypto.randomUUID(),
         });
-        setReason("");
+        setReply("");
+        setResponseType("reply");
       }
       await onRefresh();
     } catch (e) {
@@ -66,9 +74,19 @@ export function ThreadCard({
     <details
       className={`review-thread ${thread.status}`}
       open={thread.status === "open"}
+      onPointerEnter={() => onHover(thread.id)}
+      onPointerLeave={() => onHover(null)}
+      onFocusCapture={() => onFocusThread(thread.id)}
+      onBlurCapture={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+          onFocusThread(null);
+        }
+      }}
     >
       <summary>
-        <span className="thread-status">
+        <span
+          className={`thread-status ${findingLabel(thread, state.messages).toLowerCase()}`}
+        >
           {thread.kind === "note"
             ? "Note"
             : findingLabel(thread, state.messages)}
@@ -82,35 +100,42 @@ export function ThreadCard({
             decision remains in history.
           </p>
         )}
-        <div className="anchor-links">
-          {anchors.length ? (
-            anchors.map((a) => {
-              const n = board.nodes.find((n) => n.id === a.node_id),
-                c = board.connections.find((c) => c.id === a.connection_id),
-                present = !!n || !!c;
-              return (
-                <button
-                  key={a.id}
-                  className="subtle"
-                  disabled={!present}
-                  onClick={() =>
-                    onLocate(
-                      a.node_id ? "node" : "connection",
-                      (a.node_id || a.connection_id)!,
-                    )
-                  }
-                >
-                  {n?.title ||
-                    (c
-                      ? "View connection"
-                      : `${String(a.context_snapshot.title || "Referenced item")} · removed`)}
-                </button>
-              );
-            })
-          ) : (
-            <span className="field-help">Entire workflow</span>
-          )}
-        </div>
+        <details className="thread-references">
+          <summary>
+            {anchors.length
+              ? `Referenced items (${anchors.length})`
+              : "Entire workflow"}
+          </summary>
+          <div className="anchor-links">
+            {anchors.length ? (
+              anchors.map((a) => {
+                const n = board.nodes.find((n) => n.id === a.node_id),
+                  c = board.connections.find((c) => c.id === a.connection_id),
+                  present = !!n || !!c;
+                return (
+                  <button
+                    key={a.id}
+                    className="subtle"
+                    disabled={!present}
+                    onClick={() =>
+                      onLocate(
+                        a.node_id ? "node" : "connection",
+                        (a.node_id || a.connection_id)!,
+                      )
+                    }
+                  >
+                    {n?.title ||
+                      (c
+                        ? "View connection"
+                        : `${String(a.context_snapshot.title || "Referenced item")} · removed`)}
+                  </button>
+                );
+              })
+            ) : (
+              <span className="field-help">Entire workflow</span>
+            )}
+          </div>
+        </details>
         {messages.map((m) => (
           <div key={m.id} className={`thread-message ${m.kind}`}>
             <small>
@@ -151,62 +176,75 @@ export function ThreadCard({
           </div>
         )}
         {error && (
-          <p role="alert" className="inline-error">
-            {error}
-          </p>
+          <ErrorNotice title="Couldn’t save this change" message={error} />
         )}
         {thread.status === "open" && !locked && (
-          <>
+          <form
+            className="response-composer"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void submit(responseType);
+            }}
+          >
             <label>
-              Your answer or comment
+              Your response
               <textarea
-                aria-label={`Reply to ${thread.title}`}
+                aria-label={`Response to ${thread.title}`}
                 value={reply}
-                onChange={(e) => setReply(e.target.value)}
-                rows={2}
-                maxLength={20000}
+                onChange={(event) => setReply(event.target.value)}
+                placeholder={
+                  responseType === "reply"
+                    ? "Add context or answer the question…"
+                    : responseType === "resolve"
+                      ? "What changed, or why is no change needed?"
+                      : "Why doesn't this suggestion apply?"
+                }
+                rows={3}
+                required
+                disabled={busy}
+                maxLength={responseType === "reply" ? 20000 : 10000}
               />
             </label>
-            <button
-              disabled={busy || !reply.trim()}
-              onClick={() => void submit("reply")}
-            >
-              Add reply
-            </button>
-            {thread.kind === "finding" && (
-              <div className="finding-resolution">
-                <label>
-                  Reason for closing
-                  <textarea
-                    aria-label={`Resolution reason for ${thread.title}`}
-                    placeholder="What changed, or why is no change needed?"
-                    value={reason}
-                    onChange={(e) => setReason(e.target.value)}
-                    rows={2}
-                    maxLength={10000}
-                  />
-                </label>
-                <div className="button-row">
-                  <button
-                    disabled={busy || !reason.trim()}
-                    onClick={() => void submit("resolve")}
-                  >
-                    Resolve
-                  </button>
-                  <button
-                    disabled={busy || !reason.trim()}
-                    onClick={() => void submit("reject")}
-                  >
-                    Reject suggestion
-                  </button>
-                </div>
-                <p className="field-help">
-                  For a new step or branch, edit the canvas yourself before
-                  resolving. Your explanation records your decision.
-                </p>
-              </div>
-            )}
-          </>
+            <div className="response-actions">
+              <label>
+                Response type
+                <select
+                  aria-label={`Response type for ${thread.title}`}
+                  value={responseType}
+                  disabled={busy}
+                  onChange={(event) =>
+                    setResponseType(event.target.value as typeof responseType)
+                  }
+                >
+                  <option value="reply">Reply</option>
+                  {thread.kind === "finding" && (
+                    <>
+                      <option value="resolve">Resolve</option>
+                      <option value="reject">Reject</option>
+                    </>
+                  )}
+                </select>
+              </label>
+              <button className="primary" disabled={busy || !reply.trim()}>
+                {busy
+                  ? "Sending…"
+                  : responseType === "reply"
+                    ? "Send"
+                    : responseType === "resolve"
+                      ? "Resolve finding"
+                      : "Reject suggestion"}
+              </button>
+            </div>
+            <p className="field-help">
+              {thread.kind === "note"
+                ? "Add context to this discussion. Notes do not block handoff."
+                : responseType === "reply"
+                  ? "A reply marks this as answered. Resolve or reject it when you've made a decision."
+                  : responseType === "resolve"
+                    ? "Update the block or paths first if needed. Your response records how this was resolved."
+                    : "Your response records why you're keeping the process as it is."}
+            </p>
+          </form>
         )}
         {thread.status === "closed" && thread.kind === "finding" && !locked && (
           <button

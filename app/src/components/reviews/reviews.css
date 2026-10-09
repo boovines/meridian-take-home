@@ -113,6 +113,15 @@
   flex-wrap: wrap;
   gap: 4px;
 }
+.thread-references > summary {
+  padding: 4px 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+.review-thread:hover,
+.review-thread:focus-within {
+  border-color: var(--blue);
+}
 .anchor-links button {
   color: var(--accent);
   padding: 3px 0;
@@ -127,11 +136,6 @@
   font-size: 12px;
   display: block;
   margin-bottom: 8px;
-}
-.finding-resolution {
-  border-top: 1px solid var(--line);
-  margin-top: 15px;
-  padding-top: 12px;
 }
 .review-history > p {
   font-size: 11px;
@@ -180,4 +184,45 @@
   .canvas-toolbar > .button-row {
     margin-left: 0;
   }
+}
+
+.response-composer {
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+  margin-top: 14px;
+}
+.response-actions {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  margin-bottom: 10px;
+}
+.response-actions label {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 11px;
+}
+.response-actions select {
+  font-size: 12px;
+  padding: 8px;
+}
+.response-actions button {
+  flex-shrink: 0;
+  min-height: 36px;
+}
+.response-composer .field-help {
+  margin-bottom: 0;
+}
+.thread-status.answered {
+  color: var(--blue);
+  background: color-mix(in srgb, var(--blue) 10%, var(--surface));
+}
+.thread-status.rejected {
+  color: var(--muted);
+  background: var(--paper);
+}
+.thread-status.resolved {
+  color: var(--accent);
+  background: var(--accent-soft);
 }

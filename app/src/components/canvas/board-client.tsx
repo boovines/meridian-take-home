@@ -37,6 +37,9 @@ export function BoardClient({ id }: { id: string }) {
       id: string;
     } | null>(null),
     [goalOpen, setGoalOpen] = useState(false);
+  const [highlightedThread, setHighlightedThread] = useState<string | null>(
+    null,
+  );
   const [dirty, setDirty] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false),
     [freezeOpen, setFreezeOpen] = useState(false);
@@ -96,14 +99,14 @@ export function BoardClient({ id }: { id: string }) {
       setBusy(false);
     }
   }
-  async function add(type: NodeType) {
+  async function add(type: NodeType, position?: { x: number; y: number }) {
     if (!board || !canLeave()) return;
     await mutate(async () => {
       const n = await api<CanvasNode>(`/api/workflows/${id}/nodes`, "POST", {
         type,
         title: nodeLabels[type],
-        x: 80 + (board.nodes.length % 3) * 270,
-        y: 60 + Math.floor(board.nodes.length / 3) * 190,
+        x: position?.x ?? 80 + (board.nodes.length % 3) * 270,
+        y: position?.y ?? 60 + Math.floor(board.nodes.length / 3) * 190,
       });
       setReviewOpen(false);
       setSelection({ kind: "node", id: n.id });
@@ -163,6 +166,7 @@ export function BoardClient({ id }: { id: string }) {
           if (canLeave()) setSelection(null);
         },
         onDirty: setDirty,
+        onBusy: setBusy,
       }
     : null;
   return (
@@ -200,7 +204,9 @@ export function BoardClient({ id }: { id: string }) {
           <div className="state-banner">
             <LockKeyhole size={15} /> Frozen for engineer handoff. This process
             and its review decisions are saved.
-            <Link className="button-link" href={`/workflows/${id}/engineer`}>Open engineer workspace</Link>
+            <Link className="button-link" href={`/workflows/${id}/engineer`}>
+              Open engineer workspace
+            </Link>
           </div>
         )}
         {freezeOpen && (
@@ -281,7 +287,7 @@ export function BoardClient({ id }: { id: string }) {
                   Blocks <span>{board.nodes.length}</span>
                 </div>
                 <p className="field-help">
-                  Add a step, then describe it in your own words.
+                  Drag a block onto the canvas, or click to add it.
                 </p>
                 {nodeTypes.map((type) => {
                   const Icon = primitives[type].icon;
@@ -290,6 +296,14 @@ export function BoardClient({ id }: { id: string }) {
                       className={`palette-item ${type}`}
                       key={type}
                       disabled={locked}
+                      draggable={!locked}
+                      onDragStart={(event) => {
+                        event.dataTransfer.setData(
+                          "application/meridian-block",
+                          type,
+                        );
+                        event.dataTransfer.effectAllowed = "copy";
+                      }}
                       onClick={() => void add(type)}
                       aria-label={`Add ${nodeLabels[type]}`}
                     >
@@ -313,12 +327,35 @@ export function BoardClient({ id }: { id: string }) {
                 <ProcessCanvas
                   board={board}
                   findingCounts={counts}
+                  reviewHighlight={
+                    reviewOpen && highlightedThread
+                      ? {
+                          nodeIds: review.state.anchors
+                            .filter(
+                              (a) =>
+                                a.thread_id === highlightedThread && a.node_id,
+                            )
+                            .map((a) => a.node_id!),
+                          connectionIds: review.state.anchors
+                            .filter(
+                              (a) =>
+                                a.thread_id === highlightedThread &&
+                                a.connection_id,
+                            )
+                            .map((a) => a.connection_id!),
+                          wholeWorkflow: !review.state.anchors.some(
+                            (a) => a.thread_id === highlightedThread,
+                          ),
+                        }
+                      : undefined
+                  }
                   onOpenReviews={openReviews}
                   selected={selection?.id}
                   locked={locked}
                   onSelect={select}
                   onConnect={(c) => void connect(c)}
                   onMove={(n, x, y) => void move(n, x, y)}
+                  onAdd={(type, position) => void add(type, position)}
                 />
                 {board.nodes.length === 0 && (
                   <div className="canvas-empty">
@@ -345,6 +382,7 @@ export function BoardClient({ id }: { id: string }) {
                   selected={selection}
                   onClose={() => setReviewOpen(false)}
                   onLocate={select}
+                  onHighlight={setHighlightedThread}
                 />
               ) : selectedNode && inspectorProps ? (
                 <NodeInspector
