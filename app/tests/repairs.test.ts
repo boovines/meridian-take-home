@@ -1457,3 +1457,34 @@ it("does not recover artifacts from unrelated baselines or implementation failur
   await expect(retainedRepairArtifact(db,randomUUID(),attempt.id,initial.evaluation.id)).rejects.toMatchObject({code:"REPAIR_RECOVERY_UNAVAILABLE"});
   await expect(retainedRepairArtifact(db,f.w.id,attempt.id,randomUUID())).rejects.toMatchObject({code:"REPAIR_RECOVERY_UNAVAILABLE"});
 });
+
+it("separates synthetic hypotheses from locked checks and retains the original input", async () => {
+  const {RepairStepReplay}=await import("../src/server/repairs/replay");
+  const {f,job}=await prepared(); const attempt=await repairs.beginAttempt(job.id,1);
+  const claim=await repairs.claimGeneration(attempt.id), context=await repairs.generationContext(attempt.id);
+  const baseline=(await new VersionService(db,artifacts).load(f.w.id,f.version.id)).project;
+  const invoke=vi.fn(async(_p:unknown,_n:string,ctx:Record<string,Json>)=>({kind:"complete",output:{failed_goods:((ctx.input as Record<string,Json>).missing_fields as Json[]).length ? 1 : 0},matching_connection_ids:[]}));
+  const replay=new RepairStepReplay(db,context,baseline,claim.token!,AbortSignal.timeout(10000),invoke,artifacts);
+  const input={recorded_input_id:context.results[0].id,candidate_patch:{node_id:f.nodes[1].id,source_lines:["export async function run() {}"]},counterexample:{
+    rationale:"Removing missing fields should remove the failure.",changes:[{path:["input","missing_fields"],value:[]}],expectations:[{path:["failed_goods"],expected:0}],
+  }};
+  const report=await replay.run(input);
+  expect(report).toMatchObject({status:"completed",input_modified:true,diagnostic_only:true,checks:[],changed_from_recording:null,hypothesis_checks:[{passed:true,actual:0}]});
+  // A bad model hypothesis is visibly falsified, never used to grade the suite.
+  expect(await replay.run({...input,counterexample:{...input.counterexample,expectations:[{path:["failed_goods"],expected:2}]}}))
+    .toMatchObject({checks:[],hypothesis_checks:[{passed:false,actual:0}]});
+  expect(context.cases[0].input_data).toMatchObject({input:{missing_fields:["HTS","NDC"]}});
+  expect(context.cases[0].assertions.find(a=>a.key==="goods")?.expected).toBe(1);
+  const state=await repairs.state(f.w.id);
+  const request=JSON.parse((await artifacts.read(f.w.id,String(state.replays[0].request_artifact_id))).bytes.toString());
+  expect(request).toMatchObject({counterexample:input.counterexample,context:{input:{missing_fields:[]}}});
+  const result=JSON.parse((await artifacts.read(f.w.id,String(state.replays[0].result_artifact_id))).bytes.toString());
+  expect(result.input_sha256).not.toBe(result.recorded_input_sha256);
+  expect(state.attempts[0].candidate_version_id).toBeNull();
+  invoke.mockImplementationOnce(async()=>({kind:"complete",output:{failed_goods:0,note:"x".repeat(60000)},matching_connection_ids:[]}));
+  const large=await replay.run({...input,counterexample:{...input.counterexample,expectations:[{path:["note"],expected:"short"}]}});
+  expect(large).toMatchObject({truncated:true,input_modified:true,hypothesis_checks_summary:[{passed:false,missing:false}]});
+  expect(JSON.stringify(large).length).toBeLessThan(51000);
+  await expect(replay.run(input)).rejects.toMatchObject({code:"REPLAY_LIMIT"});
+  await repairs.finish(job.id,"cancelled","Synthetic diagnostics verified.");
+});
