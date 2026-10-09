@@ -56,8 +56,11 @@ it("limits follow-ups to open findings and linked concerns to closed findings", 
     expect(schema.safeParse(finding(null, "new", id)).success).toBe(false);
   expect(schema.safeParse(finding(open, "new")).success).toBe(false);
   expect(schema.safeParse(finding(open, "followup", closed)).success).toBe(false);
-  // The exact provider schema must also be serializable for structured output.
-  expect(() => z.toJSONSchema(schema)).not.toThrow();
+  // OpenAI rejects oneOf even though it is valid JSON Schema. Open findings
+  // must use supported anyOf branches without widening eligible references.
+  const jsonSchema = JSON.stringify(z.toJSONSchema(schema));
+  expect(jsonSchema).not.toContain('"oneOf"');
+  expect(jsonSchema).toContain('"anyOf"');
 });
 
 it("reviews long acceptance histories without duplicating identical instruction snapshots", async () => {

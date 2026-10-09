@@ -31,13 +31,14 @@ export async function reviewWithOpenAI(input: Input, signal: AbortSignal) {
       ? z.enum(closedFindings).nullable()
       : z.null(),
   });
+  // Use union/anyOf: discriminatedUnion emits oneOf, which OpenAI rejects.
   // Encode eligible references in structured output rather than relying on the
   // model to distinguish discussion kinds. Publication still checks current state.
   const schema = reviewerOutput.extend({
     findings: z
       .array(
         openFindings.length
-          ? z.discriminatedUnion("action", [
+          ? z.union([
               newFinding,
               finding.extend({
                 action: z.literal("followup"),

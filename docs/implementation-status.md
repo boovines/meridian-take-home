@@ -285,3 +285,7 @@ Read-only database comparison confirms all original 20 cases/161 assertions, inp
 ### Final v17 report verification — October 8
 
 Chrome started manual run `af569501-47b1-4756-b864-0863fdb46c59` with v17 and the original Gmail input bundle for 020-07721814. It completed all five visits and showed the expected seven totals: invoices 3 processed / 3 successful / 0 failed, goods 0 failed, batches 4 processed / 3 successful / 1 failed. The unsent preview identifies invoice 180/26-27/457, batch 3OP26004A, as lacking a CoA or supported relationship. The result was verified both in the UI and persisted output. This manual demonstration does not count as another full-suite pass.
+
+### October 9 — review follow-up schema correction
+
+A live review with existing open findings failed before inference because its structured-output schema contained unsupported `oneOf`. The reviewer now emits `anyOf` while retaining separate new/follow-up reference constraints. The failing regression was reproduced, then 17 focused review tests, typecheck, lint and worker bundling passed. Replaying the original input-token preflight returned HTTP 200 after the fix; no paid inference or frozen-board mutation was used for that probe.
