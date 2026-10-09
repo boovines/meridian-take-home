@@ -57,7 +57,7 @@ export class VersionService {
     // An in-flight rerun must not erase build evidence for immutable source.
     const buildEvidence = (
       await this.db.query(
-        "SELECT status,failure_code FROM evaluation_runs WHERE workflow_id=$1 AND implementation_version_id=$2 AND (status='completed' OR failure_code='PROJECT_BUILD_FAILED') ORDER BY created_at DESC,id DESC LIMIT 1",
+        "SELECT build_check_status,failure_code FROM evaluation_runs WHERE workflow_id=$1 AND implementation_version_id=$2 AND (build_check_status IS NOT NULL OR failure_code='PROJECT_BUILD_FAILED') ORDER BY CASE WHEN failure_code='PROJECT_BUILD_FAILED' THEN finished_at ELSE build_checked_at END DESC,id DESC LIMIT 1",
         [workflowId, versionId],
       )
     ).rows[0];
@@ -65,7 +65,7 @@ export class VersionService {
       ? null
       : buildEvidence.failure_code === "PROJECT_BUILD_FAILED"
         ? "failed"
-        : "passed";
+        : buildEvidence.build_check_status as "passed" | "failed";
     return { ...current, changes, evaluation, build_check_status };
   }
   async download(workflowId: string, versionId: string) {

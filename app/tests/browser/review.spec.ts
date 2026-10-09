@@ -361,3 +361,69 @@ test("a failed reply update preserves the answer and retries without duplicate m
     page.getByRole("textbox", { name: "Instructions", exact: true }),
   ).toHaveValue(/Validate all five required fields\./);
 });
+
+test("an older initial review response cannot erase a completed review", async ({ page, request }) => {
+  const workflow = await seededWorkflow(request);
+  let release!: () => void;
+  let captured!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  const ready = new Promise<void>(resolve => { captured = resolve; });
+  let first = true;
+  await page.route(`**/api/workflows/${workflow.id}/reviews`, async route => {
+    if (!first || route.request().method() !== "GET") return route.continue();
+    first = false;
+    const response = await route.fetch();
+    const snapshot = await response.json();
+    captured();
+    await held;
+    await route.fulfill({ response, json: snapshot });
+  });
+  await page.goto(`/workflows/${workflow.id}`);
+  await ready;
+  await page.getByRole("button", { name: /Review & comments/ }).click();
+  await page.getByRole("button", { name: "Start draft review", exact: true }).click();
+  const finding = page.locator(".review-thread").filter({ hasText: "Which invoice fields are required?" });
+  await expect(finding).toBeVisible();
+  const delivered = page.waitForResponse(response => response.url().endsWith("/reviews") && response.request().method() === "GET");
+  release();
+  await delivered;
+  // Wait for the delivered fetch continuation and React's next paint.
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await expect(finding).toBeVisible();
+  await expect(page.getByText("1 completed review", { exact: true })).toBeVisible();
+});
+
+test("a delayed board refresh cannot roll back an acknowledged block edit", async ({ page, request }) => {
+  const workflow = await seededWorkflow(request);
+  await page.goto(`/workflows/${workflow.id}`);
+  await expect(page.getByRole("heading", { name: workflow.name })).toBeVisible();
+  let release!: () => void;
+  let captured!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  const ready = new Promise<void>(resolve => { captured = resolve; });
+  let first = true;
+  await page.route(`**/api/workflows/${workflow.id}`, async route => {
+    if (!first || route.request().method() !== "GET") return route.continue();
+    first = false;
+    const response = await route.fetch();
+    const snapshot = await response.json();
+    captured();
+    await held;
+    await route.fulfill({ response, json: snapshot });
+  });
+  await page.getByRole("button", { name: /Review & comments/ }).click();
+  await page.getByRole("button", { name: "Start draft review", exact: true }).click();
+  await ready;
+  await page.getByRole("button", { name: "Close review", exact: true }).click();
+  const block = page.locator(".process-block").filter({ hasText: "Validate invoice" });
+  await block.locator("strong").click();
+  await page.getByRole("textbox", { name: "Instructions", exact: true }).fill("Keep this acknowledged edit.");
+  await page.getByRole("button", { name: "Save block", exact: true }).click();
+  await expect(block).toContainText("Keep this acknowledged edit.");
+  const delivered = page.waitForResponse(response => response.url().endsWith(`/workflows/${workflow.id}`));
+  release();
+  await delivered;
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await expect(block).toContainText("Keep this acknowledged edit.");
+  await expect(page.getByRole("button", { name: "Saved", exact: true })).toBeDisabled();
+});
