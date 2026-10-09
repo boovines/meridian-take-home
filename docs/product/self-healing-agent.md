@@ -18,7 +18,7 @@ One regression case checks that two missing fields on one good produce one faile
 
 ## Requirements/Acceptance Criteria
 
-Generation requires a frozen spec and an engineer-approved implementation plan. AI proposes Code, Agent, or Human with a reason; the engineer approves the choices. Customer-required human approvals remain fixed. Method changes create a new approved plan and code version, preserving earlier results. A needed business-process change is a blocker because post-handoff whiteboard revision is outside demo scope.
+Generation requires a frozen spec and an engineer-approved implementation plan. AI proposes Code, Agent, or Human with a reason; the engineer approves the choices. Customer-required human approvals remain fixed. Method changes create a new approved plan and code version, preserving earlier results. A needed business-process change pauses implementation repair and returns to the expert through an explicit process revision; it never silently changes the frozen requirements.
 
 Generate an inspectable, downloadable project whose files map to frozen steps. The app evaluates its own immutable code versions. Read-only code and diff views replace an in-browser IDE; repository connection and importing IDE edits are deferred.
 

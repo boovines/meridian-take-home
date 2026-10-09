@@ -13,7 +13,7 @@ import {
 import type { Project } from "../../domain/project";
 import type { Database } from "../database";
 import { VersionService } from "../engineering/version-service";
-import { frozenSpec, planSteps } from "../engineering/plan-service";
+import { specForPlan, planSteps } from "../engineering/plan-service";
 import { jobById } from "../engineering/job-service";
 import {
   invokeApprovedStep,
@@ -111,7 +111,11 @@ export class EvaluationExecutionService {
         result.workflow_id,
         evaluation.implementation_version_id,
       );
-      const spec = await frozenSpec(this.db, result.workflow_id),
+      const spec = await specForPlan(
+          this.db,
+          result.workflow_id,
+          job.plan_version_id,
+        ),
         node = spec.board.nodes.find((n) => n.id === c.node_id)!;
       const method = (await planSteps(this.db, job.plan_version_id)).find(
         (s) => s.node_id === c.node_id,

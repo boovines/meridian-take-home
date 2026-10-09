@@ -6,13 +6,13 @@ Open **Engineer workspace** from a frozen whiteboard to turn the customer’s pr
 - **Agent:** Follow background progress, cancel an operation, select a completed code version, inspect its files, compare with its parent, and download the project ZIP.
 - **Evaluation:** Author and verify a test suite, lock its expected answers, then explicitly run it against a code version. Inspect failures and start a bounded repair session. See [evaluations](trusted-evaluations.md) and [repair](bounded-repair.md).
 - **Operation history:** Inspect completed, failed, or cancelled generation attempts. Existing code remains available while new work runs.
-- **Frozen whiteboard:** Return to the customer’s unchanged process through the header link.
+- **Process whiteboard:** Return to the working canvas through the header link; it may contain a new draft. The Frozen process selector controls the immutable version used in the engineer workspace.
 
 Generation continues when you close or reload the browser. A successful generation means the project was saved and its JavaScript passed syntax validation. It remains **Not yet evaluated** until business behavior is checked against trusted expectations.
 
 A model response that is truncated or invalid produces a specific error; partial source is not accepted as a version. Previous complete versions remain inspectable.
 
-Use **Revise plan** to change an approved method. A revision preserves the previous plan and code, copies choices into a new draft, and requires fresh approvals. Only one draft plan and one active expensive operation are allowed per workflow.
+Use **Revise plan** to change an approved method. A revision preserves the previous plan and code, copies choices into a new draft, and requires fresh approvals. Only one draft plan is allowed per frozen process version. One active expensive operation is allowed across the workflow.
 
 The workspace is at `/workflows/:id/engineer`; the source whiteboard is at `/workflows/:id`. The demo has no separate role permissions. There is no code editor, repository synchronization, automatic deployment, or email sending. Downloads invoke individual steps under a host; they do not silently bypass agent requests or human gates.
 
@@ -22,13 +22,13 @@ Known OpenAI project spending caps and exhausted quota stop code generation or r
 
 ### Entry and users
 
-After freezing a whiteboard, open **Engineer workspace** from the handoff banner. The workspace is available at `/workflows/:id/engineer`; its header links back to the unchanged customer whiteboard. The demo does not distinguish roles or permissions within the app. Deployment access must be protected separately.
+After freezing a whiteboard, open **Engineer workspace** from the handoff banner. The workspace is available at `/workflows/:id/engineer`; its header links back to the customer’s working whiteboard. The demo does not distinguish roles or permissions within the app. Deployment access must be protected separately.
 
 The three workspace tabs are Implementation, Agent, and Evaluation. This specification covers plans and generated source; [trusted evaluations](trusted-evaluations.md), [bounded repair](bounded-repair.md), and [workflow execution](workflow-runtime.md) describe the subsequent execution surfaces.
 
 ### Implementation
 
-Create a plan from the frozen process. Each step starts with Code selected unless the customer requires a human; the initial choices are unapproved. Suggest methods asks AI for a recommendation and short reason for each step. Suggestions populate and save the draft method selections along with their reasons. A changed method clears its previous approval; an unchanged method retains its existing approval. Suggestions never approve a step automatically. The engineer can override any suggestion except a customer-required human method. If the plan changes while suggestions are being prepared, those stale suggestions cannot overwrite it.
+Create a plan from the frozen process. Each step starts with Code selected unless the customer requires a human; the initial choices are unapproved. Recommend methods with AI asks the model for a recommendation and short reason for each step. Suggestions populate and save the draft method selections along with their reasons. A changed method clears its previous approval; an unchanged method retains its existing approval. Suggestions never approve a step automatically. The engineer can override any suggestion except a customer-required human method. If the plan changes while suggestions are being prepared, those stale suggestions cannot overwrite it.
 
 The engineer chooses Code, Agent, or Human for each step. Code performs deterministic work, Agent can request semantic interpretation, and Human requires a response before continuing. Human steps explicitly required by the customer cannot be changed to automated methods. Requirements expand in place beside the method and approval controls.
 
@@ -61,3 +61,17 @@ The latest 20 plans, code versions, and operations are listed. General repositor
 Method suggestions run while the request is open; generation runs durably in the background. The UI prevents starting competing operations but does not require a new AI recommendation before an engineer approves a revised plan. Model suggestions and source generation can fail; neither failure modifies the frozen customer process.
 
 Generation failures display a concise error card with expandable diagnostic details. When generation needs an engineer decision, Review implementation returns to the plan tab; the full provider explanation remains available. This presentation does not change approved methods or retry generation automatically.
+
+## Engineer-requested process revisions
+
+From Implementation, use **Request changes** beside **Recommend methods with AI**. Enter the missing rule or change and optionally select affected blocks. Sending the request preserves the approved process and opens a persistent conversation on the whiteboard. The request retains the original wording and engineer attribution. Closing or canceling the dialog does not submit it; a failed send keeps the draft for retry.
+
+The process expert can answer in the existing review conversation without unlocking the board. AI proposes editable block names and instructions. Every affected block has a separate Accept or Reject action; neither a reply nor a proposal changes the canvas. **Start revision** explicitly opens the next working draft. Only then can the expert accept proposed changes. Stale proposals require a fresh reply, and graph topology changes remain manual. The expert resolves a request with a reason after saving the agreed changes, or rejects it with a reason without starting a revision.
+
+A revised process needs a completed review for that revision, dispositions on its findings and engineer requests, valid structure, and acknowledgment of later unreviewed edits. Freezing creates a new immutable version and a new unapproved implementation plan. Choices carry forward only when the block and its upstream executable context are unchanged; layout changes do not invalidate them. Changed steps use initial method defaults, and every step needs explicit approval again. Required human steps stay Human. No code version or pass label carries forward.
+
+The **Frozen process** selector scopes plans, code, suites, evaluations and manual-run defaults. Earlier operations keep their original process even if a new version is frozen while they run. A recovered historical implementation can become that historical version’s default only. The global operation banner identifies the version currently executing; it continues to prevent competing expensive operations.
+
+The demo records engineer/customer actions but does not authenticate separate roles. There is one mutable draft, no simultaneous branches, automatic notifications or automatic graph rewrites. Grouped email execution is a separate pending feature.
+
+Verification: the process-revision browser journey exercises request, reply, per-block approval, fresh review, v2 handoff/generation and v1 history. Persistence tests cover idempotent requests/revision starts, rejected and stale edits, immutable specifications, required human gates and historical generation/recovery pinning. Fixture success does not establish live model quality.

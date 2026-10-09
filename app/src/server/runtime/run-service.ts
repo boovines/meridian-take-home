@@ -18,7 +18,11 @@ import {
 import type { Database } from "../database";
 import { workflow } from "../workflows/store";
 import { jobById } from "../engineering/job-service";
-import { frozenSpec, planSteps } from "../engineering/plan-service";
+import {
+  frozenSpec,
+  specForPlan,
+  planSteps,
+} from "../engineering/plan-service";
 import { finishedRuns, runById, runRecord } from "./store";
 
 export class RunService {
@@ -182,7 +186,7 @@ export class RunService {
         );
       const run = runRecord(row);
       if (finishedRuns.includes(run.status)) return null;
-      const spec = await frozenSpec(tx, job.workflow_id),
+      const spec = await specForPlan(tx, job.workflow_id, job.plan_version_id),
         steps = await planSteps(tx, job.plan_version_id);
       if (!caseRunId)
         await tx.query(
@@ -286,7 +290,11 @@ export class RunService {
             result.result_step_id,
           ])
         ).rows[0].node_id;
-        const spec = await frozenSpec(tx, job.workflow_id);
+        const spec = await specForPlan(
+          tx,
+          job.workflow_id,
+          job.plan_version_id,
+        );
         if (
           !spec.board.nodes.some((n) => n.id === nodeId && n.type === "outcome")
         )
@@ -353,12 +361,32 @@ export class RunService {
       }
     });
   }
-  async state(workflowId: string, runId?: string, kind?: "manual") {
+  async state(
+    workflowId: string,
+    runId?: string,
+    kind?: "manual",
+    specId?: string,
+  ) {
     await workflow(this.db, workflowId);
+    const spec = await frozenSpec(
+      this.db,
+      workflowId,
+      specId ??
+        (runId
+          ? String(
+              (
+                await this.db.query(
+                  "SELECT p.frozen_spec_id FROM workflow_runs r JOIN implementation_versions v ON v.id=r.implementation_version_id JOIN implementation_plan_versions p ON p.id=v.plan_version_id WHERE r.workflow_id=$1 AND r.id=$2",
+                  [workflowId, runId],
+                )
+              ).rows[0]?.frozen_spec_id ?? "",
+            ) || undefined
+          : undefined),
+    );
     const runs = (
       await this.db.query(
-        `SELECT * FROM workflow_runs WHERE workflow_id=$1 ${runId ? "AND id=$2" : ""} ${kind === "manual" ? "AND kind IN ('manual','recovery')" : ""} ORDER BY created_at DESC,id DESC LIMIT 20`,
-        runId ? [workflowId, runId] : [workflowId],
+        `SELECT * FROM workflow_runs WHERE workflow_id=$1 AND implementation_version_id IN (SELECT v.id FROM implementation_versions v JOIN implementation_plan_versions p ON p.id=v.plan_version_id WHERE p.frozen_spec_id=$2) ${runId ? "AND id=$3" : ""} ${kind === "manual" ? "AND kind IN ('manual','recovery')" : ""} ORDER BY created_at DESC,id DESC LIMIT 20`,
+        runId ? [workflowId, spec.id, runId] : [workflowId, spec.id],
       )
     ).rows.map(runRecord);
     if (runId && !runs.length)
@@ -377,15 +405,15 @@ export class RunService {
         (
           await this.db.query(
             `SELECT v.id FROM implementation_versions v JOIN workflow_jobs j ON j.id=v.created_by_job_id
-           WHERE v.workflow_id=$1 AND j.kind='generation' ORDER BY v.version_number DESC LIMIT 1`,
-            [workflowId],
+           WHERE v.workflow_id=$1 AND v.plan_version_id IN (SELECT id FROM implementation_plan_versions WHERE frozen_spec_id=$2) AND j.kind='generation' ORDER BY v.version_number DESC LIMIT 1`,
+            [workflowId, spec.id],
           )
         ).rows[0]?.id ?? null,
       manual_default:
         (
           await this.db.query(
-            "SELECT implementation_version_id,recovery_session_id FROM workflow_run_defaults WHERE workflow_id=$1",
-            [workflowId],
+            "SELECT implementation_version_id,recovery_session_id FROM workflow_run_defaults WHERE workflow_id=$1 AND frozen_spec_id=$2",
+            [workflowId, spec.id],
           )
         ).rows[0] ?? null,
       steps: selected

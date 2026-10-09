@@ -3,7 +3,7 @@ import type { Database } from "../database";
 import { RepairService } from "./service";
 import { attemptById, sessionByJob } from "./service";
 import { jobById } from "../engineering/job-service";
-import { planById, planSteps, frozenSpec } from "../engineering/plan-service";
+import { planById, planSteps, specForPlan } from "../engineering/plan-service";
 import { runById } from "../runtime/store";
 import {
   evaluationById,
@@ -78,7 +78,7 @@ export async function runRepairContext(
     session,
     plan,
     source_run: source,
-    spec: await frozenSpec(db, session.workflow_id),
+    spec: await specForPlan(db, session.workflow_id, session.plan_version_id),
     steps: await planSteps(db, plan.id),
     evaluation: session.baseline_evaluation_id
       ? await evaluationById(db, session.baseline_evaluation_id)

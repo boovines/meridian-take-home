@@ -42,7 +42,7 @@ export function EvaluationPanel({
     load,
     error,
     setError,
-  } = useEvaluationData(base, suiteId, runId, operationActive);
+  } = useEvaluationData(base, suiteId, runId, operationActive, state.spec.id);
   const suite =
       suites?.suites.find((s) => s.id === suites.selected_suite_id) ||
       suites?.suites[0],
@@ -63,6 +63,7 @@ export function EvaluationPanel({
     if (parent && !suite) return;
     await act(async () => {
       const next = await api<{ id: string }>(`${base}/suites`, "POST", {
+        frozen_spec_id: state.spec.id,
         request_key: crypto.randomUUID(),
         name: parent ? suite!.name : name,
         parent_suite_version_id: parent ? suite!.id : null,
