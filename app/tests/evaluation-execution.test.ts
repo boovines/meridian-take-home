@@ -664,5 +664,5 @@ it("cancellation during recovery finalizes the case without starting another exe
   await evals.finish(job.id,undefined,true);
   expect(await evals.needsRecovery(String(step.id))).toBe(false);
   expect(await evals.beginCase(String(step.id))).toEqual({skip:true});
-  expect((await db.query("SELECT count(*) FROM evaluation_case_recoveries WHERE case_result_id=$1",[step.id])).rows[0].count).toBe(1);
+  expect(Number((await db.query("SELECT count(*) FROM evaluation_case_recoveries WHERE case_result_id=$1",[step.id])).rows[0].count)).toBe(1);
 });
