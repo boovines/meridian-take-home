@@ -8,8 +8,9 @@ vi.mock("../src/server/integrations/openai-client", () => ({ openai: () => state
 vi.mock("../src/server/repairs/evidence", () => ({ repairPrompt: () => "Locked test context" }));
 import { repairProjectSources } from "../src/server/integrations/openai-repair";
 
-it.each(["application/pdf", "text/plain"])("feeds %s evidence back to the model, then requires a final structured patch", async (media) => {
+it.each(["application/pdf", "text/plain"])("feeds %s evidence back to the model, then replays a proposed repair before the final structured patch", async (media) => {
   const id = randomUUID();
+  const node = randomUUID();
   const answer = { diagnosis: { summary: "Source inspected", affected_node_ids: [], changes: [] }, project: { status: "needs_attention", explanation: "Missing trusted source detail", steps: [] } };
   let count = 0;
   const model = new MockLanguageModelV4({ doGenerate: async () => {
@@ -17,8 +18,9 @@ it.each(["application/pdf", "text/plain"])("feeds %s evidence back to the model,
     return {
       content: count <= 3
         ? [{ type: "tool-call", toolCallId: `read-${count}`, toolName: "inspectDocument", input: JSON.stringify({ artifact_id: id }) }]
+        : count <= 5 ? [{ type: "tool-call", toolCallId: `replay-${count}`, toolName: "replay_step", input: JSON.stringify({ recorded_input_id: id, candidate_patch: { node_id: node, source_lines: ["export function run() {}"] } }) }]
         : [{ type: "text", text: JSON.stringify(answer) }],
-      finishReason: { unified: count <= 3 ? "tool-calls" : "stop", raw: undefined },
+      finishReason: { unified: count <= 5 ? "tool-calls" : "stop", raw: undefined },
       usage: { inputTokens: { total: 1, noCache: 1, cacheRead: undefined, cacheWrite: undefined }, outputTokens: { total: 1, text: 1, reasoning: undefined } },
       warnings: [],
     };
@@ -26,12 +28,15 @@ it.each(["application/pdf", "text/plain"])("feeds %s evidence back to the model,
   state.model = model;
   const bytes = Buffer.from(media === "application/pdf" ? "%PDF-1.7\nfixture" : "Verified source text");
   const read = vi.fn(async () => ({ artifact_id: id, name: "source", media_type: media, bytes }));
-  const result = await repairProjectSources({ session: { origin: "evaluation" } } as RepairContext, {} as Project, AbortSignal.timeout(10000), [], read, async()=>({}));
+  const replay = vi.fn(async () => ({ diagnostic_only: true, changed_from_recording: false }));
+  const result = await repairProjectSources({ session: { origin: "evaluation" } } as RepairContext, {} as Project, AbortSignal.timeout(10000), [], read, async()=>({}), replay);
   expect(result).toEqual(answer);
   expect(read).toHaveBeenCalledTimes(3);
   expect(read).toHaveBeenCalledWith(id, undefined);
-  expect(model.doGenerateCalls).toHaveLength(4);
-  expect(model.doGenerateCalls[3].toolChoice).toEqual({ type: "none" });
+  expect(replay).toHaveBeenCalledTimes(2);
+  expect(model.doGenerateCalls).toHaveLength(6);
+  expect(JSON.stringify(model.doGenerateCalls[4].prompt)).toContain("changed_from_recording");
+  expect(model.doGenerateCalls[5].toolChoice).toEqual({ type: "none" });
   const evidence = model.doGenerateCalls[1].prompt.find(message => message.role === "tool");
   expect(JSON.stringify(evidence)).toContain(id);
   expect(JSON.stringify(evidence)).toContain(media === "application/pdf" ? "application/pdf" : "Verified source text");
