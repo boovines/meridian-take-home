@@ -69,3 +69,11 @@ Verification evidence and the live command are recorded above. The current demo 
 ## Generalization and independent validation
 
 Prioritize traces that locate the first divergent boundary before expanding the suite. The runtime audit and repair tools are workflow-independent; invoice-specific extraction and matching remain generated step code. A higher aggregate score does not excuse lost source fidelity or a regression. Existing source-verified synthetic cases have already been visible to repair and therefore serve as regression checks. A future held-out validation claim requires fresh, independently verified cases withheld from the repair context; once used to guide repair, those cases are no longer held out. Supplied ground truth and the full-suite acceptance rule remain unchanged.
+
+## Diagnostic step replay
+
+The repair agent can try a replacement for one approved Code step against a recorded baseline input or a supplied previous-attempt occurrence. The host reconstructs the immutable bundle and exact recorded predecessor outputs; the model cannot supply different inputs, read foreign runs, or switch the step to Agent/Human. Existing Vercel Sandbox network, credential, execution-time and output restrictions apply.
+
+At most three replays are allowed per repair attempt, including across worker retries. Each request and result is retained as an immutable trace artifact, linked from the attempt's replay history. Results show original and candidate outputs, whether they differ, selected connections, and structured execution errors. Replays use the same route validation as normal execution before grading outputs; invalid routes are execution errors even when output assertions would pass. Trusted assertions are applied only to the identical isolated step case; final workflow expectations do not grade arbitrary intermediate outputs. Cancellation or a superseded generation invocation prevents late publication. Interrupted replay rows remain incomplete evidence.
+
+Replays are diagnostic only: they do not publish a code version, update a baseline, modify trusted tests, or count toward full-suite acceptance. The engineer can retrieve replay history with the existing repair-state endpoint; a dedicated replay inspector is deferred.

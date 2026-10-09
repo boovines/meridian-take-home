@@ -750,6 +750,14 @@ export class RepairService {
           )
         ).rows as unknown as RepairAttempt[])
       : [];
-    return { sessions, attempts };
+    const replays = sessions[0]
+      ? (
+          await this.db.query(
+            "SELECT r.* FROM repair_replays r JOIN repair_attempts a ON a.id=r.attempt_id WHERE a.session_id=$1 ORDER BY a.attempt_number,r.call_number",
+            [sessions[0].id],
+          )
+        ).rows
+      : [];
+    return { sessions, attempts, replays };
   }
 }

@@ -577,6 +577,25 @@ it.each(["regressing", "still-failing"])(
             ]),
           );
           expect(context.traces).toEqual([]);
+          // Replay an earlier candidate occurrence with its exact recorded
+          // predecessor output, while patching the retained baseline only.
+          const { RepairStepReplay } = await import("../src/server/repairs/replay");
+          const token = (await db.query("SELECT attempt_token FROM repair_attempts WHERE id=$1", [second.id])).rows[0].attempt_token;
+          const occurrence = prior.candidate_traces.find(t => t.node_id === changedNode)!;
+          const invoke = vi.fn(async (project: typeof baseline, nodeId: string, input: Record<string, Json>) => {
+            expect(nodeId).toBe(changedNode);
+            expect(input).toEqual({ input: { shipment: "SYNTHETIC-001" }, steps: { [f.nodes[0].id]: actual } });
+            const patchPath = baseline.node_file_map[changedNode];
+            expect(project.files[patchPath]).toBe("export async function run() {}");
+            for (const [path, source] of Object.entries(baseline.files)) {
+              if (path !== patchPath) expect(project.files[path]).toBe(source);
+            }
+            return { kind: "complete", output: actual, matching_connection_ids: [] };
+          });
+          const replay = new RepairStepReplay(db, context, baseline, String(token), AbortSignal.timeout(10000), invoke, artifacts);
+          const diagnostic = await replay.run({ recorded_input_id: String(occurrence.occurrence_id), candidate_patch: { node_id: changedNode, source_lines: ["export async function run() {}"] } });
+          expect(diagnostic).toMatchObject({ status: "completed", changed_from_recording: false, checks: [], assertions_scope: "none; workflow totals do not grade an intermediate step", diagnostic_only: true });
+          expect(invoke).toHaveBeenCalledTimes(1);
           const enlarged = {
             ...context,
             previous_attempts: context.previous_attempts.map((attempt) => ({
@@ -824,6 +843,32 @@ it("reuses complete candidate bytes when an activity stops between artifact crea
   expect(calls).toBe(1);
 });
 
+it('replays only recorded Code inputs, retains diagnostics, and enforces three calls across reader instances',async()=>{
+ const {RepairStepReplay}=await import('../src/server/repairs/replay');
+ const {f,job}=await prepared();const attempt=await repairs.beginAttempt(job.id,1);const claim=await repairs.claimGeneration(attempt.id);
+ const context=await repairs.generationContext(attempt.id);const baseline=(await new VersionService(db,artifacts).load(f.w.id,f.version.id)).project;
+ const input={recorded_input_id:context.results[0].id,candidate_patch:{node_id:f.nodes[1].id,source_lines:['export async function run(context) { return {kind:"complete", output:{shipment:context.input.shipment,failed_goods:1},matching_connection_ids:[]}; }']}};
+ const invoke=vi.fn(async(_project:unknown,_node:string,ctx:Record<string,Json>)=>({kind:'complete',output:{shipment:(ctx.input as Record<string,Json>).shipment,failed_goods:1},matching_connection_ids:[]}));
+ const reader=()=>new RepairStepReplay(db,context,baseline,claim.token!,AbortSignal.timeout(10000),invoke,artifacts);
+ await expect(reader().run({...input,recorded_input_id:randomUUID()})).rejects.toMatchObject({code:'REPLAY_INPUT_DENIED'});
+ await expect(reader().run({...input,candidate_patch:{...input.candidate_patch,node_id:f.nodes[0].id}})).rejects.toMatchObject({code:'REPLAY_PATCH_DENIED'});
+ for(let i=0;i<3;i++)expect(await reader().run(input)).toMatchObject({diagnostic_only:true,status:'completed',changed_from_recording:true,checks:[{passed:true},{passed:true}]});
+ await expect(reader().run(input)).rejects.toMatchObject({code:'REPLAY_LIMIT'});
+ expect(invoke).toHaveBeenCalledTimes(3);
+ const state=await repairs.state(f.w.id);expect(state.replays).toHaveLength(3);expect(state.attempts[0].candidate_version_id).toBeNull();
+ const evidence=await artifacts.read(f.w.id,String(state.replays[0].result_artifact_id));expect(JSON.parse(evidence.bytes.toString())).toHaveProperty('patch_sha256');
+ await expect(db.query("UPDATE repair_replays SET summary='{}' WHERE id=$1",[state.replays[0].id])).rejects.toMatchObject({code:'23514'});
+ await repairs.finish(job.id,'cancelled','Replay fixture verified');
+});
+it('cancelled replay results cannot be published or count as acceptance',async()=>{
+ const {RepairStepReplay}=await import('../src/server/repairs/replay');
+ const {f,job}=await prepared();const attempt=await repairs.beginAttempt(job.id,1);const claim=await repairs.claimGeneration(attempt.id);
+ const context=await repairs.generationContext(attempt.id);const baseline=(await new VersionService(db,artifacts).load(f.w.id,f.version.id)).project;
+ const signal=new AbortController();const replay=new RepairStepReplay(db,context,baseline,claim.token!,signal.signal,async()=>{signal.abort();return {kind:'complete',output:{},matching_connection_ids:[]}},artifacts);
+ await expect(replay.run({recorded_input_id:context.results[0].id,candidate_patch:{node_id:f.nodes[1].id,source_lines:['export async function run() {}']}})).rejects.toThrow();
+ const state=await repairs.state(f.w.id);expect(state.replays[0]).toMatchObject({status:'running',result_artifact_id:null});expect(state.attempts[0].candidate_version_id).toBeNull();
+ await repairs.finish(job.id,'cancelled','Cancellation fixture verified');
+});
 
 it.each([1, 3])("shares the three-read allowance across generation retries after %i reads", async (initialReads) => {
   const { job } = await prepared(true, true);
@@ -959,4 +1004,64 @@ it("blocks audit evidence returned after an invocation is superseded", async () 
   expect(read).toHaveBeenCalledTimes(1);
   expect(reader.inspected).toEqual([]);
   await repairs.finish(job.id, "cancelled", "Audit fencing verified");
+});
+
+it("rejects replay routing before grading otherwise matching output", async () => {
+  const { RepairStepReplay } = await import("../src/server/repairs/replay");
+  const { f, job } = await prepared();
+  const attempt = await repairs.beginAttempt(job.id, 1);
+  const claim = await repairs.claimGeneration(attempt.id);
+  const context = await repairs.generationContext(attempt.id);
+  const baseline = (await new VersionService(db, artifacts).load(f.w.id, f.version.id)).project;
+  const replay = new RepairStepReplay(db, context, baseline, claim.token!, AbortSignal.timeout(10000), async () => ({
+    kind: "complete", output: { shipment: "SYNTHETIC-001", failed_goods: 1 },
+    matching_connection_ids: [randomUUID()],
+  }), artifacts);
+  const report = await replay.run({
+    recorded_input_id: context.results[0].id,
+    candidate_patch: { node_id: f.nodes[1].id, source_lines: ["export async function run() {}"] },
+  });
+  expect(report).toMatchObject({ status: "error", diagnostic_only: true, error: { code: "INVALID_ROUTES", category: "implementation" } });
+  expect(report).not.toHaveProperty("checks");
+  const state = await repairs.state(f.w.id);
+  expect(state.replays[0].summary).toMatchObject({ status: "error" });
+  expect(state.attempts[0].candidate_version_id).toBeNull();
+  await repairs.finish(job.id, "cancelled", "Routing regression verified");
+});
+
+it("shares replay reservations across concurrent calls and superseded generation tokens", async () => {
+  const { RepairStepReplay } = await import("../src/server/repairs/replay");
+  const { f, job } = await prepared();
+  const attempt = await repairs.beginAttempt(job.id, 1);
+  const first = await repairs.claimGeneration(attempt.id);
+  const context = await repairs.generationContext(attempt.id);
+  const baseline = (await new VersionService(db, artifacts).load(f.w.id, f.version.id)).project;
+  const input = { recorded_input_id: context.results[0].id, candidate_patch: { node_id: f.nodes[1].id, source_lines: ["export async function run() {}"] } };
+  let release!: () => void;
+  let started!: () => void;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  const running = new Promise<void>(resolve => { started = resolve; });
+  const invoke = vi.fn(async () => {
+    started();
+    await pending;
+    return { kind: "complete", output: {}, matching_connection_ids: [] };
+  });
+  const reader = (token: string) => new RepairStepReplay(db, context, baseline, token, AbortSignal.timeout(10000), invoke, artifacts);
+  const old = reader(first.token!);
+  const inFlight = old.run(input);
+  await running;
+  const next = await repairs.claimGeneration(attempt.id);
+  const rejected = expect(inFlight).rejects.toMatchObject({ code: "STALE_REPLAY" });
+  release();
+  await rejected;
+  await expect(old.run(input)).rejects.toMatchObject({ code: "STALE_REPLAY" });
+  const replies = await Promise.allSettled(Array.from({ length: 3 }, () => reader(next.token!).run(input)));
+  expect(replies.filter(r => r.status === "fulfilled")).toHaveLength(2);
+  expect(replies.find(r => r.status === "rejected")).toMatchObject({ reason: { code: "REPLAY_LIMIT" } });
+  expect(invoke).toHaveBeenCalledTimes(3);
+  const state = await repairs.state(f.w.id);
+  expect(state.replays).toHaveLength(3);
+  expect(state.replays[0]).toMatchObject({ status: "running", result_artifact_id: null });
+  expect(state.attempts[0].candidate_version_id).toBeNull();
+  await repairs.finish(job.id, "cancelled", "Concurrent replay fencing verified");
 });
