@@ -72,7 +72,8 @@ export function FreezeDialog({
       <h2 id="freeze-title">Ready to hand off?</h2>
       <p>
         Freezing saves this process and its review decisions for the engineer.
-        The board will be locked for the demo.
+        The approved version stays immutable; future changes require a new
+        revision.
       </p>
       {error && (
         <p role="alert" className="inline-error">
@@ -93,7 +94,7 @@ export function FreezeDialog({
           )}
           {ready.open_findings.length ? (
             <>
-              <strong>Resolve these findings first</strong>
+              <strong>Resolve these findings and requests first</strong>
               <ul>
                 {ready.open_findings.map((f) => (
                   <li key={f.id}>{f.title}</li>
@@ -101,7 +102,7 @@ export function FreezeDialog({
               </ul>
             </>
           ) : (
-            <p>✓ All AI findings have a recorded decision</p>
+            <p>✓ All findings and engineer requests have a recorded decision</p>
           )}
           {ready.issues.length ? (
             <>

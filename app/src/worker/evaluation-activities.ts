@@ -1,5 +1,6 @@
 import { finishEvaluationWithRepair } from "../server/evaluations/automatic-repair";
 import { startRepairWorkflow } from "../server/integrations/temporal";
+import { withRecoveryBudget } from "../server/repairs/recovery-budget";
 import { heartbeat, cancellationSignal } from "@temporalio/activity";
 import { getDatabase } from "../server/database";
 import { DomainError } from "../domain/errors";
@@ -100,15 +101,34 @@ export async function evaluateStepCase(id: string) {
   );
   try {
     heartbeat();
-    await new EvaluationExecutionService(await getDatabase()).step(
-      id,
-      {
-        invoke: invokeInSandbox,
-        reason: reasonForStep,
-        extract: extractForStep,
-        model: runtimeModelConfiguration(),
-      },
-      AbortSignal.any([cancellationSignal(), AbortSignal.timeout(150000)]),
+    const db = await getDatabase();
+    const scope = (
+      await db.query(
+        "SELECT e.job_id FROM evaluation_case_results r JOIN evaluation_runs e ON e.id=r.evaluation_run_id WHERE r.id=$1",
+        [id],
+      )
+    ).rows[0];
+    if (!scope)
+      throw new DomainError(404, "NOT_FOUND", "Evaluation case not found.");
+    await withRecoveryBudget(
+      db,
+      String(scope.job_id),
+      (capacitySignal) =>
+        new EvaluationExecutionService(db).step(
+          id,
+          {
+            invoke: invokeInSandbox,
+            reason: reasonForStep,
+            extract: extractForStep,
+            model: runtimeModelConfiguration(),
+          },
+          AbortSignal.any([
+            capacitySignal,
+            cancellationSignal(),
+            AbortSignal.timeout(150000),
+          ]),
+        ),
+      cancellationSignal(),
     );
   } finally {
     clearInterval(pulse);

@@ -13,6 +13,8 @@ import {
 
 import type { Board } from "@/domain/canvas";
 export function ThreadCard({
+  opened,
+  onExpandedChange,
   thread,
   state,
   board,
@@ -22,6 +24,8 @@ export function ThreadCard({
   onHover,
   onFocusThread,
 }: {
+  opened?: boolean;
+  onExpandedChange?: (open: boolean) => void;
   thread: DiscussionThread;
   state: ReviewState;
   board: Board;
@@ -41,7 +45,10 @@ export function ThreadCard({
   const [proposalDrafts, setProposalDrafts] = useState<Record<string, string>>(
     {},
   );
-  const [expanded, setExpanded] = useState(false);
+  const [localExpanded, setLocalExpanded] = useState(false);
+  const expanded = opened ?? localExpanded;
+  const setExpanded = (value: boolean) =>
+    onExpandedChange ? onExpandedChange(value) : setLocalExpanded(value);
   const dialog = useRef<HTMLDialogElement>(null);
   const expandButton = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -71,6 +78,7 @@ export function ThreadCard({
     proposalId?: string,
     nodeId?: string,
     instructions?: string,
+    title?: string,
   ) {
     setBusy(true);
     setError("");
@@ -81,6 +89,7 @@ export function ThreadCard({
         proposalId,
         nodeId,
         instructions,
+        title,
         reply,
       });
       if (pendingRequest.current?.signature !== signature)
@@ -97,6 +106,7 @@ export function ThreadCard({
           decision: action === "accept-proposal" ? "accept" : "reject",
           node_id: nodeId,
           ...(instructions !== undefined ? { instructions } : {}),
+          ...(title !== undefined ? { title } : {}),
           expected_revision: pendingRequest.current.revision,
           request_key: requestKey,
         });
@@ -109,12 +119,18 @@ export function ThreadCard({
         });
         setReply("");
       } else {
-        await api(`${base}/actions`, "POST", {
-          action,
-          reason: action === "reopen" ? "" : reply,
-          expected_revision: pendingRequest.current.revision,
-          request_key: requestKey,
-        });
+        await api(
+          thread.engineer_request
+            ? `/api/workflows/${board.workflow.id}/change-requests/${thread.id}`
+            : `${base}/actions`,
+          "POST",
+          {
+            action,
+            reason: action === "reopen" ? "" : reply,
+            expected_revision: pendingRequest.current.revision,
+            request_key: requestKey,
+          },
+        );
         setReply("");
         setResponseType("reply");
       }
@@ -151,6 +167,47 @@ export function ThreadCard({
   }
   const conversation = (
     <div className="thread-content">
+      {thread.engineer_request && (
+        <div className="review-summary">
+          <strong>
+            Engineer request · frozen v
+            {thread.engineer_request.source_version_number}
+          </strong>
+          <p className="field-help">
+            The engineer’s original request is preserved below. Accepted wording
+            must be saved to the draft before handoff.
+          </p>
+          {board.workflow.state === "frozen" &&
+            thread.status === "open" &&
+            thread.engineer_request.source_frozen_spec_id ===
+              board.workflow.current_frozen_spec_id && (
+              <button
+                disabled={busy}
+                onClick={async () => {
+                  setBusy(true);
+                  setError("");
+                  try {
+                    await api(
+                      `/api/workflows/${board.workflow.id}/revisions`,
+                      "POST",
+                      {
+                        source_frozen_spec_id:
+                          thread.engineer_request!.source_frozen_spec_id,
+                      },
+                    );
+                    await onRefresh();
+                  } catch (e) {
+                    setError(errorMessage(e));
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                Start revision
+              </button>
+            )}
+        </div>
+      )}
       {thread.previous_finding_id && (
         <p className="field-help">
           Revisits a previous finding after the process changed. The earlier
@@ -201,17 +258,18 @@ export function ThreadCard({
               messages={messages}
               board={board}
               thread={thread}
-              disabled={locked || busy}
+              disabled={locked || busy || board.workflow.state !== "draft"}
               drafts={proposalDrafts}
               onDraft={(key, text) =>
                 setProposalDrafts((current) => ({ ...current, [key]: text }))
               }
-              onDecision={(decision, id, nodeId, instructions) =>
+              onDecision={(decision, id, nodeId, instructions, title) =>
                 void submit(
                   decision === "accept" ? "accept-proposal" : "reject-proposal",
                   id,
                   nodeId,
                   instructions,
+                  title,
                 )
               }
             />
@@ -294,9 +352,17 @@ export function ThreadCard({
                 }
               >
                 <option value="reply">Reply</option>
-                {thread.kind === "finding" && (
+                {(thread.kind === "finding" || thread.engineer_request) && (
                   <>
-                    <option value="resolve">Resolve</option>
+                    <option
+                      value="resolve"
+                      disabled={
+                        !!thread.engineer_request &&
+                        board.workflow.state !== "draft"
+                      }
+                    >
+                      Resolve
+                    </option>
                     <option value="reject">Reject</option>
                   </>
                 )}
@@ -310,12 +376,16 @@ export function ThreadCard({
                 : responseType === "reply"
                   ? "Send"
                   : responseType === "resolve"
-                    ? "Resolve finding"
-                    : "Reject suggestion"}
+                    ? thread.engineer_request
+                      ? "Resolve request"
+                      : "Resolve finding"
+                    : thread.engineer_request
+                      ? "Reject request"
+                      : "Reject suggestion"}
             </button>
           </div>
           <p className="field-help">
-            {thread.kind === "note"
+            {thread.kind === "note" && !thread.engineer_request
               ? "Add context to this discussion. Notes do not block handoff."
               : responseType === "reply"
                 ? "AI will propose a diff from your answer. You choose whether to accept it; blocks stay unchanged until then."
@@ -359,7 +429,7 @@ export function ThreadCard({
             <span
               className={`thread-status ${findingLabel(thread, state.messages).toLowerCase()}`}
             >
-              {thread.kind === "note"
+              {thread.kind === "note" && !thread.engineer_request
                 ? "Note"
                 : findingLabel(thread, state.messages)}
             </span>

@@ -65,7 +65,7 @@ test("approves a plan, downloads generated source, and keeps previous versions o
   await expect(
     page.getByLabel("Method for Approve report", { exact: true }),
   ).toBeDisabled();
-  await page.getByRole("button", { name: "Suggest methods" }).click();
+  await page.getByRole("button", { name: "Recommend methods with AI" }).click();
   await expect(
     page.getByText("AI suggests human.", { exact: true }),
   ).toBeVisible();
@@ -159,5 +159,8 @@ test("approves a plan, downloads generated source, and keeps previous versions o
   await expect(
     page.getByRole("button", { name: "Implementation", exact: true }),
   ).toHaveAttribute("aria-current", "page");
+  await expect(
+    notice.getByRole("button", { name: "Review implementation", exact: true }),
+  ).toHaveCount(0);
   expect(errors).toEqual([]);
 });

@@ -8,10 +8,11 @@ export interface MessageProps {
 }
 export function ConversationMessage({ message, children }: MessageProps) {
   const owner = message.author_kind === "customer";
+  const engineer = message.author_kind === "engineer";
   const activity =
     message.author_kind === "system" ||
     message.event_data?.action === "reply_proposal_decided";
-  const Icon = activity ? Check : owner ? UserRound : Bot;
+  const Icon = activity ? Check : owner || engineer ? UserRound : Bot;
   return (
     <article
       className={`conversation-message ${owner ? "owner" : "assistant"}${activity ? " activity" : ""}`}
@@ -26,7 +27,9 @@ export function ConversationMessage({ message, children }: MessageProps) {
               ? "Activity"
               : owner
                 ? "You · Process expert"
-                : "AI reviewer"}
+                : engineer
+                  ? "Engineer"
+                  : "AI reviewer"}
           </strong>
           <time dateTime={message.created_at}>
             {new Date(message.created_at).toLocaleTimeString([], {

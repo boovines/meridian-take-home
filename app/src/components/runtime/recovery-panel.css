@@ -1,0 +1,97 @@
+.recovery-entry,
+.recovery-frame {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 20px;
+  margin: 20px 0;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.recovery-entry {
+  background: var(--paper);
+}
+.recovery-frame h3 {
+  margin: 6px 0;
+}
+.recovery-frame p {
+  line-height: 1.65;
+}
+.recovery-frame .field-help {
+  margin: 10px 0;
+}
+.recovery-frame header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+.recovery-frame header button {
+  flex-shrink: 0;
+}
+.recovery-attempts {
+  list-style: none;
+  margin: 16px 0 0;
+  padding: 0;
+}
+.recovery-attempts li {
+  padding: 16px 0;
+  border-top: 1px solid var(--line);
+}
+.recovery-attempts li:last-child {
+  padding-bottom: 0;
+}
+.recovery-attempt-heading {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.recovery-frame .button-row {
+  flex-wrap: wrap;
+}
+.recovery-stage {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  padding: 10px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  margin: 14px 0;
+}
+.recovery-timeline .recovery-attempts {
+  border-left: 2px solid var(--line);
+  padding-left: 16px;
+}
+@media (max-width: 700px) {
+  .recovery-frame header {
+    flex-wrap: wrap;
+  }
+}
+
+.recovery-question {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px;
+  margin: 16px 0;
+  display: grid;
+  gap: 12px;
+}
+.recovery-question p {
+  margin: 0;
+}
+.recovery-question textarea {
+  width: 100%;
+  min-height: 100px;
+}
+.recovery-question button {
+  justify-self: start;
+}
+.recovery-reuse {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.recovery-reuse input {
+  width: auto;
+}
