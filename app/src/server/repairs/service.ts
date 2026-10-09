@@ -95,108 +95,112 @@ export class RepairService {
     const data = startRepairInput.parse(raw);
     return this.db.transaction(async (tx) => {
       await workflow(tx, wid, true);
-      const source = { baseline_evaluation_id: data.baseline_evaluation_id };
-      const prior = (
-        await tx.query(
-          "SELECT * FROM workflow_jobs WHERE workflow_id=$1 AND request_key=$2",
-          [wid, data.request_key],
-        )
-      ).rows[0] as unknown as WorkflowJob | undefined;
-      if (prior) {
-        if (
-          prior.kind !== "repair" ||
-          !isDeepStrictEqual(prior.source_request, source)
-        )
-          throw new DomainError(
-            409,
-            "REQUEST_REUSED",
-            "This request belongs to a different repair baseline.",
-          );
-        return { job: prior, session: await sessionByJob(tx, prior.id) };
-      }
-      const evaluation = await evaluationById(tx, data.baseline_evaluation_id);
-      if (evaluation.workflow_id !== wid)
-        throw new DomainError(
-          404,
-          "NOT_FOUND",
-          "Evaluation not found on this workflow.",
-        );
-      const blocker = repairBlocker(
-        evaluation,
-        await resultsByEvaluation(tx, evaluation.id),
-      );
-      if (blocker)
-        throw new DomainError(422, "BASELINE_NOT_REPAIRABLE", blocker);
-      const suite = await suiteById(tx, wid, evaluation.suite_version_id);
-      if (suite.state !== "locked")
-        throw new DomainError(
-          422,
-          "SUITE_NOT_LOCKED",
-          "Repair requires locked expectations.",
-        );
-      if (
-        (
-          await tx.query(
-            "SELECT id FROM evaluation_suite_versions WHERE workflow_id=$1 AND version_number>$2",
-            [wid, suite.version_number],
-          )
-        ).rows.length
-      )
-        throw new DomainError(
-          409,
-          "SUITE_CHANGED",
-          "Finish the latest suite revision and evaluate the chosen baseline against it before starting repair.",
-        );
-      const version = (
-        await tx.query(
-          "SELECT * FROM implementation_versions WHERE workflow_id=$1 AND id=$2",
-          [wid, evaluation.implementation_version_id],
-        )
-      ).rows[0] as unknown as ImplementationVersion;
-      const plan = await planById(tx, wid, version.plan_version_id);
-      if (plan.state !== "approved")
-        throw new DomainError(
-          422,
-          "PLAN_NOT_APPROVED",
-          "Repair requires the engineer-approved plan.",
-        );
-      if (
-        (
-          await tx.query(
-            "SELECT id FROM workflow_jobs WHERE workflow_id=$1 AND status IN ('queued','running','waiting_for_human','cancel_requested')",
-            [wid],
-          )
-        ).rows.length
-      )
-        throw new DomainError(
-          409,
-          "OPERATION_ACTIVE",
-          "Wait for or cancel the active operation first.",
-        );
-      const id = randomUUID();
-      const job = (
-        await tx.query(
-          "INSERT INTO workflow_jobs(id,workflow_id,kind,request_key,source_request,plan_version_id,input_version_id,suite_version_id,executor_ref,deadline_at) VALUES($1,$2,'repair',$3,$4,$5,$6,$7,$8,now()+interval '2 hours') RETURNING *",
-          [
-            id,
-            wid,
-            data.request_key,
-            source,
-            plan.id,
-            version.id,
-            suite.id,
-            `job-${id}`,
-          ],
-        )
-      ).rows[0] as unknown as WorkflowJob;
-      const session = (
-        await tx.query(
-          "INSERT INTO repair_sessions(workflow_id,job_id,plan_version_id,suite_version_id,initial_version_id,initial_evaluation_id,baseline_version_id,baseline_evaluation_id) VALUES($1,$2,$3,$4,$5,$6,$5,$6) RETURNING *",
-          [wid, id, plan.id, suite.id, version.id, evaluation.id],
-        )
-      ).rows[0] as unknown as RepairSession;
-      return { job, session };
+      return this.startInTransaction(tx, wid, data);
     });
+  }
+  // Caller holds the workflow lock; automatic handoff commits with evaluation completion.
+  async startInTransaction(tx: Queryable, wid: string, data: z.infer<typeof startRepairInput>) {
+    const source = { baseline_evaluation_id: data.baseline_evaluation_id };
+    const prior = (
+      await tx.query(
+        "SELECT * FROM workflow_jobs WHERE workflow_id=$1 AND request_key=$2",
+        [wid, data.request_key],
+      )
+    ).rows[0] as unknown as WorkflowJob | undefined;
+    if (prior) {
+      if (
+        prior.kind !== "repair" ||
+        !isDeepStrictEqual(prior.source_request, source)
+      )
+        throw new DomainError(
+          409,
+          "REQUEST_REUSED",
+          "This request belongs to a different repair baseline.",
+        );
+      return { job: prior, session: await sessionByJob(tx, prior.id) };
+    }
+    const evaluation = await evaluationById(tx, data.baseline_evaluation_id);
+    if (evaluation.workflow_id !== wid)
+      throw new DomainError(
+        404,
+        "NOT_FOUND",
+        "Evaluation not found on this workflow.",
+      );
+    const blocker = repairBlocker(
+      evaluation,
+      await resultsByEvaluation(tx, evaluation.id),
+    );
+    if (blocker)
+      throw new DomainError(422, "BASELINE_NOT_REPAIRABLE", blocker);
+    const suite = await suiteById(tx, wid, evaluation.suite_version_id);
+    if (suite.state !== "locked")
+      throw new DomainError(
+        422,
+        "SUITE_NOT_LOCKED",
+        "Repair requires locked expectations.",
+      );
+    if (
+      (
+        await tx.query(
+          "SELECT id FROM evaluation_suite_versions WHERE workflow_id=$1 AND version_number>$2",
+          [wid, suite.version_number],
+        )
+      ).rows.length
+    )
+      throw new DomainError(
+        409,
+        "SUITE_CHANGED",
+        "Finish the latest suite revision and evaluate the chosen baseline against it before starting repair.",
+      );
+    const version = (
+      await tx.query(
+        "SELECT * FROM implementation_versions WHERE workflow_id=$1 AND id=$2",
+        [wid, evaluation.implementation_version_id],
+      )
+    ).rows[0] as unknown as ImplementationVersion;
+    const plan = await planById(tx, wid, version.plan_version_id);
+    if (plan.state !== "approved")
+      throw new DomainError(
+        422,
+        "PLAN_NOT_APPROVED",
+        "Repair requires the engineer-approved plan.",
+      );
+    if (
+      (
+        await tx.query(
+          "SELECT id FROM workflow_jobs WHERE workflow_id=$1 AND status IN ('queued','running','waiting_for_human','cancel_requested')",
+          [wid],
+        )
+      ).rows.length
+    )
+      throw new DomainError(
+        409,
+        "OPERATION_ACTIVE",
+        "Wait for or cancel the active operation first.",
+      );
+    const id = randomUUID();
+    const job = (
+      await tx.query(
+        "INSERT INTO workflow_jobs(id,workflow_id,kind,request_key,source_request,plan_version_id,input_version_id,suite_version_id,executor_ref,deadline_at) VALUES($1,$2,'repair',$3,$4,$5,$6,$7,$8,now()+interval '2 hours') RETURNING *",
+        [
+          id,
+          wid,
+          data.request_key,
+          source,
+          plan.id,
+          version.id,
+          suite.id,
+          `job-${id}`,
+        ],
+      )
+    ).rows[0] as unknown as WorkflowJob;
+    const session = (
+      await tx.query(
+        "INSERT INTO repair_sessions(workflow_id,job_id,plan_version_id,suite_version_id,initial_version_id,initial_evaluation_id,baseline_version_id,baseline_evaluation_id) VALUES($1,$2,$3,$4,$5,$6,$5,$6) RETURNING *",
+        [wid, id, plan.id, suite.id, version.id, evaluation.id],
+      )
+    ).rows[0] as unknown as RepairSession;
+    return { job, session };
   }
   async prepare(jobId: string) {
     return this.db.transaction(async (tx) => {

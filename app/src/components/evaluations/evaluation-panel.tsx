@@ -72,7 +72,7 @@ export function EvaluationPanel({
       setSelected("");
     });
   }
-  async function start(targetCode = codeId, targetSuite = suite?.id) {
+  async function start(targetCode = codeId, targetSuite = suite?.id, autoRepair = false) {
     if (!targetSuite || !targetCode) return;
     await act(async () => {
       const result = await api<{ evaluation: EvaluationRun }>(
@@ -82,6 +82,7 @@ export function EvaluationPanel({
           request_key: crypto.randomUUID(),
           implementation_version_id: targetCode,
           suite_version_id: targetSuite,
+          ...(autoRepair ? { auto_repair: true } : {}),
         },
       );
       setRunId(result.evaluation.id);
@@ -255,6 +256,14 @@ export function EvaluationPanel({
                 >
                   Run full suite
                 </button>
+                <button
+                  className="primary"
+                  disabled={busy || operationActive || suite.state !== "locked" || !codeId || !!editing || suites.suites.some(s => s.version_number > suite.version_number)}
+                  onClick={() => void start(codeId, suite.id, true)}
+                  aria-describedby="automatic-repair-help"
+                >
+                  Evaluate and repair
+                </button>
               </div>
               <p className="field-help">
                 {operationActive
@@ -267,6 +276,11 @@ export function EvaluationPanel({
               </p>
             </>
           )}
+          {mode === "cases" && <p id="automatic-repair-help" className="field-help">
+            Evaluate and repair runs the full suite, then automatically repairs and retests failures.
+            Stops when all checks pass or after three repair attempts; service or input problems need attention.
+            Uses additional AI credits and continues if you leave this page. Follow progress in Repair history.
+          </p>}
           <div className="evaluation-navigation">
             <div className="button-row" aria-label="Evaluation views">
               <button

@@ -4,7 +4,7 @@ Use **Evaluation** in `/workflows/:id/engineer` to compare a code version agains
 
 1. Create a test suite and add full-workflow or one-step cases. Workflow cases use captured inputs; step cases accept a JSON context.
 2. Add output paths and expected values. Choose **Equals exactly**, **Contains a record**, or **Excludes a record**. Inspect the inputs and confirm the expected answers with **Verify inputs & answers**.
-3. Lock the suite, select a code version, and choose **Run full suite**.
+3. Lock the suite, select a code version, and choose **Run full suite**, or **Evaluate and repair** to evaluate and automatically enter bounded repair if implementation failures remain.
 4. Open **Results & history** to compare values, inspect errors, or expand the step trace. Closing the page does not interrupt the work.
 
 The results view keeps the case list beside its details. A pass means every check passed. Failed means a conclusive comparison disagreed. Inconclusive means evidence is incomplete, such as an execution error, missing human fixture, cancellation, or build blocker. Independent cases continue after an individual failure.
@@ -76,3 +76,9 @@ When the optional inference budget guard is enabled, token counting may make at 
 The case editor preserves an isolated step case’s captured input when editing. Choose **Use JSON input only** to remove that optional bundle explicitly; selecting a bundle replaces the fixture’s `input` at execution while retaining its prior-step context.
 
 The recorded configuration also includes the runtime heartbeat policy. Let active operations finish or cancel them before restarting the web app and worker consistently for a policy change, then start a distinct confirmation sequence. Already scheduled activity timeouts in Temporal history are not rewritten by updating the worker. Earlier passes under a different policy do not count toward that sequence. The longer heartbeat allowance is liveness tolerance, not permission to extend inference time, repeat failed business answers, or treat infrastructure errors as successful cases.
+
+## Automatic evaluation and repair
+
+**Evaluate and repair** preserves the manual controls and pins the selected code and latest locked suite. The worker completes the initial full evaluation, then atomically reserves one repair session if its failures are repairable. A passing baseline stops without generating code. Input/infrastructure errors, cancellation, or a newer suite revision stop automatic handoff with a reason. The existing repair loop handles up to three attempts and full-suite reruns, including its three-pass candidate confirmation; it never starts additional sessions automatically. This uses additional AI credits and works after the browser closes. Results stay in Results & history; subsequent attempts appear in Repair history. Cancel operation applies to the current evaluation or repair job.
+
+The opt-in is stored in the evaluation job's source request. Evaluation completion and repair creation share the workflow lock and database transaction, preventing competing operations in the handoff. Retry delivery uses the initial evaluation ID as the repair request key. No new schema or alternate grading path is introduced.

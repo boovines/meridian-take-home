@@ -82,7 +82,7 @@ The first command bundles workflows without credentials and runs in CI. The last
 | `src/server/reviews/reply-service.ts`, `src/server/reviews/reply-proposal-service.ts`, `src/server/integrations/openai-review-reply.ts` | Foreground answer proposals, per-block accept/reject decisions with editable wording, atomic revision-checked instruction saves and audit history |
 | `src/components/reviews/conversation-message.tsx`, `src/components/reviews/instruction-diff.tsx`, `src/components/reviews/reply-changes.tsx`, `src/components/reviews/thread-card.tsx` | Conversation rendering, word diffs and a shared inline/expanded response flow |
 | `src/server/engineering` | Versioned plans, generation lifecycle, project assembly and source/download inspection |
-| `src/server/evaluations` | Verified suites, trusted grading, case execution and result history |
+| `src/server/evaluations` | Verified suites, trusted grading, case execution and result history; `automatic-repair.ts` atomically hands an opted-in evaluation to one bounded repair session |
 | `src/server/repairs` | Bounded sessions, candidate ancestry, diagnostic evidence projection and repeated-output field differences, bounded recorded-input replay, focused source patches, generation checkpoints and three-run confirmation |
 | `src/server/inputs` | Prepare source-backed email packet suggestions and capture existing Gmail messages and attachment evidence into immutable input bundles |
 | `src/server/runtime` | Run/visit history, immutable interaction audit, run-scoped document access, isolated step contracts and human responses |
