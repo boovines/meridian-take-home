@@ -64,3 +64,5 @@ The current UI starts evaluations explicitly; generation does not start them aut
 The local test executor is visibly labeled as a fixture. It verifies UI/persistence/grading behavior with known outputs and does not execute generated source. Live execution uses isolated environments. Shipment accuracy must be verified separately against supplied real inputs and ground truth.
 
 Anyone with access to the protected demo can act as the engineer; role and team permissions are outside scope. Suite verification is an explicit user action, not a claim that the system independently knows an expected answer is correct.
+
+The case editor preserves an isolated step case’s captured input when editing. Choose **Use JSON input only** to remove that optional bundle explicitly; selecting a bundle replaces the fixture’s `input` at execution while retaining its prior-step context.

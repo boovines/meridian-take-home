@@ -11,8 +11,8 @@ import { VersionService } from "../engineering/version-service";
 import { RepairService } from "./service";
 import { changedStepSources, type PreviousSourceEvidence } from "./evidence";
 import { completeRepairSources } from "./patch";
-import { RepairDocumentReader, type ReadRepairDocument } from "./documents";
-import { RepairAuditReader, type ReadRepairAudit } from "./audit";
+import { repairDocumentBudget, RepairDocumentReader, type ReadRepairDocument } from "./documents";
+import { repairAuditBudget, RepairAuditReader, type ReadRepairAudit } from "./audit";
 import { ExecutionAuditService } from "../runtime/audit-service";
 export type RepairContext = Awaited<
   ReturnType<RepairService["generationContext"]>
@@ -94,6 +94,7 @@ export class RepairGenerationService {
         ),
         this.artifacts,
         signal,
+        repairDocumentBudget(this.db, attemptId, claimed.token),
       );
       const audits = new RepairAuditReader(
         claimed.job.workflow_id,
@@ -107,6 +108,7 @@ export class RepairGenerationService {
         ),
         new ExecutionAuditService(this.db, this.artifacts),
         signal,
+        repairAuditBudget(this.db, attemptId, claimed.token),
       );
       const replay = new RepairStepReplay(
         this.db,
