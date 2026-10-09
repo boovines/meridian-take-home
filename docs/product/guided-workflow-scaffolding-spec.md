@@ -1,6 +1,6 @@
 # Guided workflow scaffolding
 
-Status: approved product decisions; implementation specification, not an implemented feature. October 9, 2026.
+Status: approved implementation specification. Implemented on the guided-workflow-scaffolding branch; see the [feature contract](../features/guided-workflow-scaffolding.md) for behavior and verification. October 9, 2026.
 
 This extends the [whiteboard product requirements](whiteboard.md) with an explicitly approved initial-generation path. Existing authoring, review and freeze contracts remain authoritative outside the changes described here.
 

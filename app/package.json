@@ -16,6 +16,7 @@
     "worker": "tsx src/worker/main.ts",
     "services:check": "tsx scripts/services-check.ts",
     "worker:check": "tsx scripts/worker-check.ts",
+    "scoping:smoke": "tsx scripts/scoping-smoke.ts",
     "review:smoke": "tsx scripts/review-smoke.ts",
     "sandbox:smoke": "tsx scripts/sandbox-smoke.ts",
     "storage:setup": "tsx scripts/storage-setup.ts",

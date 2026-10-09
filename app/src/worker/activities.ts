@@ -49,3 +49,5 @@ export {
   fenceGroupedExecution,
   endOwnedJob,
 } from "./grouped-activities";
+
+export { performScoping, endScoping } from "./scoping-activities";

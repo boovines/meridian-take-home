@@ -17,13 +17,14 @@ Start here when working on Meridian Studio. Use the [application setup and modul
 
 ## Approved feature specifications
 
-- [Guided workflow scaffolding](product/guided-workflow-scaffolding-spec.md): persistent notes, scoping interview and an approved initial graph; implementation pending.
+- [Guided workflow scaffolding](product/guided-workflow-scaffolding-spec.md): approved requirements for notes, scoping interviews and initial graph generation.
 
 ## Implemented features
 
 Each feature document combines usage, rules, failure handling and verification references in one place.
 
 - [Whiteboard authoring](features/whiteboard-authoring.md)
+- [Guided workflow scaffolding](features/guided-workflow-scaffolding.md)
 - [AI review and frozen handoff](features/review-handoff.md)
 - [Implementation plans and code generation](features/engineer-generation.md)
 - [Gmail input capture](features/gmail-inputs.md)
