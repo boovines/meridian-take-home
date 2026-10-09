@@ -1,3 +1,4 @@
+import type { EvaluationStatistics } from "@/domain/evaluation-statistics";
 import type { ReactNode } from "react";
 import type {
   EvaluationCase,
@@ -12,6 +13,7 @@ export interface SuiteState {
 }
 export interface EvaluationState {
   runs: EvaluationRun[];
+  statistics: Record<string, EvaluationStatistics>;
   results: CaseResult[];
 }
 export interface BundleSummary {
