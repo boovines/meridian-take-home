@@ -64,6 +64,7 @@ export const caseInput = z
       .object({
         input: z.json(),
         steps: z.record(uuid, z.json()),
+        execution: z.object({ mode: z.literal("aggregate") }).strict().optional(),
         human_response: humanResponse.optional(),
       })
       .strict()

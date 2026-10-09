@@ -124,6 +124,15 @@ export class SuiteService {
         "The tested step must belong to this frozen process.",
       );
     if (
+      data.input_data?.execution?.mode === "aggregate" &&
+      spec.board.nodes.find((n) => n.id === data.node_id)?.type !== "outcome"
+    )
+      throw new DomainError(
+        422,
+        "INVALID_PHASE_NODE",
+        "Aggregate step cases must target a frozen Outcome block.",
+      );
+    if (
       data.input_bundle_id &&
       !(
         await tx.query(
