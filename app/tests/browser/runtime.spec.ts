@@ -46,7 +46,7 @@ for (const interruptedAudit of [false, true])
               status: answered ? "completed" : "waiting_for_human",
               input_step_refs: {},
               output_data: answered
-                ? { totals: { invoices_processed: 1 }, report }
+                ? { totals: { invoices_processed: 1 }, ...(interruptedAudit ? {preview:report} : {report}) }
                 : null,
             },
           ]
