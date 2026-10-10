@@ -1,16 +1,33 @@
 "use client";
+import { DraftAction } from "../gmail-drafts/draft-action";
+import { previewFromOutput } from "@/domain/gmail-drafts";
 import type { Json } from "@/domain/runtime";
-export function RunResult({ output }: { output: Json }) {
+export function RunResult({
+  output,
+  workflowId,
+  runId,
+}: {
+  output: Json;
+  workflowId?: string;
+  runId?: string;
+}) {
   const object =
     output && typeof output === "object" && !Array.isArray(output)
       ? output
       : null;
+  const candidate = object?.preview ?? object?.report;
   const report =
-    object?.report &&
-    typeof object.report === "object" &&
-    !Array.isArray(object.report)
-      ? object.report
+    candidate && typeof candidate === "object" && !Array.isArray(candidate)
+      ? candidate
       : null;
+  const preview = previewFromOutput(output);
+  const recipient =
+    candidate &&
+    typeof candidate === "object" &&
+    !Array.isArray(candidate) &&
+    typeof candidate.recipient === "string"
+      ? candidate.recipient
+      : "";
   const totals =
     object?.totals &&
     typeof object.totals === "object" &&
@@ -48,6 +65,14 @@ export function RunResult({ output }: { output: Json }) {
             <p className="preserve-lines">{report.body}</p>
           </section>
         )}
+      {preview && workflowId && runId && (
+        <DraftAction
+          key={runId}
+          workflowId={workflowId}
+          runId={runId}
+          recipient={recipient}
+        />
+      )}
       <details open={!report}>
         <summary>Complete result</summary>
         <pre tabIndex={0}>{JSON.stringify(output, null, 2)}</pre>

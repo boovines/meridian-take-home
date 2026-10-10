@@ -143,7 +143,7 @@ export function GroupRunInspector({
               />
             ))}
           {run.status === "completed" && (
-            <RunResult
+            <RunResult workflowId={workflowId} runId={run.id}
               output={
                 detail?.steps.find((s) => s.id === run.result_step_id)
                   ?.output_data ?? null

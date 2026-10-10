@@ -382,7 +382,7 @@ export function RunPanel({
             />
           ))}
           {run.status === "completed" && output !== undefined && (
-            <RunResult output={output} />
+            <RunResult output={output} workflowId={state.workflow.id} runId={run.id} />
           )}
           {run.status !== "completed" &&
             !pending.length &&

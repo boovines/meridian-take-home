@@ -122,7 +122,8 @@ export class ComposioGmail implements GmailReader {
     tool:
       | "GMAIL_FETCH_EMAILS"
       | "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID"
-      | "GMAIL_GET_ATTACHMENT",
+      | "GMAIL_GET_ATTACHMENT"
+      | "GMAIL_CREATE_EMAIL_DRAFT",
     args: Record<string, unknown>,
     signal: AbortSignal,
   ) {
@@ -154,6 +155,26 @@ export class ComposioGmail implements GmailReader {
         "Gmail could not return the requested input. Retry capture.",
       );
     return result.data;
+  }
+  async createDraft(
+    input: { subject: string; body: string; recipient: string },
+    signal: AbortSignal,
+  ) {
+    const result = z
+      .object({ id: z.string().min(1) })
+      .parse(
+        await this.execute(
+          "GMAIL_CREATE_EMAIL_DRAFT",
+          {
+            subject: input.subject,
+            body: input.body,
+            ...(input.recipient ? { recipient_email: input.recipient } : {}),
+            is_html: false,
+          },
+          signal,
+        ),
+      );
+    return result.id;
   }
   async search(
     query: string,
@@ -242,4 +263,17 @@ export function gmailReader(): GmailReader {
       "Configure the read-only Gmail connection before searching.",
     );
   return new ComposioGmail({ key, account });
+}
+
+export function gmailDraftWriter() {
+  const key = process.env.COMPOSIO_API_KEY,
+    account = process.env.COMPOSIO_GMAIL_CONNECTED_ACCOUNT_ID;
+  if (!key || !account)
+    throw new DomainError(
+      503,
+      "GMAIL_NOT_CONFIGURED",
+      "Configure the Gmail connection before creating drafts.",
+    );
+  const provider = new ComposioGmail({ key, account });
+  return { account, create: provider.createDraft.bind(provider) };
 }
