@@ -154,7 +154,11 @@ export class GmailDraftService {
         )
       ).rows[0];
       return row as unknown as DraftRecord;
-    } catch {
+    } catch (error) {
+      if (error instanceof DomainError && error.code === "GMAIL_DRAFT_PERMISSION_REQUIRED") {
+        await this.db.query("DELETE FROM gmail_drafts WHERE id=$1 AND state='creating'", [id]);
+        throw error;
+      }
       await this.db.query(
         "UPDATE gmail_drafts SET state='uncertain',updated_at=now() WHERE id=$1 AND state='creating'",
         [id],

@@ -1,3 +1,4 @@
+import { DomainError } from "../src/domain/errors";
 import { randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
@@ -268,4 +269,12 @@ it("allows explicit fixture demo drafts and deduplicates repeated clicks", async
  await f.service.create(f.w.id,f.run.id,{recipient:""});
  await f.service.create(f.w.id,f.run.id,{recipient:""});
  expect(f.writer.create).toHaveBeenCalledTimes(1);
+});
+
+it("permits retry after a definitive permission rejection", async () => {
+ const f=await fixture(); await f.service.configure(f.w.id,true);
+ f.writer.create.mockRejectedValueOnce(new DomainError(403,"GMAIL_DRAFT_PERMISSION_REQUIRED","Reconnect"));
+ await expect(f.service.create(f.w.id,f.run.id,{recipient:""})).rejects.toMatchObject({code:"GMAIL_DRAFT_PERMISSION_REQUIRED"});
+ expect((await f.service.state(f.w.id,f.run.id)).draft).toBeNull();
+ expect(await f.service.create(f.w.id,f.run.id,{recipient:""})).toMatchObject({state:"created"});
 });

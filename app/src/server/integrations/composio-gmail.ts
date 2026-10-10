@@ -148,6 +148,11 @@ export class ComposioGmail implements GmailReader {
           arguments: { user_id: "me", ...args },
         }),
       );
+    if (!result.successful && tool === "GMAIL_CREATE_EMAIL_DRAFT" &&
+      typeof result.data === "object" && result.data !== null &&
+      "status_code" in result.data && result.data.status_code === 403)
+      throw new DomainError(403, "GMAIL_DRAFT_PERMISSION_REQUIRED",
+        "Gmail denied draft creation. Reconnect the Gmail account with compose permission, then try again. No draft was created.");
     if (!result.successful)
       throw new DomainError(
         502,
