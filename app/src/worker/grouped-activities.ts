@@ -3,8 +3,8 @@ import { ApplicationFailure } from "@temporalio/common";
 import { getDatabase } from "../server/database";
 import { GroupedCoordinator } from "../server/grouped-execution/coordinator";
 import { groupedExecutionState } from "../server/grouped-execution/state";
-import { GroupedExecutionService } from "../server/grouped-execution/service";
-import { GmailCaptureService } from "../server/inputs/gmail-capture";
+import { GroupedGmailCapture } from "../server/inputs/grouped-gmail-capture";
+import { CAPTURE_LIMITS } from "../domain/gmail-capture";
 import { gmailReader } from "../server/integrations/composio-gmail";
 import { DomainError } from "../domain/errors";
 import { RunService } from "../server/runtime/run-service";
@@ -28,17 +28,31 @@ export async function captureGroupedEmails(id: string) {
     if (state.record.input_bundle_id) return;
     const signal = AbortSignal.any([
       cancellationSignal(),
-      AbortSignal.timeout(120000),
+      AbortSignal.timeout(CAPTURE_LIMITS.attempt_ms),
     ]);
-    const bundle = await new GmailCaptureService(
-      db,
-      gmailReader(),
-    ).captureSelection(
-      state.job.workflow_id,
-      state.job.source_request.message_ids as string[],
-      signal,
-    );
-    await new GroupedExecutionService(db).attachCapture(id, String(bundle.id));
+    await new GroupedGmailCapture(db, gmailReader()).capture(id, signal);
+  } catch (error) {
+    if (error instanceof DomainError)
+      throw ApplicationFailure.create({
+        message: error.message,
+        type: error.code,
+        nonRetryable: [
+          "GMAIL_AUTH_REQUIRED",
+          "GMAIL_NOT_CONFIGURED",
+          "GMAIL_DOWNLOAD_HOST",
+          "GMAIL_MESSAGE_CHANGED",
+          "CAPTURE_TOO_LARGE",
+          "PARENT_INACTIVE",
+          "GROUP_CANCELLED",
+        ].includes(error.code),
+      });
+    if (error instanceof Error && error.name === "TimeoutError")
+      throw ApplicationFailure.create({
+        message:
+          "Email capture reached its time limit. Completed downloads are retained; try fewer emails if the automatic retry also fails.",
+        type: "GMAIL_CAPTURE_TIMEOUT",
+      });
+    throw error;
   } finally {
     clearInterval(timer);
   }

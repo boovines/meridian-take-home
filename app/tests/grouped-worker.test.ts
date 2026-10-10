@@ -270,3 +270,50 @@ it.each(["answer", "cancel", "cancel_child"])(
   },
   90000,
 );
+it("retains the actionable capture error after Temporal retries are exhausted", async () => {
+  const { ApplicationFailure } = await import("@temporalio/common");
+  const f = await runtimeFixture(db, artifacts);
+  await f.runs.finish(f.job.id, { status: "cancelled", error: null });
+  const service = new GroupedExecutionService(db),
+    coordinator = new GroupedCoordinator(db);
+  const parent = await service.start(f.w.id, {
+    request_key: randomUUID(),
+    implementation_version_id: f.version.id,
+    message_ids: ["abcdef0123456789"],
+  });
+  const reason =
+    "Could not capture email abcdef0123456789. Completed downloads are retained. Check Gmail access or try a smaller selection.";
+  let attempts = 0;
+  const taskQueue = `capture-error-${randomUUID()}`;
+  const worker = await Worker.create({
+    connection: env.nativeConnection,
+    taskQueue,
+    workflowBundle,
+    activities: {
+      advanceGroupedExecution: (id: string) => coordinator.advance(id),
+      captureGroupedEmails: async () => {
+        attempts++;
+        throw ApplicationFailure.create({
+          type: "GMAIL_CAPTURE_FAILED",
+          message: reason,
+        });
+      },
+      fenceGroupedExecution: (id: string) =>
+        new JobService(db).requestCancel(f.w.id, id),
+      endGroupedExecution: (id: string, message: string, cancelled: boolean) =>
+        coordinator.stop(id, message, cancelled),
+    },
+  });
+  await worker.runUntil(async () => {
+    const handle = await env.client.workflow.start("executeGroupedEmails", {
+      taskQueue,
+      workflowId: `job-${parent.id}`,
+      args: [parent.id],
+    });
+    await expect(handle.result()).rejects.toThrow();
+  });
+  expect(attempts).toBe(2);
+  const state = await service.read(f.w.id, parent.id);
+  expect(state.job).toMatchObject({ status: "failed", error_message: reason });
+  expect(state.record.input_bundle_id).toBeNull();
+}, 30000);

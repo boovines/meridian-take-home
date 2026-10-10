@@ -130,7 +130,7 @@ The first command bundles workflows without credentials and runs in CI. The Open
 | `src/server/engineering` | Versioned plans, generation lifecycle, project assembly and source/download inspection |
 | `src/server/evaluations` | Verified suites, trusted grading, case execution and result history; `automatic-repair.ts` atomically hands an opted-in evaluation to one bounded repair session |
 | `src/server/repairs` | Bounded sessions, candidate ancestry, diagnostic evidence projection and repeated-output field differences, bounded recorded-input replay, focused source patches, generation checkpoints and three-run confirmation |
-| `src/server/inputs` | Prepare source-backed email packet suggestions and capture existing Gmail messages and attachment evidence into immutable input bundles |
+| `src/server/inputs` | Prepare source-backed email packet suggestions; strict foreground capture and durable selected-email capture with per-source checkpoints into immutable input bundles |
 | `src/server/grouped-execution` | Selected-email orchestration, immutable grouping/clarification evidence, child scopes, aggregation, shared budgets/capacity |
 | `src/server/runtime` | Run/visit history, immutable interaction audit, run-scoped document access, isolated step contracts and human responses |
 | `src/server/artifacts` | Immutable file records, integrity checks and local/private Supabase storage |
@@ -182,7 +182,7 @@ The [repair guide](../docs/features/bounded-repair.md) explains the three-attemp
 
 Set `COMPOSIO_API_KEY` and `COMPOSIO_GMAIL_CONNECTED_ACCOUNT_ID` for the existing read-only connection. The adapter resolves its connected-account user and pins the verified Gmail tool version. Only search, message fetch, and attachment fetch are exposed. It never sends mail or updates labels.
 
-`GET /api/workflows/:id/gmail/messages?query=...` returns 25 messages per page. `POST /api/workflows/:id/gmail/capture` takes `message_ids` and `shipment_reference`, saving all attachments before publishing an input bundle. Capture is a bounded foreground request (four minutes), not another scheduler. Large packets may require a future durable capture job; a failed capture does not become runnable. See [capture behavior and limits](../docs/features/gmail-inputs.md).
+`GET /api/workflows/:id/gmail/messages?query=...` returns 25 messages per page. `POST /api/workflows/:id/gmail/capture` takes `message_ids` and `shipment_reference`, saving all attachments before publishing an input bundle. Capture is a bounded foreground request (four minutes), not another scheduler. This strict foreground route still requires every download to succeed. Selected-email runs instead use durable, checkpointed capture: four concurrent downloads, bounded per-source retries, explicit unavailable-attachment evidence, and progress retained across automatic worker retries. Apply migration `019_grouped_capture.sql` and deploy a matching worker before using that path. New top-level runs capture fresh inputs; they do not reuse another job’s checkpoints. See [capture behavior and limits](../docs/features/gmail-inputs.md).
 
 ```sh
 npm run gmail:smoke -- --live --message <message-id> --shipment <reference> --pdf <invoice-filename>

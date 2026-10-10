@@ -18,8 +18,8 @@ const io = proxyActivities<
 const capture = proxyActivities<
   Pick<typeof activities, "captureGroupedEmails">
 >({
-  startToCloseTimeout: "3 minutes",
-  scheduleToCloseTimeout: "7 minutes",
+  startToCloseTimeout: "22 minutes",
+  scheduleToCloseTimeout: "45 minutes",
   heartbeatTimeout: "20 seconds",
   cancellationType: ActivityCancellationType.WAIT_CANCELLATION_COMPLETED,
   retry: { maximumAttempts: 2 },
@@ -94,7 +94,9 @@ export async function executeGroupedEmails(id: string) {
           ? "The selected-email operation was cancelled. Completed results remain available."
           : code === "GROUP_TIME_LIMIT"
             ? "The selected-email operation reached its shared active-time limit. Completed results remain available."
-            : "The selected-email operation could not continue. Inspect the retained group and source history.",
+            : code?.startsWith("GMAIL_") || code === "CAPTURE_TOO_LARGE"
+              ? (cause as Error).message
+              : "The selected-email operation could not continue. Inspect the retained group and source history.",
         cancelled,
       );
     });
