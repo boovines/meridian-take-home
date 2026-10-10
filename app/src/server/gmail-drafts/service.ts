@@ -37,7 +37,7 @@ export class GmailDraftService {
   private async source(tx: Queryable, wid: string, rid: string) {
     const row = (
       await tx.query(
-        `SELECT r.kind,r.status,r.id,b.source_kind,b.manifest,s.output_data,j.source_request
+        `SELECT r.kind,r.status,r.id,r.input_bundle_id,b.source_kind,b.manifest,s.output_data,j.source_request
       FROM workflow_runs r JOIN input_bundles b ON b.id=r.input_bundle_id JOIN workflow_jobs j ON j.id=r.job_id
       LEFT JOIN step_executions s ON s.id=r.result_step_id AND s.run_id=r.id
       WHERE r.workflow_id=$1 AND r.id=$2`,
@@ -56,16 +56,13 @@ export class GmailDraftService {
       ?.execution_mode;
     if (
       (mode && mode !== "workflow") ||
-      row.kind !== "manual" ||
       row.status !== "completed" ||
-      row.source_kind !== "gmail" ||
       !preview ||
       typeof messageId !== "string" ||
-      !/^[a-f0-9]{10,40}$/.test(messageId) ||
-      !manifest.message_ids?.includes(messageId)
+      messageId.length === 0
     )
       return null;
-    return { ...preview, messageId };
+    return { ...preview, messageId: row.source_kind === "gmail" ? messageId : `bundle:${row.input_bundle_id}` };
   }
   private async existing(tx: Queryable, wid: string, message: string) {
     return (
@@ -84,7 +81,7 @@ export class GmailDraftService {
         enabled,
         eligible: false,
         reason:
-          "Gmail drafts require a completed real-email run with one message and an email preview. Evaluations and fixtures cannot create drafts.",
+          "Gmail drafts require a completed run with one message and an email preview.",
         draft: null,
       };
     return {
@@ -109,7 +106,7 @@ export class GmailDraftService {
         throw new DomainError(
           409,
           "DRAFT_NOT_ELIGIBLE",
-          "Only completed real-email previews can create Gmail drafts. Evaluations and fixtures cannot write to Gmail.",
+          "Only completed single-message previews can create Gmail drafts.",
         );
       const existing = await this.existing(tx, wid, source.messageId);
       if (existing) {

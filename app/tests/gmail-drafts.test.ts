@@ -139,9 +139,8 @@ it("never retries an uncertain provider write", async () => {
   ).toMatchObject({ state: "uncertain" });
   expect(f.writer.create).toHaveBeenCalledTimes(1);
 });
-it("blocks fixture bundles and non-preview outputs", async () => {
+it("blocks non-preview outputs", async () => {
   for (const opts of [
-    { source: "fixture" as const },
     { output: { result_text: "No purchase order found." } },
   ]) {
     const f = await fixture(opts);
@@ -199,7 +198,7 @@ it("uses only the Composio draft tool and parses its wrapped result", async () =
   });
 });
 
-it("rejects evaluation runs even with a real Gmail bundle", async () => {
+it("allows explicit draft creation from completed evaluation previews", async () => {
   const f = await fixture();
   await f.service.configure(f.w.id, true);
   await db.query(
@@ -259,8 +258,14 @@ it("rejects evaluation runs even with a real Gmail bundle", async () => {
     "UPDATE workflow_runs SET status='completed',finished_at=now(),result_step_id=$2 WHERE id=$1",
     [task.run_id, resultId],
   );
-  await expect(
-    f.service.create(f.w.id, task.run_id, { recipient: "" }),
-  ).rejects.toMatchObject({ code: "DRAFT_NOT_ELIGIBLE" });
-  expect(f.writer.create).not.toHaveBeenCalled();
+  expect(await f.service.create(f.w.id, task.run_id, { recipient: "" })).toMatchObject({ state: "created" });
+  expect(f.writer.create).toHaveBeenCalledTimes(1);
+});
+
+it("allows explicit fixture demo drafts and deduplicates repeated clicks", async () => {
+ const f = await fixture({source: "fixture"});
+ await f.service.configure(f.w.id, true);
+ await f.service.create(f.w.id,f.run.id,{recipient:""});
+ await f.service.create(f.w.id,f.run.id,{recipient:""});
+ expect(f.writer.create).toHaveBeenCalledTimes(1);
 });

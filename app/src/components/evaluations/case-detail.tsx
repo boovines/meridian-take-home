@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import type { EvaluationCase, CaseResult } from "@/domain/evaluation";
+import { RunResult } from "../runtime/run-result";
 import { RunTrace } from "../runtime/run-trace";
 import { AuditTrail } from "../runtime/audit-trail";
 import { api, errorMessage } from "@/lib/api";
@@ -128,6 +129,12 @@ export function CaseDetail({
           </>
         )}
       </details>
+      {result?.workflow_run_id && result.actual_output != null && (
+        <>
+          <p className="field-help">Test output: explicitly save an email preview as a Gmail draft for this demo.</p>
+          <RunResult output={result.actual_output} workflowId={workflowId} runId={result.workflow_run_id} />
+        </>
+      )}
       {result?.workflow_run_id && (
         <div className="case-trace-control">
           <button aria-expanded={trace} onClick={() => setTrace(!trace)}>

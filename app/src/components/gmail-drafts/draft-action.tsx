@@ -93,8 +93,8 @@ export function DraftActionView({
       {!state.enabled ? (
         <>
           <p>
-            Enable draft creation for this workflow only. Test runs stay
-            preview-only.
+            Enable draft creation for this workflow only. Drafts are saved only
+            when you choose Create Gmail draft.
           </p>
           <button disabled={busy} onClick={onEnable}>
             Enable Gmail drafts for this workflow
