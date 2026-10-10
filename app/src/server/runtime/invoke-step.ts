@@ -182,7 +182,7 @@ export function invocationFailure(error: unknown): RuntimeError {
     )?.[1];
   const category =
     known &&
-    ["HUMAN_RESPONSE_REQUIRED", "INVALID_DOCUMENT"].includes(error.code)
+    ["HUMAN_RESPONSE_REQUIRED", "INVALID_DOCUMENT", "CAPTURED_DOCUMENT_UNAVAILABLE"].includes(error.code)
       ? "input"
       : routeCode ||
           (known && implementationCodes.includes(error.code)) ||

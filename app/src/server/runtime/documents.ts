@@ -72,6 +72,12 @@ export async function documentsForBundle(
       String(row.workflow_id),
       id,
     );
+    if (artifact.metadata?.capture_status === "unavailable")
+      throw new DomainError(
+        422,
+        "CAPTURED_DOCUMENT_UNAVAILABLE",
+        `The attachment “${artifact.display_name}” was not downloaded. Consult the captured failure reason; do not treat it as empty or verified evidence.`,
+      );
     const mime = artifact.media_type;
     if (
       artifact.kind !== "source_document" ||

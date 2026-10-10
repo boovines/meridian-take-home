@@ -109,8 +109,12 @@ export class ComposioGmail implements GmailReader {
     if (!response.ok)
       throw new DomainError(
         502,
-        "GMAIL_UNAVAILABLE",
-        "Gmail retrieval failed. Check the Composio connection and retry.",
+        response.status === 401 || response.status === 403
+          ? "GMAIL_AUTH_REQUIRED"
+          : "GMAIL_UNAVAILABLE",
+        response.status === 401 || response.status === 403
+          ? "Gmail access was denied. Reconnect the Composio Gmail account before starting a new run."
+          : "Gmail retrieval failed. Check the Composio connection and retry.",
       );
     return JSON.parse((await boundedBytes(response, 2_000_000)).toString());
   }

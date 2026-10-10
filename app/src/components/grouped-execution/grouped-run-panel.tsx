@@ -6,6 +6,7 @@ import {
   useState,
   type ComponentProps,
 } from "react";
+import { captureProgress } from "@/domain/gmail-capture";
 import { api, errorMessage } from "@/lib/api";
 import type {
   GroupedExecutionDetail,
@@ -347,6 +348,31 @@ export function GroupedRunPanel({
         Execution status is separate from business correctness. Reports are
         previews; nothing is sent.
       </p>
+      {captureProgress.safeParse(detail.job.progress?.capture).success &&
+        (() => {
+          const capture = captureProgress.parse(detail.job.progress.capture);
+          return (
+            <div role="status" aria-label="Email capture progress">
+              <p>
+                {capture.messages_completed} of {capture.messages_total} emails
+                captured · {capture.attachments_completed} of{" "}
+                {capture.attachments_total} attachments downloaded ·{" "}
+                {capture.attachments_unavailable} unavailable
+              </p>
+              {!detail.record.input_bundle_id && (
+                <p className="field-help">
+                  Completed downloads are saved across automatic retries.
+                  Grouping starts after capture finishes.
+                </p>
+              )}
+              {capture.warnings.map((warning, index) => (
+                <p className="field-help" key={index}>
+                  {warning.name}: {warning.reason}
+                </p>
+              ))}
+            </div>
+          );
+        })()}
       {detail.job.error_message && (
         <p role="alert" className="inline-error">
           {detail.job.error_message}

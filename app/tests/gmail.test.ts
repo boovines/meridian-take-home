@@ -151,7 +151,7 @@ it("rejects unexpected download destinations, oversized streams, and provider fa
   );
   await expect(
     gmail.search("", undefined, AbortSignal.timeout(1000)),
-  ).rejects.toMatchObject({ code: "GMAIL_UNAVAILABLE" });
+  ).rejects.toMatchObject({ code: "GMAIL_AUTH_REQUIRED" });
 });
 it("captures immutable message and attachment evidence and never publishes a partial bundle", async () => {
   const w = await new CanvasService(db).create({
