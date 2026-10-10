@@ -13,10 +13,12 @@ for (const interruptedAudit of [false, true])
       jobId = crypto.randomUUID();
     const date = "2026-01-01T12:00:00Z",
       report = {
-        recipient: "receiving@example.test",
+        recipient: interruptedAudit ? "" : "receiving@example.test",
         subject: "Shipment DEMO-100",
         body: "One invoice checked. Review complete.",
       };
+    let draftsEnabled=false, draftCreates=0;
+    let savedDraft: Record<string,unknown> | null=null;
     let captured = false,
       runs: Record<string, unknown>[] = [],
       answered = false,
@@ -44,7 +46,7 @@ for (const interruptedAudit of [false, true])
               status: answered ? "completed" : "waiting_for_human",
               input_step_refs: {},
               output_data: answered
-                ? { totals: { invoices_processed: 1 }, report }
+                ? { totals: { invoices_processed: 1 }, ...(interruptedAudit ? {preview:report} : {report}) }
                 : null,
             },
           ]
@@ -70,6 +72,18 @@ for (const interruptedAudit of [false, true])
       const request = route.request(),
         url = new URL(request.url()),
         path = url.pathname;
+      if (path.endsWith("/gmail-draft-settings")) {
+        expect(request.postDataJSON()).toEqual({enabled:true});draftsEnabled=true;
+        return route.fulfill({json:{enabled:true}});
+      }
+      if (path.endsWith("/gmail-draft")) {
+        if(request.method()==="POST") {
+          expect(request.postDataJSON()).toEqual({recipient:report.recipient});draftCreates++;
+          savedDraft={state:"created",draft_id:"fixture-draft",recipient:report.recipient,subject:report.subject,body:report.body};
+          return route.fulfill({json:savedDraft});
+        }
+        return route.fulfill({json:{eligible:true,enabled:draftsEnabled,reason:null,draft:savedDraft}});
+      }
       if (path.endsWith("/engineering"))
         return route.fulfill({
           json: {
@@ -312,6 +326,12 @@ for (const interruptedAudit of [false, true])
     await expect(page.getByRole("button", { name: /Send report/ })).toHaveCount(
       0,
     );
+    await page.getByRole("button",{name:"Enable Gmail drafts for this workflow",exact:true}).click();
+    await expect(page.getByRole("textbox",{name:"Recipient (optional)",exact:true})).toHaveValue(report.recipient);
+    await page.getByRole("button",{name:"Create Gmail draft",exact:true}).click();
+    await expect(page.getByText("Saved in Gmail Drafts. Repeating this action will not create another draft.")).toBeVisible();
+    await expect(page.getByRole("button",{name:"Create Gmail draft",exact:true})).toHaveCount(0);
+    expect(draftCreates).toBe(1);
     expect(auditReads).toBe(0);
     await page.getByText("Step history · 1 visits", { exact: true }).click();
     if (interruptedAudit) {
